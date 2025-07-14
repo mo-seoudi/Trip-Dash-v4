@@ -1,0 +1,20 @@
+# Node modules
+node_modules/
+
+# Env files
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Firebase service account file
+*.json
