@@ -1,5 +1,5 @@
 
-const API_BASE = import.meta.env.REACT_APP_API_URL || "/api";
+const API_BASE = process.env.REACT_APP_API_URL || "/api";
 
 const getAuthHeader = () => {
   const token = localStorage.getItem("token");
