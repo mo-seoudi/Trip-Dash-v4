@@ -1,3 +1,4 @@
+// server/src/app.js
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
@@ -13,34 +14,36 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import { requestLogger } from "./middlewares/requestLogger.js";
 import { requestIdMiddleware } from "./middlewares/requestIdMiddleware.js";
 
-// import { authMiddleware } from "./middlewares/authMiddleware.js"; // Uncomment if needed
+// import { authMiddleware } from "./middlewares/authMiddleware.js";
 
 const app = express();
 
-// 🌟 Middlewares
+// 🔧 Core middleware
 app.use(express.json());
 app.use(requestIdMiddleware);
 app.use(requestLogger);
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5000", // local dev
-      "https://your-frontend.com", // production domain
-    ],
-    credentials: true,
-  })
-);
+// 🌍 CORS from env (no hardcoded URLs)
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map(o => o.trim());
 
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
-  })
-);
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
 
-// 🛡️ Global authentication (optional)
-// app.use(authMiddleware); // Uncomment to protect everything globally
+// 🛡 Rate limiting
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+}));
+
+// app.use(authMiddleware); // Optional global protection
 
 // 🚍 Routes
 app.use("/api/trips", tripRoutes);
@@ -51,12 +54,12 @@ app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/auth", authRoutes);
 
-// ✅ Simple health check
+// ✅ Health check
 app.get("/api/hello", (req, res) => {
   res.json({ message: "✅ Server is working fine!" });
 });
 
-// 💥 Error handler
+// 💥 Central error handler
 app.use(errorHandler);
 
 export default app;
