@@ -1,54 +1,45 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { auth, db } from "../firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [firebaseUser, setFirebaseUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const docRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(docRef);
+  const fetchUserProfile = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return setProfile(null);
 
-          if (docSnap.exists()) {
-            const userData = docSnap.data();
-            setFirebaseUser(user);
-            setProfile({ uid: user.uid, email: user.email, ...userData });
-          } else {
-            console.error("User profile not found in Firestore!");
-            setFirebaseUser(null);
-            setProfile(null);
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-          setFirebaseUser(null);
-          setProfile(null);
+      const res = await fetch("/api/auth/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`
         }
-      } else {
-        setFirebaseUser(null);
-        setProfile(null);
-      }
-      setLoading(false);
-    });
+      });
 
-    return () => unsubscribe();
+      if (!res.ok) throw new Error("Unauthorized");
+
+      const data = await res.json();
+      setProfile(data);
+    } catch (err) {
+      console.error("Failed to fetch user profile:", err);
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
   }, []);
 
   const logout = () => {
-    signOut(auth);
-    setFirebaseUser(null);
+    localStorage.removeItem("token");
     setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, logout }}>
+    <AuthContext.Provider value={{ profile, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );

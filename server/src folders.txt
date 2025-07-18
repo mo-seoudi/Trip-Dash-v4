@@ -1,0 +1,90 @@
+src/
+├── app.js
+├── server.js
+│
+├── config/
+│   ├── firebase.js
+│   ├── firebaseAdmin.js
+│   └── orgConfig.js
+│
+├── controllers/
+│   └── trip.controller.js
+│
+├── integrations/
+│   ├── CalendarIntegration.js
+│   ├── google/
+│   │   └── GoogleCalendarIntegration.js
+│   ├── ms/
+│   │   └── MSGraphIntegration.js
+│   └── slack/
+│       └── SlackIntegration.js
+│
+├── middlewares/
+│   ├── authMiddleware.js
+│   ├── errorHandler.js
+│   ├── permissionsMiddleware.js
+│   ├── requestIdMiddleware.js
+│   ├── requestLogger.js
+│   ├── roleMiddleware.js
+│   └── validateMiddleware.js
+│
+├── models/
+│   ├── Organization.js
+│   ├── Tenant.js
+│   └── User.js 
+│
+├── providers/
+│   ├── auth/
+│   │   ├── auth0Provider.js
+│   │   ├── firebaseAuthProvider.js
+│   │   └── msGraphAuthProvider.js
+│   └── db/
+│       ├── firebaseDbProvider.js
+│       ├── mongoDbProvider.js
+│       └── sqlDbProvider.js
+│
+├── repositories/
+│   ├── settingsRepository.js
+│   ├── TenantRepository.js
+│   ├── TripRepository.js
+│   ├── UserRepository.js
+│   │
+│   ├── firebase/
+│   │   ├── FirebaseFinanceRepository.js
+│   │   ├── FirebaseSettingsRepository.js
+│   │   ├── FirebaseTenantRepository.js
+│   │   ├── FirebaseTripRepository.js
+│   │   └── FirebaseUserRepository.js
+│   │
+│   ├── mongo/
+│   │   ├── MongoFinanceRepository.js
+│   │   ├── MongoTenantRepository.js
+│   │   ├── MongoTripRepository.js
+│   │   └── MongoUserRepository.js
+│   │
+│   └── sql/
+│       ├── SQLFinanceRepository.js
+│       ├── SQLTenantRepository.js
+│       ├── SQLTripRepository.js
+│       └── SQLUserRepository.js
+│
+├── routes/
+│   ├── auth.js
+│   ├── finance.routes.js
+│   ├── settings.routes.js
+│   └── trip.routes.js
+│   
+│
+├── services/
+│   ├── authService.js
+│   ├── integrationResolver.js
+│   ├── repositoryResolver.js
+│   ├── tenantService.js
+│   └── tripService.js
+│
+├── utils/
+│   ├── FeatureFlagService.js
+│   └── logger.js
+│
+└── validations/
+    └── tripValidation.js

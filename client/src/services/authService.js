@@ -1,15 +1,23 @@
 // src/services/authService.js
-import { auth } from "../firebase";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+
+const BASE_URL = import.meta.env.VITE_API_URL || ""; // fallback to relative if env not set
 
 export const loginUser = async (email, password) => {
-  return await signInWithEmailAndPassword(auth, email, password);
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error("Login failed");
+  return await res.json();
 };
 
-export const logoutUser = async () => {
-  return await signOut(auth);
-};
-
-export const getCurrentUser = () => {
-  return auth.currentUser;
+export const registerUser = async (user) => {
+  const res = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(user),
+  });
+  if (!res.ok) throw new Error("Registration failed");
+  return await res.json();
 };

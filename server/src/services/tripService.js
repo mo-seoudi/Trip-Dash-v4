@@ -1,7 +1,11 @@
-import * as tripRepo from "../repositories/firebaseTripRepository.js";
+import { getTripRepository } from "./repositoryResolver.js";
+import { getTenantConfig } from "./tenantService.js";
+import logger from "../utils/logger.js";
 
-// 🟢 Create trip
-export async function createTrip(data, user) {
+export async function createTrip(data, user, requestId) {
+  const tenant = await getTenantConfig(user.tenantId);
+  const tripRepo = getTripRepository(tenant);
+
   const tripData = {
     ...data,
     organizationId: user.organizationId,
@@ -11,34 +15,44 @@ export async function createTrip(data, user) {
     status: "Pending",
   };
 
+  logger.info({ requestId, userId: user.id }, "Preparing to create trip in repo");
   const trip = await tripRepo.createTrip(tripData);
   return trip;
 }
 
-// 🟢 Update trip status with tenant check
-export async function updateStatus(tripId, newStatus, user) {
+export async function updateStatus(tripId, newStatus, user, requestId) {
+  const tenant = await getTenantConfig(user.tenantId);
+  const tripRepo = getTripRepository(tenant);
+
   const trip = await tripRepo.findTripById(tripId);
   if (!trip || trip.organizationId !== user.organizationId) {
     throw new Error("Trip not found or access denied");
   }
 
+  logger.info({ requestId, userId: user.id, tripId }, "Updating trip status in repo");
   const updated = await tripRepo.updateTripStatus(tripId, newStatus);
   return updated;
 }
 
-// 🟢 Assign bus with tenant check
-export async function assignBus(tripId, busData, user) {
+export async function assignBus(tripId, busData, user, requestId) {
+  const tenant = await getTenantConfig(user.tenantId);
+  const tripRepo = getTripRepository(tenant);
+
   const trip = await tripRepo.findTripById(tripId);
   if (!trip || trip.organizationId !== user.organizationId) {
     throw new Error("Trip not found or access denied");
   }
 
+  logger.info({ requestId, userId: user.id, tripId }, "Assigning bus in repo");
   const updated = await tripRepo.assignBus(tripId, busData);
   return updated;
 }
 
-// 🟢 Get trips for an organization
-export async function getTrips(user) {
+export async function getTrips(user, requestId) {
+  const tenant = await getTenantConfig(user.tenantId);
+  const tripRepo = getTripRepository(tenant);
+
+  logger.info({ requestId, userId: user.id }, "Fetching trips for organization");
   const trips = await tripRepo.findTripsByOrganization(user.organizationId);
   return trips;
 }

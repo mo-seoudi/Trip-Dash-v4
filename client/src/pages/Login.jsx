@@ -1,13 +1,10 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
 const Login = () => {
-  const { loading } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,35 +15,27 @@ const Login = () => {
     setError("");
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Fetch profile
-      const docRef = doc(db, "users", firebaseUser.uid);
-      const docSnap = await getDoc(docRef);
+      const data = await response.json();
 
-      if (!docSnap.exists()) {
-        setError("Profile not found. Please contact admin.");
-        return;
+      if (!response.ok) {
+        throw new Error(data.message || "Login failed");
       }
 
-      const userData = docSnap.data();
-      if (userData.status !== "approved") {
-        setError("Your account is pending approval by admin.");
-        return;
-      }
+      // Save token and profile via AuthContext
+      login(data.token, data.user);
 
-      // If all good, navigate
       navigate("/");
     } catch (err) {
-      console.error(err);
-      setError("Invalid email or password.");
+      console.error("Login error:", err);
+      setError(err.message || "Invalid login credentials");
     }
   };
-
-  if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
-  }
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gray-100">

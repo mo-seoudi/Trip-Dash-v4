@@ -8,12 +8,12 @@ import { exportToCSV } from "../utils/exportToCSV";
 const TripFilters = ({
   search,
   setSearch,
-  statusFilter,
-  setStatusFilter,
-  statusOptions,
   monthFilter,
   setMonthFilter,
   monthOptions,
+  statusFilter,
+  setStatusFilter,
+  statusOptions,
   onReset,
   filteredData
 }) => {
@@ -31,7 +31,31 @@ const TripFilters = ({
         <BiSearchAlt2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
       </div>
 
-      {/* Status filter */}
+      
+      {/* Month filter */}
+      <Listbox value={monthFilter} onChange={setMonthFilter}>
+        <div className="relative w-40">
+          <Listbox.Button className="border px-3 py-2 rounded text-sm w-full text-left">
+            {monthFilter || "Month"}
+          </Listbox.Button>
+          <Listbox.Options className="absolute mt-1 w-full bg-white border rounded shadow-lg z-50 max-h-60 overflow-auto">
+            {monthOptions.map((month) => (
+              <Listbox.Option
+                key={month}
+                value={month}
+                className={({ active }) =>
+                  `cursor-pointer select-none px-4 py-2 text-sm ${
+                    active ? "bg-gray-100" : ""
+                  }`
+                }
+              >
+                {month}
+              </Listbox.Option>
+            ))}
+          </Listbox.Options>
+        </div>
+      </Listbox>
+{/* Status filter */}
       <Listbox value={statusFilter} onChange={setStatusFilter}>
         <div className="relative w-32">
           <Listbox.Button className="border px-3 py-2 rounded text-sm w-full text-left">
@@ -66,30 +90,6 @@ const TripFilters = ({
                   ></span>
                   {status}
                 </div>
-              </Listbox.Option>
-            ))}
-          </Listbox.Options>
-        </div>
-      </Listbox>
-
-      {/* Month filter */}
-      <Listbox value={monthFilter} onChange={setMonthFilter}>
-        <div className="relative w-40">
-          <Listbox.Button className="border px-3 py-2 rounded text-sm w-full text-left">
-            {monthFilter || "Month"}
-          </Listbox.Button>
-          <Listbox.Options className="absolute mt-1 w-full bg-white border rounded shadow-lg z-50 max-h-60 overflow-auto">
-            {monthOptions.map((month) => (
-              <Listbox.Option
-                key={month}
-                value={month}
-                className={({ active }) =>
-                  `cursor-pointer select-none px-4 py-2 text-sm ${
-                    active ? "bg-gray-100" : ""
-                  }`
-                }
-              >
-                {month}
               </Listbox.Option>
             ))}
           </Listbox.Options>

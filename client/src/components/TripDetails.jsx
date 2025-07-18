@@ -1,5 +1,4 @@
 import React from "react";
-import StatusBadge from "./StatusBadge";
 
 function TripDetails({ trip }) {
   if (!trip) return null;
@@ -42,9 +41,15 @@ function TripDetails({ trip }) {
             <strong>Students:</strong> {trip.students}
           </div>
           <div>
-            <strong>Status:</strong>
-            <span className="inline-flex items-center ml-3">
-              <StatusBadge status={trip.status} />
+            <strong>Status:</strong>{" "}
+            <span
+              className={`inline-block px-2 py-0.5 rounded text-xs font-medium
+                ${trip.status === "Confirmed" ? "bg-green-100 text-green-800" : 
+                  trip.status === "Pending" ? "bg-yellow-100 text-yellow-800" : 
+                  trip.status === "Completed" ? "bg-gray-200 text-gray-800" : 
+                  "bg-gray-100 text-gray-700"}`}
+            >
+              {trip.status}
             </span>
           </div>
           {trip.notes && (
@@ -71,27 +76,12 @@ function TripDetails({ trip }) {
               <div key={index} className="bg-white border rounded p-4 shadow-sm">
                 <p className="font-medium mb-1">Bus #{index + 1}</p>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <strong>Type:</strong> {bus.busType}
-                  </div>
-                  <div>
-                    <strong>Seats:</strong> {bus.busSeats}
-                  </div>
-                  <div>
-                    <strong>Price:</strong> {bus.tripPrice || "-"}
-                  </div>
-                  <div>
-                    <strong>Driver Name:</strong> {bus.driverName || "-"}
-                  </div>
-                  <div>
-                    <strong>Driver Phone:</strong> {bus.driverPhone || "-"}
-                  </div>
-                  <div>
-                    <strong>Status:</strong>
-                    <span className="inline-flex items-center ml-3">
-                      <StatusBadge status={bus.status || "-"} />
-                    </span>
-                  </div>
+                  <div><strong>Type:</strong> {bus.busType}</div>
+                  <div><strong>Seats:</strong> {bus.busSeats}</div>
+                  <div><strong>Price:</strong> {bus.tripPrice || "-"}</div>
+                  <div><strong>Driver Name:</strong> {bus.driverName || "-"}</div>
+                  <div><strong>Driver Phone:</strong> {bus.driverPhone || "-"}</div>
+                  <div><strong>Status:</strong> {bus.status || "-"}</div>
                 </div>
               </div>
             ))}
@@ -106,27 +96,12 @@ function TripDetails({ trip }) {
           <div>
             <h3 className="text-lg font-semibold mb-2">Viewing Specific Sub-Trip</h3>
             <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 rounded border">
-              <div>
-                <strong>Seats:</strong> {trip.subTrip.busSeats}
-              </div>
-              <div>
-                <strong>Status:</strong>
-                <span className="inline-flex items-center ml-3">
-                  <StatusBadge status={trip.subTrip.status} />
-                </span>
-              </div>
-              <div>
-                <strong>Bus Type:</strong> {trip.subTrip.busType}
-              </div>
-              <div>
-                <strong>Trip Price:</strong> {trip.subTrip.tripPrice}
-              </div>
-              <div>
-                <strong>Driver Name:</strong> {trip.subTrip.driverName}
-              </div>
-              <div>
-                <strong>Driver Phone:</strong> {trip.subTrip.driverPhone}
-              </div>
+              <div><strong>Seats:</strong> {trip.subTrip.busSeats}</div>
+              <div><strong>Status:</strong> {trip.subTrip.status}</div>
+              <div><strong>Bus Type:</strong> {trip.subTrip.busType}</div>
+              <div><strong>Trip Price:</strong> {trip.subTrip.tripPrice}</div>
+              <div><strong>Driver Name:</strong> {trip.subTrip.driverName}</div>
+              <div><strong>Driver Phone:</strong> {trip.subTrip.driverPhone}</div>
             </div>
           </div>
         </>

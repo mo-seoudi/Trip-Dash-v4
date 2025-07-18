@@ -1,100 +1,75 @@
-// src/services/tripService.js
 
-import { db } from "../firebase";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  doc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-} from "firebase/firestore";
+const API_BASE = "/api"; // or "http://localhost:3000/api" in dev
 
-/**
- * Fetch all trips
- */
+const getAuthHeader = () => {
+  const token = localStorage.getItem("token");
+  return {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json"
+  };
+};
+
 export const getAllTrips = async () => {
-  const q = query(collection(db, "trips"), orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const res = await fetch(`${API_BASE}/trips`, {
+    headers: getAuthHeader(),
+  });
+  return await res.json();
 };
 
-/**
- * Fetch trips by user name (createdBy)
- */
 export const getTripsByUser = async (userName) => {
-  const q = query(
-    collection(db, "trips"),
-    where("createdBy", "==", userName),
-    orderBy("createdAt", "desc")
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const res = await fetch(`${API_BASE}/trips?createdBy=${userName}`, {
+    headers: getAuthHeader(),
+  });
+  return await res.json();
 };
 
-/**
- * Create new trip
- */
 export const createTrip = async (tripData) => {
-  return await addDoc(collection(db, "trips"), tripData);
+  const res = await fetch(`${API_BASE}/trips`, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify(tripData)
+  });
+  return await res.json();
 };
 
-/**
- * Update trip by ID
- */
 export const updateTrip = async (tripId, updates) => {
-  return await updateDoc(doc(db, "trips", tripId), updates);
+  const res = await fetch(`${API_BASE}/trips/${tripId}`, {
+    method: "PUT",
+    headers: getAuthHeader(),
+    body: JSON.stringify(updates)
+  });
+  return await res.json();
 };
 
-/**
- * Delete trip by ID
- */
 export const deleteTrip = async (tripId) => {
-  return await deleteDoc(doc(db, "trips", tripId));
+  const res = await fetch(`${API_BASE}/trips/${tripId}`, {
+    method: "DELETE",
+    headers: getAuthHeader(),
+  });
+  return await res.json();
 };
 
-/**
- * Assign buses to a trip (legacy function — for compatibility if needed)
- */
 export const assignBusesToTrip = async (tripId, buses) => {
-  return await updateDoc(doc(db, "trips", tripId), {
-    buses,
-    status: "Confirmed",
+  const res = await fetch(`${API_BASE}/trips/${tripId}/assign-buses`, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({ buses })
   });
+  return await res.json();
 };
 
-/**
- * Create sub-trips for a given parent trip
- */
 export const createSubTrips = async (parentTripId, buses) => {
-  const subTripsRef = collection(db, "subTrips");
-  const promises = buses.map(async (bus) => {
-    return await addDoc(subTripsRef, {
-      parentTripId,
-      busType: bus.busType,
-      busSeats: bus.busSeats,
-      tripPrice: bus.tripPrice,
-      status: "Pending",
-      createdAt: new Date(),
-    });
+  const res = await fetch(`${API_BASE}/subtrips`, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({ parentTripId, buses })
   });
-  return Promise.all(promises);
+  return await res.json();
 };
 
-/**
- * Get sub-trips by parent trip ID
- */
 export const getSubTripsByParent = async (parentTripId) => {
-  const q = query(
-    collection(db, "subTrips"),
-    where("parentTripId", "==", parentTripId),
-    orderBy("createdAt", "asc")
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const res = await fetch(`${API_BASE}/subtrips?parentTripId=${parentTripId}`, {
+    headers: getAuthHeader(),
+  });
+  return await res.json();
 };
-
-

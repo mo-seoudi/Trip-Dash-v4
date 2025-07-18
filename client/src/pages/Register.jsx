@@ -1,9 +1,6 @@
 // src/pages/Register.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "../firebase";
 
 const Register = () => {
   const [email, setEmail] = useState("");
@@ -18,24 +15,28 @@ const Register = () => {
     setError("");
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      // Save user profile to Firestore
-      await setDoc(doc(db, "users", firebaseUser.uid), {
-        email,
-        name,
-        role,
-        status: "pending", // ⬅️ Default status to pending
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+          role,
+        }),
       });
 
-      console.log("User registered, waiting for admin approval");
-      alert("Registration successful! Wait for admin approval before logging in.");
+      const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed");
+      }
+
+      alert("Registration successful! Wait for admin approval before logging in.");
       navigate("/login");
     } catch (err) {
-      console.error(err);
-      setError(err.message);
+      console.error("Register error:", err);
+      setError(err.message || "Something went wrong.");
     }
   };
 

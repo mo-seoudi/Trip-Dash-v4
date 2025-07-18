@@ -1,20 +1,17 @@
 # Node modules
 node_modules/
 
-# Env files
+# Build outputs
+build/
+dist/
+
+# Environment files
 .env
+.env.local
 
 # Logs
-logs
 *.log
-npm-debug.log*
 
-# OS / Editor
-.DS_Store
-Thumbs.db
+# IDE/editor config
 .vscode/
-.idea/
-*.swp
-
-# Firebase service account file
-*.json
+.DS_Store
