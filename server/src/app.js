@@ -49,7 +49,7 @@ app.use("/api/tenants", tenantRoutes);
 app.use("/api/organizations", organizationRoutes);
 app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api", authRoutes);
+app.use("/api/auth", authRoutes);
 
 // ✅ Simple health check
 app.get("/api/hello", (req, res) => {
