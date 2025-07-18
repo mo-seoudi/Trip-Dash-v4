@@ -1,70 +1,119 @@
-import express from "express";
-import cors from "cors";
-import rateLimit from "express-rate-limit";
+// src/App.jsx
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-import tripRoutes from "./routes/trip.routes.js";
-import settingsRoutes from "./routes/settings.routes.js";
-import authRoutes from "./routes/auth.js";
-import tenantRoutes from "./routes/tenant.routes.js";
-import organizationRoutes from "./routes/organization.routes.js";
-import partnershipRoutes from "./routes/partnership.routes.js";
-import userRoutes from "./routes/user.routes.js";
+import TenantSetup from "./pages/TenantSetup";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import FinancePage from "./pages/Finance";
+import TripDetails from "./pages/TripDetails";
+import NotFound from "./pages/NotFound";
+import AllTrips from "./pages/AllTrips";
+import AdminRoles from "./pages/AdminRoles";
+import AdminUsers from "./pages/AdminUsers";
+import Settings from "./pages/Settings";
 
-import { errorHandler } from "./middlewares/errorHandler.js";
-import { requestLogger } from "./middlewares/requestLogger.js";
-import { requestIdMiddleware } from "./middlewares/requestIdMiddleware.js";
+import Layout from "./layout/Layout";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import ProtectedRoute from "./routes/ProtectedRoute";
 
-// const { authMiddleware } = require("./middlewares/authMiddleware.js"); // Uncomment if needed
+function AppRoutes() {
+  const { profile, loading } = useAuth();
 
-const app = express();
+  if (loading) {
+    return <div className="flex justify-center items-center h-screen text-lg">Loading, please wait...</div>;
+  }
 
-// 🌟 Middleware: JSON, request ID, logger
-app.use(express.json());
-app.use(requestIdMiddleware);
-app.use(requestLogger);
+  return (
+    <>
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/admin/tenant-setup" element={<TenantSetup />} />
 
-// 🌍 Dynamic CORS config
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map(o => o.trim());
+        {/* Protected */}
+        {profile && (
+          <Route element={<Layout />}>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute allowedRoles={["school_staff", "bus_company", "trip_manager", "admin"]}>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/finance"
+              element={
+                <ProtectedRoute allowedRoles={["finance", "admin"]}>
+                  <FinancePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/trips"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "trip_manager"]}>
+                  <AllTrips />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/trip/:id"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "trip_manager", "school_staff", "bus_company"]}>
+                  <TripDetails />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/roles"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminRoles />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminUsers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "school_staff", "finance", "bus_company", "trip_manager"]}>
+                  <Settings />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+        )}
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  })
-);
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to={profile ? "/" : "/login"} />} />
+      </Routes>
 
-// 🚦 Rate limiting
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-  })
-);
+      <ToastContainer position="top-center" autoClose={2000} hideProgressBar closeOnClick pauseOnHover={false} draggable={false} />
+    </>
+  );
+}
 
-// 🛡️ Optional global auth
-// app.use(authMiddleware); // Uncomment to protect all routes
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
 
-// 📦 API Routes
-app.use("/api/trips", tripRoutes);
-app.use("/api/settings", settingsRoutes);
-app.use("/api/tenants", tenantRoutes);
-app.use("/api/organizations", organizationRoutes);
-app.use("/api/partnerships", partnershipRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api", authRoutes); // includes /login
-
-// ✅ Health check
-app.get("/api/hello", (req, res) => {
-  res.json({ message: "✅ Server is working fine!" });
-});
-
-// 💥 Central error handler
-app.use(errorHandler);
-
-export default app;
+export default App;
