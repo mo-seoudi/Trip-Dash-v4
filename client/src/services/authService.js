@@ -1,6 +1,6 @@
 // src/services/authService.js
 
-const BASE_URL = import.meta.env.VITE_API_URL || ""; // fallback to relative if env not set
+const BASE_URL = process.env.REACT_APP_API_URL || ""; // fallback to relative if env not set
 
 export const loginUser = async (email, password) => {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
