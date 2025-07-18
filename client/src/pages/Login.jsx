@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+const BASE_URL = process.env.REACT_APP_API_URL || ""; // CRA-style env access
+
 const Login = () => {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
@@ -15,7 +17,7 @@ const Login = () => {
     setError("");
 
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch(`${BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
