@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="password"],
+input[type="search"],
+input[type="url"],
+textarea {
+  cursor: text !important;
+}
+
+[contenteditable="true"] {
+  cursor: default !important;
+}
+
+.noselect {
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}

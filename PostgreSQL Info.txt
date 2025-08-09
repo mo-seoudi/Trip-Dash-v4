@@ -1,0 +1,25 @@
+PostgreSQL Setup
+
+Password: Seoudi$2024
+Port: 5432
+
+tripdash 
+
+-- create a database for this app
+CREATE DATABASE tripdash;
+
+-- (optional but recommended) create a dedicated app user
+CREATE USER tripdash_user WITH PASSWORD 'Tripdash$2024';
+
+-- give that user full access to the new DB
+GRANT ALL PRIVILEGES ON DATABASE tripdash TO tripdash_user;
+
+-- connect into the new DB
+\c tripdash
+
+-- ensure the user can use the default schema
+GRANT ALL ON SCHEMA public TO tripdash_user;
+
+-- (optional) make the app user the owner of the DB
+ALTER DATABASE tripdash OWNER TO tripdash_user;
+
