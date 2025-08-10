@@ -1,15 +1,29 @@
-import jwt from 'jsonwebtoken';
-import config from '../config.js';
+import jwt from "jsonwebtoken";
+import { PrismaClient } from "@prisma/client";
 
-export const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'No token provided' });
+const prisma = new PrismaClient();
+const COOKIE_NAME = "session";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
+export async function requireAuth(req, res, next) {
   try {
-    const decoded = jwt.verify(token, config.jwtSecret);
-    req.user = decoded;
+    const token = req.cookies?.[COOKIE_NAME];
+    if (!token) return res.status(401).json({ message: "Not authenticated" });
+
+    const { uid } = jwt.verify(token, JWT_SECRET);
+    const user = await prisma.user.findUnique({ where: { id: uid } });
+    if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+    req.user = user; // attach for downstream
     next();
-  } catch (err) {
-    return res.status(403).json({ message: 'Invalid token' });
+  } catch (e) {
+    next(e);
   }
-};
+}
+
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+  next();
+}
