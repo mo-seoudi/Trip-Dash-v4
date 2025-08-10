@@ -1,11 +1,11 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../services/apiClient";
 import { useAuth } from "../context/AuthContext";
+import { login as apiLogin } from "../services/authService";
 
 const Login = () => {
-  const { loading, setSession } = useAuth();
+  const { loading, refreshSession } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,23 +14,13 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
-
     try {
-      const response = await api.post("/api/auth/login", { email, password });
-      const { token, user } = response.data;
-
-      if (user.status !== "approved") {
-        setError("Your account is pending approval by admin.");
-        return;
-      }
-
-      // Save token and set session
-      localStorage.setItem("token", token);
-      setSession(user);
+      await apiLogin(email, password);   // sets cookie on success
+      await refreshSession();            // pull user into context
       navigate("/");
     } catch (err) {
       console.error(err);
-      setError("Invalid email or password.");
+      setError("Login failed. Please try again.");
     }
   };
 
@@ -79,4 +69,3 @@ const Login = () => {
 };
 
 export default Login;
-
