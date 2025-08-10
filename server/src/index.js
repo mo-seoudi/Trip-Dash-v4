@@ -1,4 +1,4 @@
-// src/index.js
+// server/src/index.js 
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -6,6 +6,8 @@ import cookieParser from "cookie-parser";
 import { PrismaClient } from "@prisma/client";
 
 import authRoutes from "./routes/authRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 
 dotenv.config();
 
@@ -59,6 +61,8 @@ app.get("/health", (_, res) => res.status(200).json({ ok: true }));
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/users", userRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
