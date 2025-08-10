@@ -1,20 +1,20 @@
-// 📄 client/src/services/apiClient.js
+// client/src/services/apiClient.js
 import axios from "axios";
 
-const ROOT =
-  (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+// If VITE_API_URL is "http://localhost:5000" or "http://localhost:5000/",
+// this will produce "http://localhost:5000/api"
+const origin = (import.meta.env.VITE_API_URL || "http://localhost:5000")
+  .replace(/\/+$/, "");
+const baseURL = `${origin}/api`;
 
 const api = axios.create({
-  baseURL: ROOT,          // e.g. http://localhost:5000
-  withCredentials: true,  // needed for cookie auth
+  baseURL,
+  withCredentials: true,
 });
 
-// Add token if you also support Bearer tokens (cookies still work without this)
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
