@@ -16,7 +16,7 @@ const Register = () => {
   setError("");
 
   try {
-    await api.post("/api/auth/register", { email, password, name, role });
+    await api.post("/auth/register", { email, password, name, role });
 
     alert("Registration successful! Wait for admin approval before logging in.");
     navigate("/login");
