@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,12 +8,112 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/* ---------------- Users ---------------- */
+
 model User {
   id           Int      @id @default(autoincrement())
   name         String
   email        String   @unique
   passwordHash String
-  role         String   @default("school_staff")
-  status       String   @default("pending")
+  role         String   @default("school_staff") // "school_staff" | "bus_company" | "finance" | "admin"
+  status       String   @default("pending")      // "pending" | "approved" | "blocked"
   createdAt    DateTime @default(now())
+
+  // reverse relation (optional)
+  tripsCreated Trip[]   @relation("TripsByUser")
+}
+
+/* ---------------- Trips ---------------- */
+
+model Trip {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // used by your frontend filter ?createdBy=<name>
+  createdBy   String?
+  // optional real FK to User (lets you move to id-based filtering later)
+  createdById Int?
+  createdByUser User?   @relation("TripsByUser", fields: [createdById], references: [id])
+
+  // your client sends "Confirmed" / etc.; we’ll store as String for now
+  status      String    @default("Draft")
+
+  // optional schedule/route fields (safe to keep as nullables)
+  date        DateTime?
+  routeId     Int?
+  route       Route?    @relation(fields: [routeId], references: [id])
+
+  // sub-trips (self relation)
+  parentId    Int?
+  parent      Trip?     @relation("SubTrips", fields: [parentId], references: [id])
+  children    Trip[]    @relation("SubTrips")
+
+  // many-to-many bus assignments via join model
+  buses       TripBus[]
+
+  // optional FK if you also keep a single “primary” driver/bus
+  driverId    Int?
+  driver      Driver?   @relation(fields: [driverId], references: [id])
+
+  busId       Int?
+  bus         Bus?      @relation(fields: [busId], references: [id])
+
+  scans       TripScan[]
+
+  @@index([createdAt])
+  @@index([createdBy])
+  @@index([status])
+  @@index([parentId])
+}
+
+/* Join table for assigned buses to a trip */
+model TripBus {
+  tripId       Int
+  busId        Int
+  trip         Trip @relation(fields: [tripId], references: [id])
+  bus          Bus  @relation(fields: [busId],  references: [id])
+
+  // optional metadata for assignment
+  plannedStart DateTime?
+  note         String?
+
+  @@id([tripId, busId])
+  @@index([busId])
+}
+
+/* ---------------- Minimal shells so schema compiles ---------------- */
+
+model Bus {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  company   String?
+  active    Boolean   @default(true)
+  trips     Trip[]    // optional single-bus relation on Trip.busId
+  tripLinks TripBus[] // many-to-many links
+}
+
+model Driver {
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String?
+  active    Boolean   @default(true)
+  trips     Trip[]    // optional single-driver relation on Trip.driverId
+}
+
+model Route {
+  id        Int       @id @default(autoincrement())
+  name      String
+  start     String?
+  end       String?
+  trips     Trip[]
+}
+
+model TripScan {
+  id        Int       @id @default(autoincrement())
+  tripId    Int
+  trip      Trip      @relation(fields: [tripId], references: [id])
+  scannedAt DateTime  @default(now())
+  studentId String?
+  meta      Json?
 }
