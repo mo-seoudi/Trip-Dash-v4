@@ -14,6 +14,7 @@ import AllTrips from "./pages/AllTrips";
 import AdminRoles from "./pages/AdminRoles";
 import AdminUsers from "./pages/AdminUsers";
 import Settings from "./pages/Settings";
+import AdminApprovals from "./pages/AdminApprovals";
 
 import Layout from "./layout/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -88,6 +89,15 @@ return (
               </ProtectedRoute>
             }
           />
+          <Route
+              path="/admin/approvals"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminApprovals />
+                </ProtectedRoute>
+              }
+            />
+
           <Route
             path="/settings"
             element={
