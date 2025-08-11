@@ -17,10 +17,10 @@ const COOKIE_NAME = "session";
 const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
-  secure: isProd,                  // ✅ true on Render (HTTPS)
-  sameSite: isProd ? "none" : "lax", // ✅ cross-site in prod; friendlier in dev
+  secure: isProd,                     // true on Render (HTTPS)
+  sameSite: isProd ? "none" : "lax",  // cross-site in prod; friendlier in dev
   path: "/",
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  maxAge: 1000 * 60 * 60 * 24 * 7,    // 7 days
 };
 
 /** REGISTER */
@@ -64,13 +64,16 @@ router.post("/login", async (req, res, next) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    if (user.status !== "approved") {
-      return res.status(403).json({ message: "Account pending approval" });
+    // Normalized approval check (replaces the old strict !== "approved")
+    const isApproved = (user.status ?? "").toLowerCase().trim() === "approved";
+    if (!isApproved) {
+      console.warn("LOGIN BLOCKED (status)", { email: user.email, status: user.status });
+      return res.status(403).json({ message: "Account pending approval", status: user.status });
     }
 
     const token = jwt.sign({ uid: user.id }, JWT_SECRET, { expiresIn: "7d" });
 
-    // CRITICAL for cross-site (Vercel frontend -> Render API)
+    // Cross-site cookie (Vercel -> Render)
     res.cookie(COOKIE_NAME, token, cookieOptions);
 
     const safeUser = {
