@@ -1,49 +1,70 @@
-// 📄 File path: src/context/AuthContext.js
+// src/context/AuthContext.js
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  createContext,
+  useCallback,
+} from "react";
+import {
+  getSession,
+  logout as logoutUser,
+  getUserProfile,
+} from "../services/authService";
 
-import React, { useState, useEffect, useContext, createContext } from "react";
-import { getSession, logout as logoutUser, getUserProfile } from "../services/authService";
-
-const AuthContext = createContext();
+const AuthContext = createContext({
+  tokenUser: null,
+  profile: null,
+  loading: true,
+  refreshSession: async () => {},
+  logout: async () => {},
+});
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-  const [tokenUser, setTokenUser] = useState(null); // Renamed from firebaseUser
+  const [tokenUser, setTokenUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const loadSession = async () => {
+  const loadSession = useCallback(async () => {
+    setLoading(true);
     try {
-      const session = await getSession(); // returns user with token if logged in
-      if (session && session.user && session.token) {
-        setTokenUser(session.user);
-        const userProfile = await getUserProfile(session.user.id);
+      const data = await getSession(); // expects { user } or 401
+      const user = data?.user ?? null;
+      setTokenUser(user);
+
+      if (user) {
+        const userProfile = await getUserProfile(user.id);
         setProfile(userProfile);
       } else {
-        setTokenUser(null);
         setProfile(null);
       }
     } catch (error) {
-      console.error("Error loading session:", error);
+      // swallow 401s; they just mean "not logged in"
       setTokenUser(null);
       setProfile(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const refreshSession = useCallback(() => loadSession(), [loadSession]);
+
+  const logout = useCallback(async () => {
     await logoutUser();
     setTokenUser(null);
     setProfile(null);
-  };
+  }, []);
 
   useEffect(() => {
     loadSession();
-  }, []);
+  }, [loadSession]);
 
   return (
-    <AuthContext.Provider value={{ tokenUser, profile, loading, logout }}>
+    <AuthContext.Provider
+      value={{ tokenUser, profile, loading, refreshSession, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
