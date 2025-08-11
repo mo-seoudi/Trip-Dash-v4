@@ -9,112 +9,77 @@ datasource db {
   directUrl = env("DIRECT_URL")    // direct (5432) for migrations
 }
 
-// Users
-
+// USERS  
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         String   @default("school_staff") // "school_staff" | "bus_company" | "finance" | "admin"
-  status       String   @default("pending")      // "pending" | "approved" | "blocked"
-  createdAt    DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  passwordHash  String?  
+  role          String   @default("school_staff")  // e.g. "admin", "finance", ...
+  status        String   @default("pending")       // "approved" | "pending" | "blocked"
+  createdAt     DateTime @default(now())
 
-  // reverse relation (optional)
-  tripsCreated Trip[]   @relation("TripsByUser")
+  // trips created by this user
+  trips     Trip[]   @relation("TripsByUser")
 }
 
-// Trips
-
+// TRIPS  
 model Trip {
-  id          Int       @id @default(autoincrement())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  // used by your frontend filter ?createdBy=<name>
-  createdBy   String?
-  // optional real FK to User (lets you move to id-based filtering later)
-  createdById Int?
-  createdByUser User?   @relation("TripsByUser", fields: [createdById], references: [id])
+  // creator info (stored name/email on doc)
+  createdBy        String?        // "Joseph Smith"
+  createdByEmail   String?
+  createdById      Int?
+  createdByUser    User?     @relation("TripsByUser", fields: [createdById], references: [id])
 
-  // your client sends "Confirmed" / etc.; we’ll store as String for now
-  status      String    @default("Draft")
+  // main trip fields seen in your UI
+  tripType         String?
+  destination      String?
+  date             DateTime?      // main date
+  departureTime    String?
+  returnDate       DateTime?
+  returnTime       String?
+  students         Int?
+  status           String?        // "Pending" | "Confirmed" | "Multiple" | ...
+  price            Float?
+  notes            String?
+  cancelRequest    Boolean? @default(false)
 
-  // optional schedule/route fields (safe to keep as nullables)
-  date        DateTime?
-  routeId     Int?
-  route       Route?    @relation(fields: [routeId], references: [id])
+  // flexible nested data
+  busInfo          Json?          // { busType, seats, ... }
+  driverInfo       Json?          // { name, mobile, ... }
+  buses            Json?          // array of bus blocks [{ busSeats, busType, ... }]
 
-  // sub-trips (self relation)
-  parentId    Int?
-  parent      Trip?     @relation("SubTrips", fields: [parentId], references: [id])
-  children    Trip[]    @relation("SubTrips")
+  // self-relation to allow "child trips" if you want them all in one table
+  parentId         Int?
+  parent           Trip?     @relation("TripSelf", fields: [parentId], references: [id])
+  children         Trip[]    @relation("TripSelf")
 
-  // many-to-many bus assignments via join model
-  buses       TripBus[]
-
-  // optional FK if you also keep a single “primary” driver/bus
-  driverId    Int?
-  driver      Driver?   @relation(fields: [driverId], references: [id])
-
-  busId       Int?
-  bus         Bus?      @relation(fields: [busId], references: [id])
-
-  scans       TripScan[]
+  // back-relation to SubTrip table (separate collection style)
+  subTripDocs      SubTrip[] @relation("TripToSubTrip")
 
   @@index([createdAt])
-  @@index([createdBy])
   @@index([status])
-  @@index([parentId])
+  @@index([createdBy])
+  @@index([destination])
 }
 
-// Join table for assigned buses to a trip
-model TripBus {
-  tripId       Int
-  busId        Int
-  trip         Trip @relation(fields: [tripId], references: [id])
-  bus          Bus  @relation(fields: [busId],  references: [id])
+// SUBTRIPS  
+  
+model SubTrip {
+  id            Int      @id @default(autoincrement())
+  parentTripId  Int
+  // explicit relation name + back-field on Trip (subTripDocs)
+  parent        Trip     @relation("TripToSubTrip", fields: [parentTripId], references: [id])
 
-  // optional metadata for assignment
-  plannedStart DateTime?
-  note         String?
+  createdAt     DateTime @default(now())
+  status        String?
+  tripPrice     Float?
+  busSeats      Int?
+  busType       String?
 
-  @@id([tripId, busId])
-  @@index([busId])
-}
-
-// Minimal shells so schema compiles
-
-model Bus {
-  id        Int       @id @default(autoincrement())
-  code      String    @unique
-  company   String?
-  active    Boolean   @default(true)
-  trips     Trip[]    // optional single-bus relation on Trip.busId
-  tripLinks TripBus[] // many-to-many links
-}
-
-model Driver {
-  id        Int       @id @default(autoincrement())
-  name      String
-  phone     String?
-  active    Boolean   @default(true)
-  trips     Trip[]    // optional single-driver relation on Trip.driverId
-}
-
-model Route {
-  id        Int       @id @default(autoincrement())
-  name      String
-  start     String?
-  end       String?
-  trips     Trip[]
-}
-
-model TripScan {
-  id        Int       @id @default(autoincrement())
-  tripId    Int
-  trip      Trip      @relation(fields: [tripId], references: [id])
-  scannedAt DateTime  @default(now())
-  studentId String?
-  meta      Json?
+  @@index([parentTripId])
 }
