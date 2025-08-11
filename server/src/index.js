@@ -1,4 +1,4 @@
-// server/src/index.js 
+// server/src/index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -36,12 +36,29 @@ if (process.env.NODE_ENV !== "production") {
 // Final allow list (unique)
 const allowedOrigins = Array.from(new Set(envOrigins));
 
+/**
+ * Allow any Vercel *preview* URL for this project, e.g.:
+ *   https://trip-dash-v4-<hash>.vercel.app
+ * Keep production exact origin(s) in ALLOWED_ORIGINS.
+ */
+const VERCEL_PROJECT_SLUG = process.env.VERCEL_PROJECT_SLUG || "trip-dash-v4";
+const vercelPreviewPattern = new RegExp(
+  `^https:\\/\\/${VERCEL_PROJECT_SLUG}-[a-z0-9-]+\\.vercel\\.app$`
+);
+
+function isAllowedOrigin(origin) {
+  if (allowedOrigins.includes(origin)) return true;          // explicit allow-list
+  if (vercelPreviewPattern.test(origin)) return true;        // any preview for this project
+  return false;
+}
+
 const corsOptions = {
   origin(origin, cb) {
     // allow server-to-server (curl/Postman) with no Origin header
     if (!origin) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    console.warn("Blocked by CORS:", origin); // nicer than throwing
+    if (isAllowedOrigin(origin)) return cb(null, true);
+    console.warn("Blocked by CORS:", origin);
+    // respond as not allowed (no CORS headers). Returning false tells cors to reject.
     return cb(null, false);
   },
   credentials: true,
