@@ -67,7 +67,7 @@ model Trip {
   @@index([parentId])
 }
 
-/* Join table for assigned buses to a trip */
+// Join table for assigned buses to a trip
 model TripBus {
   tripId       Int
   busId        Int
