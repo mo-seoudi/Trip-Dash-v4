@@ -1,3 +1,4 @@
+// server/src/routes/authRoutes.js
 console.log("authRoutes loaded");
 
 import express from "express";
@@ -10,6 +11,17 @@ const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const COOKIE_NAME = "session";
+
+// In production (Render/Vercel over HTTPS) cookies must be Secure + SameSite=None.
+// In local dev (http://localhost) those flags break cookies, so we toggle by NODE_ENV.
+const isProd = process.env.NODE_ENV === "production";
+const cookieOptions = {
+  httpOnly: true,
+  secure: isProd,                  // ✅ true on Render (HTTPS)
+  sameSite: isProd ? "none" : "lax", // ✅ cross-site in prod; friendlier in dev
+  path: "/",
+  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+};
 
 /** REGISTER */
 router.post("/register", async (req, res, next) => {
@@ -29,7 +41,7 @@ router.post("/register", async (req, res, next) => {
         email,
         name,
         role: role || "school_staff",
-        status: "pending", // <-- default pending
+        status: "pending", // default pending — admin can approve later
         passwordHash,
       },
       select: { id: true, email: true, name: true, role: true, status: true },
@@ -41,7 +53,7 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-/** LOGIN — blocks if not approved, returns user */
+/** LOGIN — blocks if not approved, sets cookie, returns user */
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -58,13 +70,8 @@ router.post("/login", async (req, res, next) => {
 
     const token = jwt.sign({ uid: user.id }, JWT_SECRET, { expiresIn: "7d" });
 
-    res.cookie(COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: false,   // true in production (https)
-      sameSite: "lax", // "none" for cross-site (Vercel -> Render)
-      path: "/",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    });
+    // CRITICAL for cross-site (Vercel frontend -> Render API)
+    res.cookie(COOKIE_NAME, token, cookieOptions);
 
     const safeUser = {
       id: user.id,
@@ -79,7 +86,7 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-/** SESSION */
+/** SESSION — reads cookie and returns current user */
 router.get("/session", async (req, res) => {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ user: null });
@@ -97,9 +104,13 @@ router.get("/session", async (req, res) => {
   }
 });
 
-/** LOGOUT */
+/** LOGOUT — clear cookie (must match creation flags) */
 router.post("/logout", (req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: "/" });
+  res.clearCookie(COOKIE_NAME, {
+    path: "/",
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+  });
   res.json({ ok: true });
 });
 
