@@ -8,7 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* ---------------- Users ---------------- */
+// Users
 
 model User {
   id           Int      @id @default(autoincrement())
@@ -23,7 +23,7 @@ model User {
   tripsCreated Trip[]   @relation("TripsByUser")
 }
 
-/* ---------------- Trips ---------------- */
+// Trips
 
 model Trip {
   id          Int       @id @default(autoincrement())
@@ -82,7 +82,7 @@ model TripBus {
   @@index([busId])
 }
 
-/* ---------------- Minimal shells so schema compiles ---------------- */
+// Minimal shells so schema compiles
 
 model Bus {
   id        Int       @id @default(autoincrement())
