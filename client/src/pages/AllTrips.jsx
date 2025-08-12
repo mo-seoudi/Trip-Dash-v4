@@ -18,7 +18,7 @@ const AllTrips = () => {
 
         if (
           profile.role === "admin" ||
-          profile.role === "trip_manager" ||
+          profile.role === "school_staff" ||
           profile.role === "bus_company" ||
           profile.role === "finance"
         ) {
