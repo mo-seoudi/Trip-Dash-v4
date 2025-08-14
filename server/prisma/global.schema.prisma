@@ -1,3 +1,5 @@
+// prisma/global.schema.prisma
+
 generator client {
   provider = "prisma-client-js"
   output   = "../src/prisma-global"   // generates a separate client you can import
