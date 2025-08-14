@@ -3,6 +3,7 @@ import ConfirmActionPopup from "../ConfirmActionPopup";
 import { updateTrip } from "../../services/tripService";
 import AssignBusForm from "../AssignBusForm";
 import EditBusForm from "../EditBusForm";
+import PassengersPanel from "../trips/PassengersPanel"; // NEW
 
 const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showConfirmReject, setShowConfirmReject] = useState(false);
@@ -10,23 +11,25 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showConfirmComplete, setShowConfirmComplete] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [showEditInfo, setShowEditInfo] = useState(false);
+  const [showPassengers, setShowPassengers] = useState(false); // NEW
   const [loadingAcceptId, setLoadingAcceptId] = useState(null);
 
   const handleUpdateStatus = async (status) => {
     try {
-      if (status === "Accepted") {
-        setLoadingAcceptId(trip.id);
-      }
+      if (status === "Accepted") setLoadingAcceptId(trip.id);
       await updateTrip(trip.id, { status });
       refreshCallback?.();
     } catch (error) {
       console.error(`Failed to update status to ${status}:`, error);
     } finally {
-      if (status === "Accepted") {
-        setLoadingAcceptId(null);
-      }
+      if (status === "Accepted") setLoadingAcceptId(null);
     }
   };
+
+  const canShowPassengers =
+    trip?.status === "Accepted" ||
+    trip?.status === "Confirmed" ||
+    trip?.status === "Completed";
 
   return (
     <>
@@ -90,6 +93,16 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
             className="text-red-600 underline hover:text-red-800 transition-colors px-1"
           >
             Cancel
+          </button>
+        )}
+
+        {canShowPassengers && (
+          <button
+            onClick={() => setShowPassengers(true)}
+            className="text-indigo-600 underline hover:text-indigo-800 transition-colors px-1"
+            title="View passengers list (may require access)"
+          >
+            Passengers
           </button>
         )}
       </div>
@@ -156,6 +169,18 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
               refreshCallback?.();
             }}
           />
+        </div>
+      )}
+
+      {/* Passengers Panel */}
+      {showPassengers && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full">
+            <PassengersPanel
+              trip={trip}
+              onClose={() => setShowPassengers(false)}
+            />
+          </div>
         </div>
       )}
     </>
