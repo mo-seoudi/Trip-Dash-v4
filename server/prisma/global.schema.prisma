@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("GLOBAL_DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 /* === Enums map to the ones we created in Supabase === */
