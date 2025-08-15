@@ -20,15 +20,51 @@ export const createTrip = async (tripData) => {
 };
 
 /** Update trip fields (partial) */
+export consimport api from "./apiClient";
+
+// normalize dates once so the rest of the app can treat them as Date objects
+const normalizeTrip = (t) => ({
+  ...t,
+  date: t?.date ? new Date(t.date) : null,
+  returnDate: t?.returnDate ? new Date(t.returnDate) : null,
+});
+
+const sortTrips = (a, b) => {
+  // prefer id (stable descending), fall back to createdAt if present
+  if (typeof a.id === "number" && typeof b.id === "number") return b.id - a.id;
+  if (a.createdAt && b.createdAt)
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  return 0;
+};
+
+/** Fetch all trips */
+export const getAllTrips = async () => {
+  const { data } = await api.get("/trips");
+  return data.map(normalizeTrip).sort(sortTrips);
+};
+
+/** Fetch trips by user name */
+export const getTripsByUser = async (userName) => {
+  const { data } = await api.get("/trips", { params: { createdBy: userName } });
+  return data.map(normalizeTrip).sort(sortTrips);
+};
+
+/** Create a new trip */
+export const createTrip = async (tripData) => {
+  const { data } = await api.post("/trips", tripData);
+  return normalizeTrip(data);
+};
+
+/** Update trip fields (partial) */
 export const updateTrip = async (tripId, updates) => {
   const { data } = await api.patch(`/trips/${tripId}`, updates);
-  return data;
+  return normalizeTrip(data);
 };
 
 /** Delete a trip */
 export const deleteTrip = async (tripId) => {
   const { data } = await api.delete(`/trips/${tripId}`);
-  return data; // or { ok: true } if your API returns no body
+  return data; // { ok: true } in your API
 };
 
 /** Assign buses and confirm trip (mirrors old behavior) */
@@ -52,7 +88,7 @@ export const getSubTripsByParent = async (parentTripId) => {
  * Passengers (new feature)
  * ================================ */
 
-/** Get passenger roster for a trip (requires auth + active org) */
+/** Get passenger roster for a trip */
 export const getTripPassengers = async (tripId) => {
   const { data } = await api.get(`/trips/${tripId}/passengers`);
   return data.passengers || [];
@@ -60,33 +96,35 @@ export const getTripPassengers = async (tripId) => {
 
 /**
  * Add passengers to a trip.
- * @param {number} tripId
- * @param {Array<{fullName:string, grade?:string, guardianName?:string, guardianPhone?:string, pickupPoint?:string, dropoffPoint?:string, seatNumber?:string, notes?:string}>} items
- * @param {boolean} createDirectory - also create Passenger directory records
+ * items: [{ fullName, grade?, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, seatNumber?, notes? }]
  */
 export const addTripPassengers = async (tripId, items, createDirectory = true) => {
-  const { data } = await api.post(`/trips/${tripId}/passengers`, { items, createDirectory });
+  const { data } = await api.post(`/trips/${tripId}/passengers`, {
+    items,
+    createDirectory,
+  });
   return data; // array of created TripPassenger rows
 };
 
-/**
- * Update a single passenger row on a trip (check-in/out, seat, etc.)
- * @param {number} tripId
- * @param {number} passengerRowId  - TripPassenger.id
- * @param {object} patch           - fields to update
- */
+/** Update a single passenger row (check-in/out, seat, etc.) */
 export const updateTripPassenger = async (tripId, passengerRowId, patch) => {
-  const { data } = await api.patch(`/trips/${tripId}/passengers/${passengerRowId}`, patch);
+  const { data } = await api.patch(
+    `/trips/${tripId}/passengers/${passengerRowId}`,
+    patch
+  );
   return data;
 };
 
-/**
- * Record a payment entry for a passenger on a paid trip.
- * @param {number} tripId
- * @param {number} passengerRowId  - TripPassenger.id
- * @param {{amountDue:number, amountPaid?:number, status?:'unpaid'|'partial'|'paid'|'waived', method?:string, reference?:string, currency?:string}} payload
- */
-export const addTripPassengerPayment = async (tripId, passengerRowId, payload) => {
-  const { data } = await api.post(`/trips/${tripId}/passengers/${passengerRowId}/payment`, payload);
+/** Record a payment entry for a passenger on a paid trip. */
+export const addTripPassengerPayment = async (
+  tripId,
+  passengerRowId,
+  payload
+) => {
+  const { data } = await api.post(
+    `/trips/${tripId}/passengers/${passengerRowId}/payment`,
+    payload
+  );
   return data;
 };
+
