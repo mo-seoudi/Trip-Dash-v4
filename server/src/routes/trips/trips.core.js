@@ -9,7 +9,7 @@ const TRIP_REL_INCLUDE = {
   createdByUser: { select: { id: true, name: true, email: true } },
   parent: { select: { id: true } },
   children: { select: { id: true } },
-  // subTripDocs intentionally omitted until the table exists
+  subTripDocs: true, // now that the table/FK exists
 };
 
 // GET /api/trips?createdBy=Name
