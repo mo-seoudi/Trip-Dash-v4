@@ -7,7 +7,7 @@ import { PrismaClient } from "@prisma/client";
 
 // NEW: global control-plane Prisma client and helpers
 // (generated from prisma/global.schema.prisma)
-import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js";
+import { PrismaClient as PrismaGlobal } from "./prisma-global/index.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
