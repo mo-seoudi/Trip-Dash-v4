@@ -13,6 +13,9 @@ import { usePagination } from "../hooks/usePagination";
 import { useSubTrips } from "../hooks/useSubTrips";
 import useTripActions from "../hooks/useTripActions";
 
+// NEW: passengers panel
+import PassengersPanel from "./trips/PassengersPanel";
+
 const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = false }) => {
   const { profile } = useAuth();
   const [tripData, setTripData] = React.useState([]);
@@ -21,6 +24,9 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   const [confirmAction, setConfirmAction] = React.useState(null);
   const [assignTrip, setAssignTrip] = React.useState(null);
   const [editTrip, setEditTrip] = React.useState(null);
+
+  // NEW: track which trip is showing the Passengers panel
+  const [showPassengersTrip, setShowPassengersTrip] = React.useState(null);
 
   React.useEffect(() => {
     setTripData(trips || []);
@@ -99,6 +105,16 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         onEdit={(trip) => setEditTrip(trip)}
                         onSoftDelete={handleSoftDelete}
                       />
+
+                      {/* NEW: Passengers button — only when the trip is beyond Pending */}
+                      {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
+                        <button
+                          onClick={() => setShowPassengersTrip(trip)}
+                          className="px-3 py-2 rounded bg-indigo-600 text-white"
+                        >
+                          Passengers
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -170,6 +186,16 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
           }}
           onClose={() => setConfirmAction(null)}
         />
+      )}
+
+      {/* NEW: Passengers modal */}
+      {showPassengersTrip && (
+        <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
+          <PassengersPanel
+            trip={showPassengersTrip}
+            onClose={() => setShowPassengersTrip(null)}
+          />
+        </ModalWrapper>
       )}
     </div>
   );
