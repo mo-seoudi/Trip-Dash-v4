@@ -8,8 +8,7 @@ import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
-import tripRoutes from "./routes/tripRoutes.js";           // your single trips router
-import tripPassengersRoutes from "./routes/tripPassengersRoutes.js"; // if you still use it
+import tripsRouter from "./routes/trips/index.js";
 
 dotenv.config();
 
@@ -63,10 +62,7 @@ app.get("/health", (_, res) => res.status(200).json({ ok: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/trips", tripRoutes);
-// If tripPassengersRoutes is separate in your project, keep this;
-// if you merged it into tripRoutes, delete the next line.
-app.use("/api/trips", tripPassengersRoutes);
+app.use("/api/trips", tripsRouter);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
