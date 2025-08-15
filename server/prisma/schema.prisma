@@ -1,85 +1,88 @@
 // prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")  // pooler (6543) for runtime
   directUrl = env("DIRECT_URL")    // direct (5432) for migrations
 }
 
-// USERS  
+// USERS
 model User {
-  id            Int      @id @default(autoincrement())
-  name          String
-  email         String   @unique
-  passwordHash  String?  
-  role          String   @default("school_staff")  // e.g. "admin", "finance", ...
-  status        String   @default("pending")       // "approved" | "pending" | "blocked"
-  createdAt     DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  role         String   @default("school_staff") // e.g. "admin", "finance", ...
+  status       String   @default("pending")      // "approved" | "pending" | "blocked"
+  createdAt    DateTime @default(now())
 
-  // trips created by this user
-  trips     Trip[]   @relation("TripsByUser")
+  // Trips created by this user
+  trips Trip[] @relation("TripsByUser")
+
+  @@map("User")
 }
 
-// TRIPS  
+// TRIPS
 model Trip {
-  id               Int       @id @default(autoincrement())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  // creator info (stored name/email on doc)
-  createdBy        String?        // "Joseph Smith"
-  createdByEmail   String?
-  createdById      Int?
-  createdByUser    User?     @relation("TripsByUser", fields: [createdById], references: [id])
+  // creator info (stored snapshot on doc)
+  createdBy       String?
+  createdByEmail  String?
+  createdById     Int?
+  createdByUser   User?    @relation("TripsByUser", fields: [createdById], references: [id])
 
-  // main trip fields seen in your UI
-  tripType         String?
-  destination      String?
-  date             DateTime?      // main date
-  departureTime    String?
-  returnDate       DateTime?
-  returnTime       String?
-  students         Int?
-  status           String?        // "Pending" | "Confirmed" | "Multiple" | ...
-  price            Float?
-  notes            String?
-  cancelRequest    Boolean? @default(false)
+  // main trip fields (UI)
+  tripType      String?
+  destination   String?
+  date          DateTime?
+  departureTime String?
+  returnDate    DateTime?
+  returnTime    String?
+  students      Int?
+  status        String?
+  price         Float?
+  notes         String?
+  cancelRequest Boolean? @default(false)
 
-  // flexible nested data
-  busInfo          Json?          // { busType, seats, ... }
-  driverInfo       Json?          // { name, mobile, ... }
-  buses            Json?          // array of bus blocks [{ busSeats, busType, ... }]
+  // flexible JSON
+  busInfo   Json?
+  driverInfo Json?
+  buses     Json?
 
-  // self-relation to allow "child trips" if you want them all in one table
-  parentId         Int?
-  parent           Trip?     @relation("TripSelf", fields: [parentId], references: [id])
-  children         Trip[]    @relation("TripSelf")
+  // self-relation
+  parentId Int?
+  parent   Trip?   @relation("TripSelf", fields: [parentId], references: [id])
+  children Trip[]  @relation("TripSelf")
 
-  // back-relation to SubTrip table (separate collection style)
-  subTripDocs      SubTrip[] @relation("TripToSubTrip")
+  // back-relation to SubTrip
+  subTripDocs SubTrip[] @relation("TripToSubTrip")
 
   @@index([createdAt])
   @@index([status])
   @@index([createdBy])
   @@index([destination])
+  @@map("Trip")
 }
 
-// SUBTRIPS  
-  
+// SUBTRIPS
 model SubTrip {
-  id            Int      @id @default(autoincrement())
-  parentTripId  Int
-  // explicit relation name + back-field on Trip (subTripDocs)
-  parent        Trip     @relation("TripToSubTrip", fields: [parentTripId], references: [id])
+  id           Int      @id @default(autoincrement())
+  parentTripId Int
+  parent       Trip     @relation("TripToSubTrip", fields: [parentTripId], references: [id])
 
-  createdAt     DateTime @default(now())
-  status        String?
-  tripPrice     Float?
-  busSeats      Int?
-  busType       String?
+  createdAt    DateTime @default(now())
+  status       String?
+  tripPrice    Float?
+  busSeats     Int?
+  busType      String?
 
   @@index([parentTripId])
+  @@map("SubTrip")
 }
