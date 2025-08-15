@@ -16,13 +16,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
     ...(userRole === "admin" || userRole === "finance"
       ? [{ to: "/finance", label: "Finance", icon: <FiDollarSign size={18} /> }]
       : []),
-    ...(userRole === "admin" || userRole === "trip_manager"
-      ? [
-          { to: "/mui-table-demo", label: "MUI Table", icon: <FiTable size={18} /> },
-          { to: "/tanstack-table-demo", label: "TanStack Table", icon: <FiTable size={18} /> },
-          { to: "/ag-grid-table-demo", label: "AG Grid Table", icon: <FiTable size={18} /> },
-        ]
-      : []),
+    
     { to: "/settings", label: "Settings", icon: <FiSettings size={18} /> },
   ];
 
