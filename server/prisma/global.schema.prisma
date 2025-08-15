@@ -11,7 +11,7 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
-/* ========= Enums (map to existing Postgres enums) ========= */
+// Enums (map to existing Postgres enums)
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -33,7 +33,7 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-/* ========= Tenants ========= */
+// Tenants
 model Tenants {
   id         String   @id @default(uuid())
   name       String
@@ -51,7 +51,7 @@ model Tenants {
   @@map("tenants")
 }
 
-/* ========= Organizations ========= */
+// Organizations
 model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
@@ -83,7 +83,7 @@ model Organizations {
   @@map("organizations")
 }
 
-/* ========= Users (control-plane users, not auth.users) ========= */
+// Users (control-plane users, not auth.users)
 model Users {
   id             String   @id            // mirrors auth.users.id
   tenant_id      String?
@@ -101,7 +101,7 @@ model Users {
   @@map("users")
 }
 
-/* ========= User roles ========= */
+// User roles
 model UserRoles {
   user_id    String
   org_id     String
@@ -117,7 +117,7 @@ model UserRoles {
   @@map("user_roles")
 }
 
-/* ========= Partnerships ========= */
+// Partnerships
 model Partnerships {
   id             String   @id @default(uuid())
   tenant_id      String
@@ -138,7 +138,7 @@ model Partnerships {
   @@map("partnerships")
 }
 
-/* ========= Data connections ========= */
+// Data connections
 model DataConnections {
   id               String             @id @default(uuid())
   tenant_id        String
@@ -166,7 +166,7 @@ model DataConnections {
   @@map("data_connections")
 }
 
-/* ========= Trip registry ========= */
+// Trip registry
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenant_id          String
