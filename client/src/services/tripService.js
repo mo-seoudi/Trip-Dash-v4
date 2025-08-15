@@ -1,27 +1,6 @@
 // client/src/services/tripService.js
 import api from "./apiClient";
 
-/** Fetch all trips (optionally sort client-side like Firestore did) */
-export const getAllTrips = async () => {
-  const { data } = await api.get("/trips");
-  return [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-};
-
-/** Fetch trips by user name (adjust query param/path to match your API) */
-export const getTripsByUser = async (userName) => {
-  const { data } = await api.get("/trips", { params: { createdBy: userName } });
-  return [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-};
-
-/** Create a new trip */
-export const createTrip = async (tripData) => {
-  const { data } = await api.post("/trips", tripData);
-  return data;
-};
-
-/** Update trip fields (partial) */
-export consimport api from "./apiClient";
-
 // normalize dates once so the rest of the app can treat them as Date objects
 const normalizeTrip = (t) => ({
   ...t,
@@ -94,10 +73,7 @@ export const getTripPassengers = async (tripId) => {
   return data.passengers || [];
 };
 
-/**
- * Add passengers to a trip.
- * items: [{ fullName, grade?, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, seatNumber?, notes? }]
- */
+/** Add passengers to a trip */
 export const addTripPassengers = async (tripId, items, createDirectory = true) => {
   const { data } = await api.post(`/trips/${tripId}/passengers`, {
     items,
@@ -127,4 +103,3 @@ export const addTripPassengerPayment = async (
   );
   return data;
 };
-
