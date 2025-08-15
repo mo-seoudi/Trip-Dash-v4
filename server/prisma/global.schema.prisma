@@ -2,86 +2,115 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/prisma-global"   // generates a separate client you can import
+  output   = "../src/prisma-global"
 }
 
 datasource db {
   provider = "postgresql"
+  // use GLOBAL_DATABASE_URL if you set it; otherwise you can point this to DATABASE_URL
   url      = env("DATABASE_URL")
 }
 
-/* === Enums map to the ones we created in Supabase === */
-enum org_type { school bus_company parent_org }
-enum role_type { school_staff bus_company admin finance }
-enum data_connection_mode { SAAS BYODB }
+// ===== Enums (map to existing Postgres enums) =====
+enum OrgType {
+  SCHOOL       @map("school")
+  BUS_COMPANY  @map("bus_company")
+  PARENT_ORG   @map("parent_org")
 
-/* === Tables (map to snake_case names in Supabase) === */
-model tenants {
-  id         String   @id @default(uuid())
-  name       String
-  slug       String   @unique
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now()) @db.Timestamptz(6)
-  organizations organizations[]
-  users         users[]
-  partnerships  partnerships[]
-  data_connections data_connections[]
-  trip_registry trip_registry[]
+  @@map("org_type")
 }
 
-model organizations {
+enum RoleType {
+  SCHOOL_STAFF @map("school_staff")
+  BUS_COMPANY  @map("bus_company")
+  ADMIN        @map("admin")
+  FINANCE      @map("finance")
+
+  @@map("role_type")
+}
+
+enum DataConnectionMode {
+  SAAS
+  BYODB
+
+  @@map("data_connection_mode")
+}
+
+// ===== Tables (map to existing snake_case tables) =====
+model Tenants {
+  id               String            @id @default(uuid())
+  name             String
+  slug             String            @unique
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @default(now()) @db.Timestamptz(6)
+
+  organizations    Organizations[]
+  users            Users[]
+  partnerships     Partnerships[]
+  data_connections DataConnections[]
+  trip_registry    TripRegistry[]
+
+  @@map("tenants")
+}
+
+model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
   name          String
-  type          org_type
+  type          OrgType
   code          String?
   parent_org_id String?
   created_at    DateTime @default(now())
   updated_at    DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       tenants  @relation(fields: [tenant_id], references: [id])
-  user_roles    user_roles[]
+  tenants       Tenants  @relation(fields: [tenant_id], references: [id])
+  user_roles    UserRoles[]
+
   // relations used in queries
-  partnerships_partnerships_school_org_idTorganizations  partnerships[] @relation("SchoolPartnership")
-  partnerships_partnerships_bus_company_idTorganizations partnerships[] @relation("BusCompanyPartnership")
-  trip_registry_trip_registry_school_org_idTorganizations trip_registry[] @relation("SchoolTrips")
-  trip_registry_trip_registry_bus_company_org_idTorganizations trip_registry[] @relation("CompanyTrips")
+  partnerships_SchoolPartnership     Partnerships[] @relation("SchoolPartnership")
+  partnerships_BusCompanyPartnership Partnerships[] @relation("BusCompanyPartnership")
+
+  trip_registry_SchoolTrips  TripRegistry[] @relation("SchoolTrips")
+  trip_registry_CompanyTrips TripRegistry[] @relation("CompanyTrips")
 
   @@unique([tenant_id, code])
   @@index([tenant_id])
+  @@map("organizations")
 }
 
-model users {
-  id            String   @id // mirrors auth.users.id
-  tenant_id     String?
-  email         String   @unique
-  full_name     String?
-  is_active     Boolean  @default(true)
-  legacy_user_id Int?    @unique
-  created_at    DateTime @default(now())
-  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+model Users {
+  id             String   @id // mirrors auth.users.id
+  tenant_id      String?
+  email          String   @unique
+  full_name      String?
+  is_active      Boolean  @default(true)
+  legacy_user_id Int?     @unique
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       tenants? @relation(fields: [tenant_id], references: [id])
-  user_roles    user_roles[]
+  tenants    Tenants?   @relation(fields: [tenant_id], references: [id])
+  user_roles UserRoles[]
 
   @@index([tenant_id])
+  @@map("users")
 }
 
-model user_roles {
+model UserRoles {
   user_id    String
   org_id     String
-  role       role_type
+  role       RoleType
   is_default Boolean  @default(false)
   created_at DateTime @default(now())
 
-  users        users        @relation(fields: [user_id], references: [id])
-  organizations organizations @relation(fields: [org_id], references: [id])
+  users         Users         @relation(fields: [user_id], references: [id])
+  organizations Organizations @relation(fields: [org_id], references: [id])
 
   @@id([user_id, org_id, role])
   @@index([org_id])
+  @@map("user_roles")
 }
 
-model partnerships {
+model Partnerships {
   id             String   @id @default(uuid())
   tenant_id      String
   school_org_id  String
@@ -90,19 +119,20 @@ model partnerships {
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       tenants       @relation(fields: [tenant_id], references: [id])
-  organizations_partnerships_school_org_idTorganizations  organizations @relation("SchoolPartnership", fields: [school_org_id], references: [id])
-  organizations_partnerships_bus_company_idTorganizations organizations @relation("BusCompanyPartnership", fields: [bus_company_id], references: [id])
+  tenants       Tenants       @relation(fields: [tenant_id], references: [id])
+  organizations_school Organizations @relation("SchoolPartnership", fields: [school_org_id], references: [id])
+  organizations_bus    Organizations @relation("BusCompanyPartnership", fields: [bus_company_id], references: [id])
 
   @@unique([tenant_id, school_org_id, bus_company_id])
   @@index([tenant_id])
+  @@map("partnerships")
 }
 
-model data_connections {
-  id               String              @id @default(uuid())
+model DataConnections {
+  id               String             @id @default(uuid())
   tenant_id        String
   org_id           String
-  mode             data_connection_mode
+  mode             DataConnectionMode
   db_host          String?
   db_port          Int?
   db_name          String?
@@ -111,20 +141,21 @@ model data_connections {
   db_ssl           Boolean?
   vault_secret_id  String?
   last_verified_at DateTime?
-  is_active        Boolean             @default(true)
-  created_at       DateTime            @default(now())
-  updated_at       DateTime            @default(now()) @db.Timestamptz(6)
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
 
-  tenants       tenants       @relation(fields: [tenant_id], references: [id])
-  organizations organizations @relation(fields: [org_id], references: [id])
-  trip_registry trip_registry[]
+  tenants        Tenants        @relation(fields: [tenant_id], references: [id])
+  organizations  Organizations  @relation(fields: [org_id], references: [id])
+  trip_registry  TripRegistry[]
 
   @@unique([org_id, mode])
   @@index([tenant_id])
   @@index([org_id])
+  @@map("data_connections")
 }
 
-model trip_registry {
+model TripRegistry {
   id                 String   @id @default(uuid())
   tenant_id          String
   trip_code          String
@@ -135,13 +166,14 @@ model trip_registry {
   created_at         DateTime @default(now())
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants        tenants        @relation(fields: [tenant_id], references: [id])
-  organizations_trip_registry_school_org_idTorganizations   organizations @relation("SchoolTrips", fields: [school_org_id], references: [id])
-  organizations_trip_registry_bus_company_org_idTorganizations organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
-  data_connections data_connections @relation(fields: [data_connection_id], references: [id])
+  tenants           Tenants           @relation(fields: [tenant_id], references: [id])
+  organizations_school  Organizations @relation("SchoolTrips", fields: [school_org_id], references: [id])
+  organizations_company Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
+  data_connections  DataConnections   @relation(fields: [data_connection_id], references: [id])
 
   @@unique([tenant_id, trip_code])
   @@index([tenant_id])
   @@index([school_org_id])
   @@index([bus_company_org_id])
+  @@map("trip_registry")
 }
