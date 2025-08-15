@@ -63,6 +63,9 @@ model Trip {
 
   // back-relation to SubTrip
   subTripDocs SubTrip[] @relation("TripToSubTrip")
+  
+  // NEW: back-relation to TripPassenger rows
+  tripPassengers  TripPassenger[]
 
   @@index([createdAt])
   @@index([status])
@@ -70,6 +73,56 @@ model Trip {
   @@index([destination])
   @@map("Trip")
 }
+
+model TripPassenger {
+  id            Int       @id @default(autoincrement())
+  tripId        Int
+  trip          Trip      @relation(fields: [tripId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  fullName      String
+  grade         String?
+  guardianName  String?
+  guardianPhone String?
+  pickupPoint   String?
+  dropoffPoint  String?
+  seatNumber    String?
+  notes         String?
+  checkedIn     Boolean   @default(false)
+  checkedOut    Boolean   @default(false)
+
+  payments      TripPassengerPayment[]
+
+  @@index([tripId])
+  @@map("TripPassenger")
+}
+
+model TripPassengerPayment {
+  id               Int            @id @default(autoincrement())
+  tripPassengerId  Int
+  passenger        TripPassenger  @relation(fields: [tripPassengerId], references: [id])
+
+  createdAt        DateTime       @default(now())
+  amountDue        Float
+  amountPaid       Float?         @default(0)
+  status           String?
+  method           String?
+  reference        String?
+  currency         String?        @default("USD")
+
+  @@index([tripPassengerId])
+  @@map("TripPassengerPayment")
+}
+
+model Passenger {
+  id        Int      @id @default(autoincrement())
+  fullName  String   @unique
+  grade     String?
+  createdAt DateTime @default(now())
+
+  @@map("Passenger")
+}
+
 
 // SUBTRIPS
 model SubTrip {
