@@ -78,7 +78,11 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 <td className="px-4 py-2">{trip.tripType === "Other" ? trip.customType : trip.tripType}</td>
                 <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">{trip.destination}</td>
                 <td className="px-4 py-2">{trip.students}</td>
-                <td className="px-4 py-2">{trip.date}</td>
+                <td className="px-4 py-2">
+                  {trip.date ? new Date(trip.date).toLocaleDateString(undefined, {
+                    year: "numeric", month: "short", day: "2-digit"
+                  }) : ""}
+                </td>  
                 <td className="px-4 py-2">{trip.departureTime}</td>
                 <td className="px-4 py-2">
                   <StatusBadge status={trip.status} />
