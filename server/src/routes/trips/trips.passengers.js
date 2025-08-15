@@ -1,5 +1,4 @@
-//server/src/routes/trips/trips.passengers.js
-
+// server/src/routes/trips/trips.passengers.js
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 
@@ -12,7 +11,6 @@ router.get("/:id/passengers", async (req, res, next) => {
     const passengers = await prisma.tripPassenger.findMany({
       where: { tripId },
       orderBy: { createdAt: "asc" },
-      // include: { passenger: true }, // enable if you have this relation
     });
     res.json({ passengers });
   } catch (e) {
@@ -24,24 +22,54 @@ router.get("/:id/passengers", async (req, res, next) => {
 router.post("/:id/passengers", async (req, res, next) => {
   try {
     const tripId = Number(req.params.id);
-    const { items = [], createDirectory = true } = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "items array is required" });
+    let { items = [], createDirectory = true } = req.body;
+
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: "items must be an array" });
+    }
+
+    // Normalize inputs:
+    // - allow plain strings ("Jack Smith")
+    // - allow { name: "Jack Smith", ... }
+    // - allow { fullName: "Jack Smith", ... }
+    const normalized = items
+      .map((raw) => {
+        if (typeof raw === "string") {
+          const fullName = raw.trim();
+          return fullName ? { fullName } : null;
+        }
+        const fullName = (raw.fullName || raw.name || "").trim();
+        if (!fullName) return null;
+        return {
+          fullName,
+          grade: raw.grade ?? raw.class ?? null,
+          guardianName: raw.guardianName ?? raw.parentName ?? null,
+          guardianPhone: raw.guardianPhone ?? raw.parentPhone ?? null,
+          pickupPoint: raw.pickupPoint ?? raw.pickup ?? null,
+          dropoffPoint: raw.dropoffPoint ?? raw.dropoff ?? null,
+          seatNumber: raw.seatNumber ?? raw.seat ?? null,
+          notes: raw.notes ?? null,
+        };
+      })
+      .filter(Boolean);
+
+    if (normalized.length === 0) {
+      return res.status(400).json({ error: "No valid passengers to add" });
     }
 
     const created = await prisma.$transaction(
-      items.map((p) =>
+      normalized.map((p) =>
         prisma.tripPassenger.create({
           data: {
             tripId,
-            fullName: p.fullName ?? null,
-            grade: p.grade ?? null,
-            guardianName: p.guardianName ?? null,
-            guardianPhone: p.guardianPhone ?? null,
-            pickupPoint: p.pickupPoint ?? null,
-            dropoffPoint: p.dropoffPoint ?? null,
-            seatNumber: p.seatNumber ?? null,
-            notes: p.notes ?? null,
+            fullName: p.fullName, // guaranteed non-empty string
+            grade: p.grade,
+            guardianName: p.guardianName,
+            guardianPhone: p.guardianPhone,
+            pickupPoint: p.pickupPoint,
+            dropoffPoint: p.dropoffPoint,
+            seatNumber: p.seatNumber,
+            notes: p.notes,
             checkedIn: false,
             checkedOut: false,
           },
@@ -49,16 +77,18 @@ router.post("/:id/passengers", async (req, res, next) => {
       )
     );
 
+    // Optional directory upserts (best effort)
     if (createDirectory) {
-      for (const p of items) {
+      for (const p of normalized) {
         try {
           await prisma.passenger.upsert({
-            // TODO: replace with your actual unique key
             where: { fullName: p.fullName },
             update: { grade: p.grade ?? undefined },
             create: { fullName: p.fullName, grade: p.grade ?? null },
           });
-        } catch { /* ignore if unique constraint doesn't fit */ }
+        } catch {
+          // ignore duplicate/constraint noise
+        }
       }
     }
 
