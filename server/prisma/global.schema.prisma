@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===== Enums (map to existing Postgres enums) =====
+// Enums (map to existing Postgres enums)
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -36,7 +36,7 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-// ===== Tables (map to existing snake_case tables) =====
+// Tables (map to existing snake_case tables)
 model Tenants {
   id               String            @id @default(uuid())
   name             String
