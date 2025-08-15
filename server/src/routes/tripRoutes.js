@@ -31,7 +31,7 @@ router.get("/", async (req, res, next) => {
         createdByUser: { select: { id: true, name: true, email: true } },
         parent: { select: { id: true } },
         children: { select: { id: true } },
-   //     subTripDocs: true,  //need proper fixing
+        subTripDocs: true,  
       },
     });
 
@@ -197,4 +197,5 @@ router.post("/:id/subtrips", async (req, res, next) => {
 });
 
 export default router;
+
 
