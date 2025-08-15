@@ -26,7 +26,7 @@ router.get("/", async (req, res, next) => {
         where: needle
           ? { createdBy: { contains: String(needle), mode: "insensitive" } }
           : undefined,
-        orderBy: { createdAt: "desc" },
+        orderBy: { id: "desc" },
         include: TRIP_REL_INCLUDE,
       });
       return res.json(trips);
@@ -35,7 +35,7 @@ router.get("/", async (req, res, next) => {
         where: needle
           ? { createdBy: { contains: String(needle), mode: "insensitive" } }
           : undefined,
-        orderBy: { createdAt: "desc" },
+        orderBy: { id: "desc" },
       });
       return res.json(trips);
     }
