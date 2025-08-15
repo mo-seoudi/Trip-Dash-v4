@@ -7,11 +7,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // use GLOBAL_DATABASE_URL if you set it; otherwise you can point this to DATABASE_URL
-  url      = env("DATABASE_URL")
+  // If both live in the same DB, DATABASE_URL is enough.
+  // If you split later, change this to env("GLOBAL_DATABASE_URL").
+  url = env("DATABASE_URL")
 }
 
-// Enums (map to existing Postgres enums)
+/* ----------------------- Enums (map to existing Postgres enums) ----------------------- */
+
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -36,7 +38,8 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-// Tables (map to existing snake_case tables)
+/* ----------------------- Tables (map to snake_case tables) ----------------------- */
+
 model Tenants {
   id               String            @id @default(uuid())
   name             String
@@ -63,15 +66,18 @@ model Organizations {
   created_at    DateTime @default(now())
   updated_at    DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       Tenants  @relation(fields: [tenant_id], references: [id])
-  user_roles    UserRoles[]
+  tenants    Tenants @relation(fields: [tenant_id], references: [id])
 
-  // relations used in queries
-  partnerships_SchoolPartnership     Partnerships[] @relation("SchoolPartnership")
-  partnerships_BusCompanyPartnership Partnerships[] @relation("BusCompanyPartnership")
+  // user roles -> organizations (single relation)
+  user_roles UserRoles[]
 
-  trip_registry_SchoolTrips  TripRegistry[] @relation("SchoolTrips")
-  trip_registry_CompanyTrips TripRegistry[] @relation("CompanyTrips")
+  // partnerships: organizations is referenced twice, so we must name both relations
+  partnerships_as_school     Partnerships[] @relation("SchoolPartnership")     // via Partnerships.school_org_id
+  partnerships_as_buscompany Partnerships[] @relation("BusCompanyPartnership") // via Partnerships.bus_company_id
+
+  // trip_registry: organizations is referenced twice too
+  trip_registry_as_school  TripRegistry[] @relation("SchoolTrips")  // via TripRegistry.school_org_id
+  trip_registry_as_company TripRegistry[] @relation("CompanyTrips") // via TripRegistry.bus_company_org_id
 
   @@unique([tenant_id, code])
   @@index([tenant_id])
@@ -79,7 +85,7 @@ model Organizations {
 }
 
 model Users {
-  id             String   @id // mirrors auth.users.id
+  id             String   @id              // mirrors auth.users.id
   tenant_id      String?
   email          String   @unique
   full_name      String?
@@ -96,6 +102,7 @@ model Users {
 }
 
 model UserRoles {
+  // composite PK in the underlying table
   user_id    String
   org_id     String
   role       RoleType
@@ -119,9 +126,12 @@ model Partnerships {
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       Tenants       @relation(fields: [tenant_id], references: [id])
-  organizations_school Organizations @relation("SchoolPartnership", fields: [school_org_id], references: [id])
-  organizations_bus    Organizations @relation("BusCompanyPartnership", fields: [bus_company_id], references: [id])
+  tenants Tenants @relation(fields: [tenant_id], references: [id])
+
+  // Two different relations to Organizations, each must be named and must
+  // match the names used on the Organizations model.
+  school_org  Organizations @relation("SchoolPartnership",     fields: [school_org_id],  references: [id])
+  bus_company Organizations @relation("BusCompanyPartnership", fields: [bus_company_id], references: [id])
 
   @@unique([tenant_id, school_org_id, bus_company_id])
   @@index([tenant_id])
@@ -145,9 +155,9 @@ model DataConnections {
   created_at       DateTime           @default(now())
   updated_at       DateTime           @default(now()) @db.Timestamptz(6)
 
-  tenants        Tenants        @relation(fields: [tenant_id], references: [id])
-  organizations  Organizations  @relation(fields: [org_id], references: [id])
-  trip_registry  TripRegistry[]
+  tenants       Tenants       @relation(fields: [tenant_id], references: [id])
+  organizations Organizations @relation(fields: [org_id], references: [id])
+  trip_registry TripRegistry[]
 
   @@unique([org_id, mode])
   @@index([tenant_id])
@@ -166,10 +176,13 @@ model TripRegistry {
   created_at         DateTime @default(now())
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants           Tenants           @relation(fields: [tenant_id], references: [id])
-  organizations_school  Organizations @relation("SchoolTrips", fields: [school_org_id], references: [id])
-  organizations_company Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
-  data_connections  DataConnections   @relation(fields: [data_connection_id], references: [id])
+  tenants Tenants @relation(fields: [tenant_id], references: [id])
+
+  // Two different relations to Organizations; names must match Organizations model
+  school_org  Organizations  @relation("SchoolTrips",  fields: [school_org_id],      references: [id])
+  company_org Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
+
+  data_connections DataConnections @relation(fields: [data_connection_id], references: [id])
 
   @@unique([tenant_id, trip_code])
   @@index([tenant_id])
