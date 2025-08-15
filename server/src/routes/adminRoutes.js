@@ -2,13 +2,13 @@
 
 import express from "express";
 import { PrismaClient } from "@prisma/client";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../middleware/auth.js";
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
 // List pending users
-router.get("/users/pending", requireAdmin, async (req, res, next) => {
+router.get("/users/pending", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       where: { status: "pending" },
@@ -33,3 +33,4 @@ router.post("/users/:id/approve", requireAdmin, async (req, res, next) => {
 });
 
 export default router;
+
