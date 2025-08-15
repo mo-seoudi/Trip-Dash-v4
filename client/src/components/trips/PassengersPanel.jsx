@@ -1,97 +1,147 @@
 // client/src/components/trips/PassengersPanel.jsx
-import { useEffect, useState } from "react";
-import {
-  getTripPassengers,
-  addTripPassengers,
-  updateTripPassenger,
-  addTripPassengerPayment,
-} from "@/services/tripService";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getTripPassengers, addTripPassengers } from "../../services/tripService";
+import { toast } from "react-toastify";
+
+const Spinner = ({ className = "w-4 h-4" }) => (
+  <svg className={`animate-spin ${className}`} viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+  </svg>
+);
 
 export default function PassengersPanel({ trip, onClose }) {
-  const [rows, setRows] = useState([]);
-  const [newName, setNewName] = useState("");
+  const [roster, setRoster] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const inputRef = useRef(null);
 
+  const tripId = useMemo(() => trip?.id, [trip]);
+
+  // load roster
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      const data = await getTripPassengers(trip.id);
-      setRows(data);
+      try {
+        const rows = await getTripPassengers(tripId);
+        if (mounted) setRoster(rows);
+      } catch (err) {
+        console.error("load passengers failed:", err);
+        toast.error("Could not load passengers.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
-  }, [trip.id]);
+    return () => {
+      mounted = false;
+    };
+  }, [tripId]);
 
-  async function handleAdd() {
-    if (!newName.trim()) return;
-    const created = await addTripPassengers(trip.id, [{ fullName: newName }], true);
-    setRows((r) => [...r, ...created]);
-    setNewName("");
-  }
+  const handleAdd = async () => {
+    const fullName = nameInput.trim();
+    if (!fullName) {
+      inputRef.current?.focus();
+      return;
+    }
 
-  async function toggleCheckIn(row) {
-    const updated = await updateTripPassenger(trip.id, row.id, {
-      checkedInAt: row.checkedInAt ? null : new Date().toISOString(),
-    });
-    setRows((r) => r.map((x) => (x.id === row.id ? updated : x)));
-  }
+    try {
+      setAdding(true);
+      // server accepts { fullName } and also normalizes { name } / strings
+      const created = await addTripPassengers(tripId, [{ fullName }], true);
+      // append to roster (API returns created rows)
+      setRoster((prev) => [...created, ...prev]);
+      setNameInput("");
+      toast.success(`Added “${fullName}”`);
+      inputRef.current?.focus();
+    } catch (err) {
+      console.error("add passenger failed:", err);
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to add passenger.";
+      toast.error(msg);
+    } finally {
+      setAdding(false);
+    }
+  };
 
-  async function markPaid(row) {
-    await addTripPassengerPayment(trip.id, row.id, {
-      amountDue: row.amountDue || 1,
-      amountPaid: row.amountDue || 1,
-      status: "paid",
-    });
-    const refreshed = await getTripPassengers(trip.id);
-    setRows(refreshed);
-  }
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!adding) handleAdd();
+    }
+  };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Full name"
-          className="border p-2 rounded w-full"
-        />
-        <button onClick={handleAdd} className="px-3 py-2 rounded bg-blue-600 text-white">
-          Add
-        </button>
-        <button onClick={onClose} className="px-3 py-2 rounded bg-gray-200">
+    <div className="w-full max-w-3xl">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">Passengers — Trip #{tripId}</h3>
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300"
+        >
           Close
         </button>
       </div>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left border-b">
-            <th>Name</th>
-            <th>Seat</th>
-            <th>Pickup</th>
-            <th>Dropoff</th>
-            <th>Checked In</th>
-            <th>Payment</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="border-b">
-              <td>{row.fullName}</td>
-              <td>{row.seatNumber || "-"}</td>
-              <td>{row.pickupPoint || "-"}</td>
-              <td>{row.dropoffPoint || "-"}</td>
-              <td>{row.checkedInAt ? "Yes" : "No"}</td>
-              <td>{row.paymentStatus || "—"}</td>
-              <td className="flex gap-2 py-2">
-                <button onClick={() => toggleCheckIn(row)} className="px-2 py-1 rounded bg-green-600 text-white">
-                  {row.checkedInAt ? "Undo Check-in" : "Check-in"}
-                </button>
-                <button onClick={() => markPaid(row)} className="px-2 py-1 rounded bg-indigo-600 text-white">
-                  Mark Paid
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* add row */}
+      <div className="flex gap-2 mb-3">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Type passenger name and press Add…"
+          className="flex-1 border rounded px-3 py-2"
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={adding}
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !nameInput.trim()}
+          className={`px-4 py-2 rounded text-white flex items-center gap-2
+          ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+        >
+          {adding ? <Spinner /> : null}
+          <span>{adding ? "Adding…" : "Add"}</span>
+        </button>
+      </div>
+
+      <div className="border rounded">
+        <div className="grid grid-cols-6 gap-2 px-3 py-2 text-sm font-semibold bg-gray-50">
+          <div>Name</div>
+          <div>Seat</div>
+          <div>Pickup</div>
+          <div>Dropoff</div>
+          <div>Checked In</div>
+          <div>Payment</div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center gap-2 px-3 py-6 text-gray-500">
+            <Spinner className="w-5 h-5" />
+            Loading passengers…
+          </div>
+        ) : roster.length === 0 ? (
+          <div className="px-3 py-6 text-gray-500 text-sm">No passengers yet.</div>
+        ) : (
+          <ul className="divide-y">
+            {roster.map((p) => (
+              <li key={p.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm">
+                <div className="truncate">{p.fullName}</div>
+                <div className="truncate">{p.seatNumber || "-"}</div>
+                <div className="truncate">{p.pickupPoint || "-"}</div>
+                <div className="truncate">{p.dropoffPoint || "-"}</div>
+                <div>{p.checkedIn ? "Yes" : "No"}</div>
+                <div className="truncate">
+                  {p.latestPaymentStatus || "-"}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
