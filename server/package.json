@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "prisma migrate deploy && node src/index.js",
+    "start": "node src/index.js",
     "generate": "prisma generate",
     "migrate:deploy": "prisma migrate deploy",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && prisma generate --schema=prisma/global.schema.prisma",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
