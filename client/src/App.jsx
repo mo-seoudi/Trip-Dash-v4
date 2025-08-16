@@ -1,9 +1,9 @@
 // src/App.jsx
-
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
 import GlobalConsole from "./pages/Admin/GlobalConsole.jsx";
 
 import Login from "./pages/Login";
@@ -32,65 +32,62 @@ function AppRoutes() {
     );
   }
 
-return (
-  <>
-    <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+  return (
+    <>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-      {/* Protected routes */}
-      {profile && (
-        <Route element={<Layout />}>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute allowedRoles={["school_staff", "bus_company", "trip_manager", "admin"]}>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/finance"
-            element={
-              <ProtectedRoute allowedRoles={["finance", "admin"]}>
-                <FinancePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/trips"
-            element={
-              <ProtectedRoute
-                allowedRoles={[
-                  "admin",
-                  "trip_manager",
-                  "school_staff",
-                  "bus_company",
-                  "finance"
-                ]}
-              >
-                <AllTrips />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/roles"
-            element={
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <AdminRoles />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <AdminUsers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
+        {/* Protected routes */}
+        {profile && (
+          <Route element={<Layout />}>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute allowedRoles={["school_staff", "bus_company", "trip_manager", "admin"]}>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/finance"
+              element={
+                <ProtectedRoute allowedRoles={["finance", "admin"]}>
+                  <FinancePage />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/trips"
+              element={
+                <ProtectedRoute allowedRoles={["admin","trip_manager","school_staff","bus_company","finance"]}>
+                  <AllTrips />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/roles"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminRoles />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminUsers />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/admin/approvals"
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
@@ -99,40 +96,35 @@ return (
               }
             />
 
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute
-                allowedRoles={[
-                  "admin",
-                  "school_staff",
-                  "finance",
-                  "bus_company",
-                  "trip_manager"
-                ]}
-              >
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-        </Route>
-      )}
+            {/* Global admin console — admin only */}
+            <Route
+              path="/admin/global"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <GlobalConsole />
+                </ProtectedRoute>
+              }
+            />
 
-      {/* Fallback route */}
-      <Route path="*" element={<Navigate to={profile ? "/" : "/login"} />} />
-    </Routes>
+            {/* If you want a dedicated 404 inside the layout, you can also add: */}
+            {/* <Route path="*" element={<NotFound />} /> */}
+          </Route>
+        )}
 
-    <ToastContainer
-      position="top-center"
-      autoClose={2000}
-      hideProgressBar
-      closeOnClick
-      pauseOnHover={false}
-      draggable={false}
-    />
-  </>
-);
+        {/* Fallback: redirect based on auth */}
+        <Route path="*" element={<Navigate to={profile ? "/" : "/login"} />} />
+      </Routes>
 
+      <ToastContainer
+        position="top-center"
+        autoClose={2000}
+        hideProgressBar
+        closeOnClick
+        pauseOnHover={false}
+        draggable={false}
+      />
+    </>
+  );
 }
 
 function App() {
@@ -140,9 +132,6 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <AppRoutes />
-        <Routes>
-          <Route path="/admin/global" element={<GlobalConsole />} />
-        <Routes>
       </BrowserRouter>
     </AuthProvider>
   );
