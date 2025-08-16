@@ -4,6 +4,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import GlobalConsole from "./pages/Admin/GlobalConsole.jsx";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -139,6 +140,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <AppRoutes />
+        <Routes>
+          <Route path="/admin/global" element={<GlobalConsole />} />
+        <Routes>
       </BrowserRouter>
     </AuthProvider>
   );
