@@ -191,3 +191,29 @@ model TripRegistry {
   @@index([bus_company_org_id])
   @@map("trip_registry")
 }
+
+// prisma/global.schema.prisma  
+
+model UserRoleScopes {
+  // the user who holds the role
+  user_id  String
+  // the org where the role is held (parent_org or bus_company; can be school too)
+  org_id   String
+  // which role we're scoping (ADMIN | FINANCE | SCHOOL_STAFF | BUS_COMPANY)
+  role     RoleType
+
+  // allow this role to act on this specific SCHOOL org id
+  school_org_id String
+
+  created_at DateTime @default(now())
+
+  // relations (two separate relations to Organizations need names)
+  users  Users          @relation(fields: [user_id], references: [id])
+  org    Organizations  @relation("ScopeOnOrg",    fields: [org_id],        references: [id])
+  school Organizations  @relation("ScopeOnSchool", fields: [school_org_id], references: [id])
+
+  @@id([user_id, org_id, role, school_org_id])
+  @@index([org_id])
+  @@index([school_org_id])
+  @@map("user_role_scopes")
+}
