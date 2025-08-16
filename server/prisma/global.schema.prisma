@@ -6,11 +6,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // If you later split control-plane tables, point to GLOBAL_DATABASE_URL
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
-//   Enums (mapped to PG)
+/* =========================
+   Enums
+========================= */
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -32,7 +33,9 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-//   Tenants
+/* =========================
+   Tenants
+========================= */
 model Tenants {
   id         String   @id @default(uuid())
   name       String
@@ -40,7 +43,6 @@ model Tenants {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @db.Timestamptz(6)
 
-  // back-relations
   organizations    Organizations[]   @relation("TenantOrganizations")
   users            Users[]           @relation("TenantUsers")
   partnerships     Partnerships[]    @relation("TenantPartnerships")
@@ -50,7 +52,9 @@ model Tenants {
   @@map("tenants")
 }
 
-//   Organizations (with parent)
+/* =========================
+   Organizations (with parent/children)
+========================= */
 model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
@@ -63,22 +67,22 @@ model Organizations {
 
   tenants Tenants @relation("TenantOrganizations", fields: [tenant_id], references: [id])
 
-  // explicit self relation (parent/children)
+  // self relation
   parent   Organizations?  @relation("OrgParent", fields: [parent_org_id], references: [id])
   children Organizations[] @relation("OrgParent")
 
-  // user roles
+  // org-level roles
   user_roles UserRoles[] @relation("UserRoleOrg")
 
-  // 🔸 back-relations for UserRoleScopes (fixes Prisma validation)
+  // back-relations for scoped roles
   scoped_roles_as_org    UserRoleScopes[] @relation("ScopeOnOrg")
   scoped_roles_as_school UserRoleScopes[] @relation("ScopeOnSchool")
 
-  // partnerships (two named relations)
+  // partnerships
   partnerships_as_school     Partnerships[] @relation("SchoolPartnership")
   partnerships_as_buscompany Partnerships[] @relation("BusCompanyPartnership")
 
-  // trip registry (two named relations)
+  // trip registry
   trip_registry_as_school  TripRegistry[] @relation("SchoolTrips")
   trip_registry_as_company TripRegistry[] @relation("CompanyTrips")
 
@@ -91,9 +95,11 @@ model Organizations {
   @@map("organizations")
 }
 
-//   Users (control-plane)
+/* =========================
+   Users (control-plane)
+========================= */
 model Users {
-  id             String   @id            // mirrors auth.users.id
+  id             String   @id
   tenant_id      String?
   email          String   @unique
   full_name      String?
@@ -102,14 +108,19 @@ model Users {
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants    Tenants?    @relation("TenantUsers", fields: [tenant_id], references: [id])
-  user_roles UserRoles[] @relation("UserRoleUser")
+  tenants     Tenants?    @relation("TenantUsers", fields: [tenant_id], references: [id])
+  user_roles  UserRoles[] @relation("UserRoleUser")
+
+  // back-relation for UserRoleScopes.users
+  role_scopes UserRoleScopes[]
 
   @@index([tenant_id])
-  @@map("global_users")   // table was renamed from "users"
+  @@map("global_users")
 }
 
-//   User roles (org-level)
+/* =========================
+   User roles (org-level)
+========================= */
 model UserRoles {
   user_id    String
   org_id     String
@@ -125,7 +136,9 @@ model UserRoles {
   @@map("user_roles")
 }
 
-//   Fine-grained scopes: user → (org, role) on school
+/* =========================
+   Fine-grained scopes: user -> (org, role) on school
+========================= */
 model UserRoleScopes {
   user_id       String
   org_id        String
@@ -143,7 +156,9 @@ model UserRoleScopes {
   @@map("user_role_scopes")
 }
 
-//   Partnerships
+/* =========================
+   Partnerships
+========================= */
 model Partnerships {
   id             String   @id @default(uuid())
   tenant_id      String
@@ -162,7 +177,9 @@ model Partnerships {
   @@map("partnerships")
 }
 
-//   Data connections
+/* =========================
+   Data connections
+========================= */
 model DataConnections {
   id               String   @id @default(uuid())
   tenant_id        String
@@ -190,7 +207,9 @@ model DataConnections {
   @@map("data_connections")
 }
 
-//   Trip registry
+/* =========================
+   Trip registry
+========================= */
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenant_id          String
