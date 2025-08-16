@@ -6,7 +6,7 @@ import {
   listTenants, createTenant,
   listOrgs, createOrg, updateOrg,
   listPartnerships, createPartnership, deletePartnership,
-} from "../../services/globalService";
+} from "../../services/globalService.js";
 
 // tiny helper
 const Btn = ({ children, loading, ...rest }) => (
