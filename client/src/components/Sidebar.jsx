@@ -1,17 +1,16 @@
 // client/src/components/Sidebar.jsx
 import React, { useRef, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { FiHome, FiList, FiDollarSign, FiSettings, FiTable } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 
 function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const sidebar = useRef();
   const trigger = useRef();
-  const location = useLocation();
   const { profile } = useAuth();
   const userRole = profile?.role;
 
-  // 👇 Add the admin link conditionally
+  // navigation items
   const links = [
     { to: "/", label: "Dashboard", icon: <FiHome size={18} /> },
     { to: "/trips", label: "All Trips", icon: <FiList size={18} /> },
@@ -27,12 +26,14 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!sidebar.current || !trigger.current) return;
-      if (!sidebarOpen || sidebar.current.contains(e.target) || trigger.current.contains(e.target)) return;
+      if (!sidebarOpen) return;
+      if (sidebar.current.contains(e.target)) return;
+      if (trigger.current.contains(e.target)) return;
       setSidebarOpen(false);
     };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
-  }, [sidebarOpen]);
+  }, [sidebarOpen, setSidebarOpen]);
 
   useEffect(() => {
     const handleEsc = (e) => {
@@ -41,7 +42,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
     };
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
-  }, [sidebarOpen]);
+  }, [sidebarOpen, setSidebarOpen]);
 
   return (
     <>
@@ -50,8 +51,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
           sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         aria-hidden="true"
-      ></div>
-
+      />
       <div
         ref={sidebar}
         className={`fixed inset-y-0 left-0 w-64 bg-white border-r shadow-xl overflow-y-auto transform z-50 transition-transform duration-300 ease-in-out
@@ -59,7 +59,11 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
         lg:translate-x-0 lg:static lg:inset-0`}
       >
         <div className="flex justify-end p-4 lg:hidden">
-          <button ref={trigger} onClick={() => setSidebarOpen(false)} className="text-gray-600 text-2xl font-bold">
+          <button
+            ref={trigger}
+            onClick={() => setSidebarOpen(false)}
+            className="text-gray-600 text-2xl font-bold"
+          >
             ×
           </button>
         </div>
@@ -74,8 +78,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `flex items-center px-3 py-2 rounded transition-colors duration-200
-                ${
+                `flex items-center px-3 py-2 rounded transition-colors duration-200 ${
                   isActive
                     ? "bg-violet-100 text-violet-600 font-medium"
                     : "text-gray-700 hover:bg-gray-100 hover:text-violet-600"
