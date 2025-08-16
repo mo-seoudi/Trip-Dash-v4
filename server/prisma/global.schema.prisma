@@ -10,9 +10,7 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
-/* ======================
-   Enums (mapped to PG)
-====================== */
+//   Enums (mapped to PG)
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -34,9 +32,7 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-/* =============
-   Tenants
-============= */
+//   Tenants
 model Tenants {
   id         String   @id @default(uuid())
   name       String
@@ -54,9 +50,7 @@ model Tenants {
   @@map("tenants")
 }
 
-/* ==========================
-   Organizations (with parent)
-========================== */
+//   Organizations (with parent)
 model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
@@ -97,9 +91,7 @@ model Organizations {
   @@map("organizations")
 }
 
-/* ==========================
-   Users (control-plane)
-========================== */
+//   Users (control-plane)
 model Users {
   id             String   @id            // mirrors auth.users.id
   tenant_id      String?
@@ -117,9 +109,7 @@ model Users {
   @@map("global_users")   // table was renamed from "users"
 }
 
-/* ==========================
-   User roles (org-level)
-========================== */
+//   User roles (org-level)
 model UserRoles {
   user_id    String
   org_id     String
@@ -135,9 +125,7 @@ model UserRoles {
   @@map("user_roles")
 }
 
-/* =========================================
-   Fine-grained scopes: user → (org, role) on school
-========================================= */
+//   Fine-grained scopes: user → (org, role) on school
 model UserRoleScopes {
   user_id       String
   org_id        String
@@ -155,9 +143,7 @@ model UserRoleScopes {
   @@map("user_role_scopes")
 }
 
-/* ==========================
-   Partnerships
-========================== */
+//   Partnerships
 model Partnerships {
   id             String   @id @default(uuid())
   tenant_id      String
@@ -176,9 +162,7 @@ model Partnerships {
   @@map("partnerships")
 }
 
-/* ==========================
-   Data connections
-========================== */
+//   Data connections
 model DataConnections {
   id               String   @id @default(uuid())
   tenant_id        String
@@ -206,9 +190,7 @@ model DataConnections {
   @@map("data_connections")
 }
 
-/* ==========================
-   Trip registry
-========================== */
+//   Trip registry
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenant_id          String
