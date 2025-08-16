@@ -18,12 +18,11 @@ const ORG_TYPE_OUT = {
 };
 
 function toOutOrg(o) {
+  // no parent relation in schema right now
   return {
     ...o,
     type: ORG_TYPE_OUT[o.type] ?? o.type,
-    parent: o.parent
-      ? { id: o.parent.id, name: o.parent.name, type: ORG_TYPE_OUT[o.parent.type] }
-      : null,
+    parent: null,
   };
 }
 
@@ -34,7 +33,7 @@ function bad(res, code, msg) {
 /* ---------- Tenants ---------- */
 
 // GET /api/global/tenants
-router.get("/tenants", async (req, res, next) => {
+router.get("/tenants", async (_req, res, next) => {
   try {
     const rows = await pg.tenants.findMany({
       orderBy: { created_at: "desc" },
@@ -51,12 +50,9 @@ router.post("/tenants", async (req, res) => {
     const { name, slug } = req.body || {};
     if (!name || !slug) return bad(res, 400, "name and slug are required");
 
-    const created = await pg.tenants.create({
-      data: { name, slug },
-    });
+    const created = await pg.tenants.create({ data: { name, slug } });
     res.status(201).json(created);
   } catch (e) {
-    // unique slug, etc.
     console.error("create tenant error:", e);
     return bad(res, 500, "Failed to create tenant");
   }
@@ -71,8 +67,7 @@ router.get("/orgs", async (req, res) => {
     if (!tenant_id) return bad(res, 400, "tenant_id is required");
 
     const orgs = await pg.organizations.findMany({
-      where: { tenant_id },
-      include: { parent: true },
+      where: { tenant_id: String(tenant_id) },
       orderBy: { updated_at: "desc" },
     });
     res.json(orgs.map(toOutOrg));
@@ -91,10 +86,10 @@ router.post("/orgs", async (req, res) => {
     if (!name) return bad(res, 400, "name is required");
     if (!type || !ORG_TYPE_IN[type]) return bad(res, 400, "invalid type");
 
-    // Optional: ensure parent belongs to same tenant if provided
+    // Optional guard: if parent is provided, ensure it belongs to the same tenant
     if (parent_org_id) {
       const parent = await pg.organizations.findFirst({
-        where: { id: parent_org_id, tenant_id },
+        where: { id: String(parent_org_id), tenant_id: String(tenant_id) },
         select: { id: true },
       });
       if (!parent) return bad(res, 400, "parent_org_id not found in tenant");
@@ -102,13 +97,12 @@ router.post("/orgs", async (req, res) => {
 
     const created = await pg.organizations.create({
       data: {
-        tenant_id,
+        tenant_id: String(tenant_id),
         name,
         type: ORG_TYPE_IN[type],
         code: code || null,
         parent_org_id: parent_org_id || null,
       },
-      include: { parent: true },
     });
     res.status(201).json(toOutOrg(created));
   } catch (e) {
@@ -131,9 +125,8 @@ router.patch("/orgs/:id", async (req, res) => {
     if (patch.parent_org_id === "") patch.parent_org_id = null;
 
     const updated = await pg.organizations.update({
-      where: { id },
+      where: { id: String(id) },
       data: patch,
-      include: { parent: true },
     });
     res.json(toOutOrg(updated));
   } catch (e) {
@@ -151,11 +144,8 @@ router.get("/partnerships", async (req, res) => {
     if (!tenant_id) return bad(res, 400, "tenant_id is required");
 
     const rows = await pg.partnerships.findMany({
-      where: { tenant_id, is_active: true },
-      include: {
-        school_org: true,
-        bus_company: true,
-      },
+      where: { tenant_id: String(tenant_id), is_active: true },
+      include: { school_org: true, bus_company: true },
       orderBy: { created_at: "desc" },
     });
 
@@ -166,12 +156,8 @@ router.get("/partnerships", async (req, res) => {
         school_org_id: p.school_org_id,
         bus_company_org_id: p.bus_company_id,
         created_at: p.created_at,
-        school_org: p.school_org
-          ? { id: p.school_org.id, name: p.school_org.name }
-          : null,
-        bus_company: p.bus_company
-          ? { id: p.bus_company.id, name: p.bus_company.name }
-          : null,
+        school_org: p.school_org ? { id: p.school_org.id, name: p.school_org.name } : null,
+        bus_company: p.bus_company ? { id: p.bus_company.id, name: p.bus_company.name } : null,
       }))
     );
   } catch (e) {
@@ -190,15 +176,12 @@ router.post("/partnerships", async (req, res) => {
 
     const created = await pg.partnerships.create({
       data: {
-        tenant_id,
-        school_org_id,
-        bus_company_id: bus_company_org_id,
+        tenant_id: String(tenant_id),
+        school_org_id: String(school_org_id),
+        bus_company_id: String(bus_company_org_id),
         is_active: true,
       },
-      include: {
-        school_org: true,
-        bus_company: true,
-      },
+      include: { school_org: true, bus_company: true },
     });
 
     res.status(201).json({
@@ -207,12 +190,8 @@ router.post("/partnerships", async (req, res) => {
       school_org_id: created.school_org_id,
       bus_company_org_id: created.bus_company_id,
       created_at: created.created_at,
-      school_org: created.school_org
-        ? { id: created.school_org.id, name: created.school_org.name }
-        : null,
-      bus_company: created.bus_company
-        ? { id: created.bus_company.id, name: created.bus_company.name }
-        : null,
+      school_org: created.school_org ? { id: created.school_org.id, name: created.school_org.name } : null,
+      bus_company: created.bus_company ? { id: created.bus_company.id, name: created.bus_company.name } : null,
     });
   } catch (e) {
     console.error("create partnership error:", e);
@@ -224,7 +203,7 @@ router.post("/partnerships", async (req, res) => {
 router.delete("/partnerships/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    await pg.partnerships.delete({ where: { id } });
+    await pg.partnerships.delete({ where: { id: String(id) } });
     res.json({ ok: true });
   } catch (e) {
     console.error("delete partnership error:", e);
@@ -233,3 +212,4 @@ router.delete("/partnerships/:id", async (req, res) => {
 });
 
 export default router;
+
