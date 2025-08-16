@@ -10,7 +10,9 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
-// Enums (map to existing Postgres enums)
+/* ======================
+   Enums (mapped to PG)
+====================== */
 enum OrgType {
   SCHOOL       @map("school")
   BUS_COMPANY  @map("bus_company")
@@ -32,7 +34,9 @@ enum DataConnectionMode {
   @@map("data_connection_mode")
 }
 
-// Tenants
+/* =============
+   Tenants
+============= */
 model Tenants {
   id         String   @id @default(uuid())
   name       String
@@ -40,7 +44,7 @@ model Tenants {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @db.Timestamptz(6)
 
-  // named back-relations
+  // back-relations
   organizations    Organizations[]   @relation("TenantOrganizations")
   users            Users[]           @relation("TenantUsers")
   partnerships     Partnerships[]    @relation("TenantPartnerships")
@@ -50,7 +54,9 @@ model Tenants {
   @@map("tenants")
 }
 
-// Organizations (now with parent/children self-relation)
+/* ==========================
+   Organizations (with parent)
+========================== */
 model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
@@ -63,18 +69,22 @@ model Organizations {
 
   tenants Tenants @relation("TenantOrganizations", fields: [tenant_id], references: [id])
 
-  // NEW: explicit self relation (parent/children)
+  // explicit self relation (parent/children)
   parent   Organizations?  @relation("OrgParent", fields: [parent_org_id], references: [id])
   children Organizations[] @relation("OrgParent")
 
   // user roles
   user_roles UserRoles[] @relation("UserRoleOrg")
 
-  // partnerships: two distinct relations to the same model -> must be named
+  // 🔸 back-relations for UserRoleScopes (fixes Prisma validation)
+  scoped_roles_as_org    UserRoleScopes[] @relation("ScopeOnOrg")
+  scoped_roles_as_school UserRoleScopes[] @relation("ScopeOnSchool")
+
+  // partnerships (two named relations)
   partnerships_as_school     Partnerships[] @relation("SchoolPartnership")
   partnerships_as_buscompany Partnerships[] @relation("BusCompanyPartnership")
 
-  // trip registry: two distinct relations -> must be named
+  // trip registry (two named relations)
   trip_registry_as_school  TripRegistry[] @relation("SchoolTrips")
   trip_registry_as_company TripRegistry[] @relation("CompanyTrips")
 
@@ -83,11 +93,13 @@ model Organizations {
 
   @@unique([tenant_id, code])
   @@index([tenant_id])
-  @@index([parent_org_id])        // helpful for lookups
+  @@index([parent_org_id])
   @@map("organizations")
 }
 
-// Users (control-plane users, not auth.users)
+/* ==========================
+   Users (control-plane)
+========================== */
 model Users {
   id             String   @id            // mirrors auth.users.id
   tenant_id      String?
@@ -98,14 +110,16 @@ model Users {
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants    Tenants?   @relation("TenantUsers", fields: [tenant_id], references: [id])
+  tenants    Tenants?    @relation("TenantUsers", fields: [tenant_id], references: [id])
   user_roles UserRoles[] @relation("UserRoleUser")
 
   @@index([tenant_id])
-  @@map("global_users")   // (your previous rename)
+  @@map("global_users")   // table was renamed from "users"
 }
 
-// User roles
+/* ==========================
+   User roles (org-level)
+========================== */
 model UserRoles {
   user_id    String
   org_id     String
@@ -121,7 +135,29 @@ model UserRoles {
   @@map("user_roles")
 }
 
-// Partnerships
+/* =========================================
+   Fine-grained scopes: user → (org, role) on school
+========================================= */
+model UserRoleScopes {
+  user_id       String
+  org_id        String
+  role          RoleType
+  school_org_id String
+  created_at    DateTime @default(now())
+
+  users  Users          @relation(fields: [user_id], references: [id])
+  org    Organizations  @relation("ScopeOnOrg",    fields: [org_id],        references: [id])
+  school Organizations  @relation("ScopeOnSchool", fields: [school_org_id], references: [id])
+
+  @@id([user_id, org_id, role, school_org_id])
+  @@index([org_id])
+  @@index([school_org_id])
+  @@map("user_role_scopes")
+}
+
+/* ==========================
+   Partnerships
+========================== */
 model Partnerships {
   id             String   @id @default(uuid())
   tenant_id      String
@@ -140,9 +176,11 @@ model Partnerships {
   @@map("partnerships")
 }
 
-// Data connections
+/* ==========================
+   Data connections
+========================== */
 model DataConnections {
-  id               String             @id @default(uuid())
+  id               String   @id @default(uuid())
   tenant_id        String
   org_id           String
   mode             DataConnectionMode
@@ -154,12 +192,12 @@ model DataConnections {
   db_ssl           Boolean?
   vault_secret_id  String?
   last_verified_at DateTime?
-  is_active        Boolean            @default(true)
-  created_at       DateTime           @default(now())
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants       Tenants       @relation("TenantDataConnections", fields: [tenant_id], references: [id])
-  organizations Organizations @relation("OrgDataConnections",    fields: [org_id],    references: [id])
+  tenants       Tenants        @relation("TenantDataConnections", fields: [tenant_id], references: [id])
+  organizations Organizations  @relation("OrgDataConnections",    fields: [org_id],    references: [id])
   trip_registry TripRegistry[] @relation("TripRegistryConn")
 
   @@unique([org_id, mode])
@@ -168,7 +206,9 @@ model DataConnections {
   @@map("data_connections")
 }
 
-// Trip registry
+/* ==========================
+   Trip registry
+========================== */
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenant_id          String
@@ -180,9 +220,9 @@ model TripRegistry {
   created_at         DateTime @default(now())
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants         Tenants        @relation("TenantTripRegistry", fields: [tenant_id], references: [id])
-  school_org      Organizations  @relation("SchoolTrips",  fields: [school_org_id],      references: [id])
-  company_org     Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
+  tenants          Tenants         @relation("TenantTripRegistry", fields: [tenant_id], references: [id])
+  school_org       Organizations   @relation("SchoolTrips",  fields: [school_org_id],      references: [id])
+  company_org      Organizations?  @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
   data_connections DataConnections @relation("TripRegistryConn", fields: [data_connection_id], references: [id])
 
   @@unique([tenant_id, trip_code])
@@ -190,30 +230,4 @@ model TripRegistry {
   @@index([school_org_id])
   @@index([bus_company_org_id])
   @@map("trip_registry")
-}
-
-// prisma/global.schema.prisma  
-
-model UserRoleScopes {
-  // the user who holds the role
-  user_id  String
-  // the org where the role is held (parent_org or bus_company; can be school too)
-  org_id   String
-  // which role we're scoping (ADMIN | FINANCE | SCHOOL_STAFF | BUS_COMPANY)
-  role     RoleType
-
-  // allow this role to act on this specific SCHOOL org id
-  school_org_id String
-
-  created_at DateTime @default(now())
-
-  // relations (two separate relations to Organizations need names)
-  users  Users          @relation(fields: [user_id], references: [id])
-  org    Organizations  @relation("ScopeOnOrg",    fields: [org_id],        references: [id])
-  school Organizations  @relation("ScopeOnSchool", fields: [school_org_id], references: [id])
-
-  @@id([user_id, org_id, role, school_org_id])
-  @@index([org_id])
-  @@index([school_org_id])
-  @@map("user_role_scopes")
 }
