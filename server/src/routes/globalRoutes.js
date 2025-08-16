@@ -1,101 +1,235 @@
+// server/src/routes/globalRoutes.js
 import { Router } from "express";
 import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js";
 
 const router = Router();
 const pg = new PrismaGlobal();
 
-// ---- me / session are likely already in src/index.js ----
+/* ---------- helpers ---------- */
+const ORG_TYPE_IN = {
+  school: "SCHOOL",
+  bus_company: "BUS_COMPANY",
+  parent_org: "PARENT_ORG",
+};
+const ORG_TYPE_OUT = {
+  SCHOOL: "school",
+  BUS_COMPANY: "bus_company",
+  PARENT_ORG: "parent_org",
+};
 
-// Tenants
+function toOutOrg(o) {
+  return {
+    ...o,
+    type: ORG_TYPE_OUT[o.type] ?? o.type,
+    parent: o.parent
+      ? { id: o.parent.id, name: o.parent.name, type: ORG_TYPE_OUT[o.parent.type] }
+      : null,
+  };
+}
+
+function bad(res, code, msg) {
+  return res.status(code).json({ message: msg });
+}
+
+/* ---------- Tenants ---------- */
+
+// GET /api/global/tenants
 router.get("/tenants", async (req, res, next) => {
   try {
-    const rows = await pg.tenants.findMany({ orderBy: { created_at: "desc" } });
-    res.json(rows);
-  } catch (e) { next(e); }
-});
-
-router.post("/tenants", async (req, res, next) => {
-  try {
-    const { name, slug } = req.body;
-    const row = await pg.tenants.create({ data: { name, slug } });
-    res.status(201).json(row);
-  } catch (e) { next(e); }
-});
-
-// Orgs
-router.get("/orgs", async (req, res, next) => {
-  try {
-    const where = req.query.tenant_id ? { tenant_id: String(req.query.tenant_id) } : {};
-    const rows = await pg.organizations.findMany({
-      where,
-      include: { // parent org for schools
-        partnerships_as_school: false,
-        partnerships_as_buscompany: false,
-      },
+    const rows = await pg.tenants.findMany({
       orderBy: { created_at: "desc" },
     });
-    // attach parent name if any
-    const parentMap = new Map(rows.map(r => [r.id, r]));
-    const withParent = rows.map(r => ({
-      ...r,
-      parent: r.parent_org_id ? parentMap.get(r.parent_org_id) || null : null
-    }));
-    res.json(withParent);
-  } catch (e) { next(e); }
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
 });
 
-router.post("/orgs", async (req, res, next) => {
+// POST /api/global/tenants  { name, slug }
+router.post("/tenants", async (req, res) => {
   try {
-    const { tenant_id, name, type, code, parent_org_id } = req.body;
-    const row = await pg.organizations.create({
-      data: { tenant_id, name, type, code, parent_org_id: parent_org_id || null },
+    const { name, slug } = req.body || {};
+    if (!name || !slug) return bad(res, 400, "name and slug are required");
+
+    const created = await pg.tenants.create({
+      data: { name, slug },
     });
-    res.status(201).json(row);
-  } catch (e) { next(e); }
+    res.status(201).json(created);
+  } catch (e) {
+    // unique slug, etc.
+    console.error("create tenant error:", e);
+    return bad(res, 500, "Failed to create tenant");
+  }
 });
 
-router.patch("/orgs/:id", async (req, res, next) => {
+/* ---------- Organizations ---------- */
+
+// GET /api/global/orgs?tenant_id=...
+router.get("/orgs", async (req, res) => {
+  try {
+    const { tenant_id } = req.query;
+    if (!tenant_id) return bad(res, 400, "tenant_id is required");
+
+    const orgs = await pg.organizations.findMany({
+      where: { tenant_id },
+      include: { parent: true },
+      orderBy: { updated_at: "desc" },
+    });
+    res.json(orgs.map(toOutOrg));
+  } catch (e) {
+    console.error("list orgs error:", e);
+    return bad(res, 500, "Failed to list organizations");
+  }
+});
+
+// POST /api/global/orgs
+// { tenant_id, name, type: 'school'|'bus_company'|'parent_org', code?, parent_org_id? }
+router.post("/orgs", async (req, res) => {
+  try {
+    const { tenant_id, name, type, code, parent_org_id } = req.body || {};
+    if (!tenant_id) return bad(res, 400, "tenant_id is required");
+    if (!name) return bad(res, 400, "name is required");
+    if (!type || !ORG_TYPE_IN[type]) return bad(res, 400, "invalid type");
+
+    // Optional: ensure parent belongs to same tenant if provided
+    if (parent_org_id) {
+      const parent = await pg.organizations.findFirst({
+        where: { id: parent_org_id, tenant_id },
+        select: { id: true },
+      });
+      if (!parent) return bad(res, 400, "parent_org_id not found in tenant");
+    }
+
+    const created = await pg.organizations.create({
+      data: {
+        tenant_id,
+        name,
+        type: ORG_TYPE_IN[type],
+        code: code || null,
+        parent_org_id: parent_org_id || null,
+      },
+      include: { parent: true },
+    });
+    res.status(201).json(toOutOrg(created));
+  } catch (e) {
+    console.error("create org error:", e);
+    return bad(res, 500, "Failed to create organization");
+  }
+});
+
+// PATCH /api/global/orgs/:id
+router.patch("/orgs/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const row = await pg.organizations.update({ where: { id }, data: req.body });
-    res.json(row);
-  } catch (e) { next(e); }
+    const patch = { ...req.body };
+
+    if (patch.type) {
+      if (!ORG_TYPE_IN[patch.type]) return bad(res, 400, "invalid type");
+      patch.type = ORG_TYPE_IN[patch.type];
+    }
+    if (patch.code === "") patch.code = null;
+    if (patch.parent_org_id === "") patch.parent_org_id = null;
+
+    const updated = await pg.organizations.update({
+      where: { id },
+      data: patch,
+      include: { parent: true },
+    });
+    res.json(toOutOrg(updated));
+  } catch (e) {
+    console.error("update org error:", e);
+    return bad(res, 500, "Failed to update organization");
+  }
 });
 
-// Partnerships
-router.get("/partnerships", async (req, res, next) => {
+/* ---------- Partnerships ---------- */
+
+// GET /api/global/partnerships?tenant_id=...
+router.get("/partnerships", async (req, res) => {
   try {
-    const where = req.query.tenant_id ? { tenant_id: String(req.query.tenant_id) } : {};
+    const { tenant_id } = req.query;
+    if (!tenant_id) return bad(res, 400, "tenant_id is required");
+
     const rows = await pg.partnerships.findMany({
-      where,
+      where: { tenant_id, is_active: true },
       include: {
-        school_org: { select: { id: true, name: true } },
-        bus_company: { select: { id: true, name: true } },
+        school_org: true,
+        bus_company: true,
       },
       orderBy: { created_at: "desc" },
     });
-    res.json(rows.map(r => ({
-      ...r,
-      school_org: r.school_org,
-      bus_company: r.bus_company,
-    })));
-  } catch (e) { next(e); }
+
+    res.json(
+      rows.map((p) => ({
+        id: p.id,
+        tenant_id: p.tenant_id,
+        school_org_id: p.school_org_id,
+        bus_company_org_id: p.bus_company_id,
+        created_at: p.created_at,
+        school_org: p.school_org
+          ? { id: p.school_org.id, name: p.school_org.name }
+          : null,
+        bus_company: p.bus_company
+          ? { id: p.bus_company.id, name: p.bus_company.name }
+          : null,
+      }))
+    );
+  } catch (e) {
+    console.error("list partnerships error:", e);
+    return bad(res, 500, "Failed to list partnerships");
+  }
 });
 
-router.post("/partnerships", async (req, res, next) => {
+// POST /api/global/partnerships
+// { tenant_id, school_org_id, bus_company_org_id }
+router.post("/partnerships", async (req, res) => {
   try {
-    const { tenant_id, school_org_id, bus_company_org_id } = req.body;
-    const row = await pg.partnerships.create({ data: { tenant_id, school_org_id, bus_company_org_id } });
-    res.status(201).json(row);
-  } catch (e) { next(e); }
+    const { tenant_id, school_org_id, bus_company_org_id } = req.body || {};
+    if (!tenant_id || !school_org_id || !bus_company_org_id)
+      return bad(res, 400, "tenant_id, school_org_id, bus_company_org_id required");
+
+    const created = await pg.partnerships.create({
+      data: {
+        tenant_id,
+        school_org_id,
+        bus_company_id: bus_company_org_id,
+        is_active: true,
+      },
+      include: {
+        school_org: true,
+        bus_company: true,
+      },
+    });
+
+    res.status(201).json({
+      id: created.id,
+      tenant_id: created.tenant_id,
+      school_org_id: created.school_org_id,
+      bus_company_org_id: created.bus_company_id,
+      created_at: created.created_at,
+      school_org: created.school_org
+        ? { id: created.school_org.id, name: created.school_org.name }
+        : null,
+      bus_company: created.bus_company
+        ? { id: created.bus_company.id, name: created.bus_company.name }
+        : null,
+    });
+  } catch (e) {
+    console.error("create partnership error:", e);
+    return bad(res, 500, "Failed to create partnership");
+  }
 });
 
-router.delete("/partnerships/:id", async (req, res, next) => {
+// DELETE /api/global/partnerships/:id
+router.delete("/partnerships/:id", async (req, res) => {
   try {
     const { id } = req.params;
     await pg.partnerships.delete({ where: { id } });
     res.json({ ok: true });
-  } catch (e) { next(e); }
+  } catch (e) {
+    console.error("delete partnership error:", e);
+    return bad(res, 500, "Failed to delete partnership");
+  }
 });
 
 export default router;
