@@ -1,3 +1,4 @@
+// client/src/components/Sidebar.jsx
 import React, { useRef, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { FiHome, FiList, FiDollarSign, FiSettings, FiTable } from "react-icons/fi";
@@ -10,13 +11,16 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const { profile } = useAuth();
   const userRole = profile?.role;
 
+  // 👇 Add the admin link conditionally
   const links = [
     { to: "/", label: "Dashboard", icon: <FiHome size={18} /> },
     { to: "/trips", label: "All Trips", icon: <FiList size={18} /> },
     ...(userRole === "admin" || userRole === "finance"
       ? [{ to: "/finance", label: "Finance", icon: <FiDollarSign size={18} /> }]
       : []),
-    
+    ...(userRole === "admin"
+      ? [{ to: "/admin/global", label: "Global Admin", icon: <FiTable size={18} /> }]
+      : []),
     { to: "/settings", label: "Settings", icon: <FiSettings size={18} /> },
   ];
 
