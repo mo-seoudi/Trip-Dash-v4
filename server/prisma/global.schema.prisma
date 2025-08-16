@@ -6,8 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Same DB as the app for now. If you later split control-plane tables,
-  // change this to env("GLOBAL_DATABASE_URL").
+  // If you later split control-plane tables, point to GLOBAL_DATABASE_URL
   url = env("DATABASE_URL")
 }
 
@@ -41,17 +40,17 @@ model Tenants {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @db.Timestamptz(6)
 
-  // named all back-relations
-  organizations    Organizations[] @relation("TenantOrganizations")
-  users            Users[]         @relation("TenantUsers")
-  partnerships     Partnerships[]  @relation("TenantPartnerships")
+  // named back-relations
+  organizations    Organizations[]   @relation("TenantOrganizations")
+  users            Users[]           @relation("TenantUsers")
+  partnerships     Partnerships[]    @relation("TenantPartnerships")
   data_connections DataConnections[] @relation("TenantDataConnections")
-  trip_registry    TripRegistry[]  @relation("TenantTripRegistry")
+  trip_registry    TripRegistry[]    @relation("TenantTripRegistry")
 
   @@map("tenants")
 }
 
-// Organizations
+// Organizations (now with parent/children self-relation)
 model Organizations {
   id            String   @id @default(uuid())
   tenant_id     String
@@ -64,6 +63,10 @@ model Organizations {
 
   tenants Tenants @relation("TenantOrganizations", fields: [tenant_id], references: [id])
 
+  // NEW: explicit self relation (parent/children)
+  parent   Organizations?  @relation("OrgParent", fields: [parent_org_id], references: [id])
+  children Organizations[] @relation("OrgParent")
+
   // user roles
   user_roles UserRoles[] @relation("UserRoleOrg")
 
@@ -75,11 +78,12 @@ model Organizations {
   trip_registry_as_school  TripRegistry[] @relation("SchoolTrips")
   trip_registry_as_company TripRegistry[] @relation("CompanyTrips")
 
-  // data connections (single relation pair, but name it to be explicit)
+  // data connections
   data_connections DataConnections[] @relation("OrgDataConnections")
 
   @@unique([tenant_id, code])
   @@index([tenant_id])
+  @@index([parent_org_id])        // helpful for lookups
   @@map("organizations")
 }
 
@@ -98,7 +102,7 @@ model Users {
   user_roles UserRoles[] @relation("UserRoleUser")
 
   @@index([tenant_id])
-  @@map("global_users")   // <— was "users"
+  @@map("global_users")   // (your previous rename)
 }
 
 // User roles
@@ -127,9 +131,7 @@ model Partnerships {
   created_at     DateTime @default(now())
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants Tenants @relation("TenantPartnerships", fields: [tenant_id], references: [id])
-
-  // two different relations to Organizations, names must match both sides
+  tenants     Tenants       @relation("TenantPartnerships", fields: [tenant_id], references: [id])
   school_org  Organizations @relation("SchoolPartnership",     fields: [school_org_id],  references: [id])
   bus_company Organizations @relation("BusCompanyPartnership", fields: [bus_company_id], references: [id])
 
@@ -178,12 +180,9 @@ model TripRegistry {
   created_at         DateTime @default(now())
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
-  tenants Tenants @relation("TenantTripRegistry", fields: [tenant_id], references: [id])
-
-  // two different org relations
-  school_org  Organizations  @relation("SchoolTrips",  fields: [school_org_id],      references: [id])
-  company_org Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
-
+  tenants         Tenants        @relation("TenantTripRegistry", fields: [tenant_id], references: [id])
+  school_org      Organizations  @relation("SchoolTrips",  fields: [school_org_id],      references: [id])
+  company_org     Organizations? @relation("CompanyTrips", fields: [bus_company_org_id], references: [id])
   data_connections DataConnections @relation("TripRegistryConn", fields: [data_connection_id], references: [id])
 
   @@unique([tenant_id, trip_code])
