@@ -1,4 +1,4 @@
-client/src/pages/Admin/GlobalConsole.jsx
+// client/src/pages/Admin/GlobalConsole.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
