@@ -14,6 +14,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import tripsRouter from "./routes/trips/index.js";
 import globalRoutes from "./routes/globalRoutes.js";
+import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 
 dotenv.config();
 
@@ -197,6 +198,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/trips", tripsRouter);
 app.use("/api/global", globalRoutes);
+app.use("/api/global", globalRolesRoutes);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
