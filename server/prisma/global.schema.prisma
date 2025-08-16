@@ -98,7 +98,7 @@ model Users {
   user_roles UserRoles[] @relation("UserRoleUser")
 
   @@index([tenant_id])
-  @@map("users")
+  @@map("global_users")   // <— was "users"
 }
 
 // User roles
