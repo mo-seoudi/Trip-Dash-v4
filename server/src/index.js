@@ -15,6 +15,7 @@ import userRoutes from "./routes/userRoutes.js";
 import tripsRouter from "./routes/trips/index.js";
 import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
+import bookingsRoutes from "./routes/bookingsRoutes.js";
 
 dotenv.config();
 
@@ -199,6 +200,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/trips", tripsRouter);
 app.use("/api/global", globalRoutes);
 app.use("/api/global", globalRolesRoutes);
+app.use("/api/bookings", bookingsRoutes);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
