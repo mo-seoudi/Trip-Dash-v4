@@ -1,11 +1,14 @@
 // client/src/pages/Dashboard.jsx
+
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import AdminUsers from "./AdminUsers";
-import TripForm from "../components/TripForm";
+import RequestTripButton from "../components/RequestTripButton"; // NEW
 
 const Dashboard = () => {
   const { profile } = useAuth();
+
+  // Keep the original state so we don't remove features
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -13,6 +16,8 @@ const Dashboard = () => {
 
   const { role, name } = profile;
 
+  // Preserve the original handler (we no longer need to close local modal here,
+  // but keeping the function avoids removing behavior other code might call)
   const handleTripAdded = () => {
     setShowForm(false);
   };
@@ -31,30 +36,8 @@ const Dashboard = () => {
       case "school_staff":
         return (
           <>
-            {!showForm && !isEditing && (
-              <div
-                className="fixed bottom-6 right-6 z-50 flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700 cursor-pointer"
-                onClick={() => setShowForm(true)}
-              >
-                <span className="font-medium hidden sm:inline">Request New Trip</span>
-                <span className="text-2xl">+</span>
-              </div>
-            )}
-
-            {showForm && (
-              <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-40 p-4">
-                <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-xl relative max-h-[90vh] overflow-y-auto">
-                  <button
-                    onClick={() => setShowForm(false)}
-                    className="absolute top-2 right-2 text-gray-600 hover:text-red-500 text-2xl font-bold"
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
-                  <TripForm onSuccess={handleTripAdded} onClose={() => setShowForm(false)} />
-                </div>
-              </div>
-            )}
+            {/* Floating "Request New Trip +" button & modal (reusable) */}
+            <RequestTripButton onSuccess={handleTripAdded} hidden={isEditing} />
           </>
         );
 
