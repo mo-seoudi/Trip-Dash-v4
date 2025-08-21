@@ -1,6 +1,6 @@
 // client/src/pages/Bookings.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import dayjs from "dayjs";
@@ -170,9 +170,7 @@ function BookingModal({ open, onClose, onSave, context }) {
 /* ---------------- Page ---------------- */
 export default function Bookings() {
   const { profile } = useAuth();
-  // Read these from your session/profile; fall back to null
   const context = {
-    // if you already store these on profile, use them here
     tenant_id: profile?.tenant_id || null,
     school_org_id: profile?.active_org_id || null,
   };
@@ -181,7 +179,7 @@ export default function Bookings() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       const data = await listBookings({
@@ -195,9 +193,9 @@ export default function Bookings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [context.tenant_id, context.school_org_id]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); }, [load]);
 
   const onSave = async (payload) => {
     await createBooking(payload);
@@ -210,6 +208,33 @@ export default function Bookings() {
     toast.success(`Marked ${status}.`);
     await load();
   };
+
+  /* -------- tiny CSS helpers (Tailwind friendly) -------- */
+  useEffect(() => {
+    // Inject helper classes on the client only (fixes SSR/Vercel issues).
+    const base =
+      "w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40";
+    const btn =
+      "px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50";
+    const btn2 =
+      "px-3 py-2 rounded border border-gray-300 hover:bg-gray-50";
+    const btnMini =
+      "px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-xs";
+    const btnDangerMini =
+      "px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs";
+
+    const style = document.createElement("style");
+    style.innerHTML = `
+      .input{ ${base} }
+      .btn-primary{ ${btn} }
+      .btn-secondary{ ${btn2} }
+      .btn-mini{ ${btnMini} }
+      .btn-danger{ background:#ef4444;color:#fff;padding:.5rem .75rem;border-radius:.5rem }
+      .btn-danger-mini{ ${btnDangerMini} }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -271,29 +296,3 @@ export default function Bookings() {
     </div>
   );
 }
-
-/* -------- tiny CSS helpers (Tailwind friendly) -------- */
-const base =
-  "w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40";
-const btn =
-  "px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50";
-const btn2 =
-  "px-3 py-2 rounded border border-gray-300 hover:bg-gray-50";
-const btnMini =
-  "px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-xs";
-const btnDangerMini =
-  "px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs";
-
-function applyGlobals() {
-  const style = document.createElement("style");
-  style.innerHTML = `
-    .input{ ${base} }
-    .btn-primary{ ${btn} }
-    .btn-secondary{ ${btn2} }
-    .btn-mini{ ${btnMini} }
-    .btn-danger{ background:#ef4444;color:#fff;padding:.5rem .75rem;border-radius:.5rem }
-    .btn-danger-mini{ ${btnDangerMini} }
-  `;
-  document.head.appendChild(style);
-}
-applyGlobals();
