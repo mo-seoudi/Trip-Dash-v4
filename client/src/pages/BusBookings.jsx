@@ -8,7 +8,7 @@ import {
   createBooking,
   updateBooking,
   deleteBooking,
-} from "../services/bookingsService";
+} from "../services/bookingService";
 import { useAuth } from "../context/AuthContext";
 
 const EmptyRow = ({ children }) => (
