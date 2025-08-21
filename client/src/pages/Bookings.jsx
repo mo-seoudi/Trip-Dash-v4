@@ -1,6 +1,6 @@
 // client/src/pages/Bookings.jsx
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import dayjs from "dayjs";
@@ -81,48 +81,96 @@ function BookingModal({ open, onClose, onSave, context }) {
       <div className="bg-white w-full max-w-3xl mt-16 rounded shadow-lg p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">New Bus Booking</h3>
-          <button className="text-2xl" onClick={onClose}>×</button>
+          <button className="text-2xl" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-sm">Title</label>
-            <input className="input" value={title} onChange={e=>setTitle(e.target.value)} />
+            <input
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm">Students</label>
-            <input className="input" type="number" min="0" value={students} onChange={e=>setStudents(e.target.value)} />
+            <input
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              type="number"
+              min="0"
+              value={students}
+              onChange={(e) => setStudents(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm">Adults</label>
-            <input className="input" type="number" min="0" value={adults} onChange={e=>setAdults(e.target.value)} />
+            <input
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              type="number"
+              min="0"
+              value={adults}
+              onChange={(e) => setAdults(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm">Start</label>
-            <input className="input" type="datetime-local" value={dateStart} onChange={e=>setDateStart(e.target.value)} />
+            <input
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              type="datetime-local"
+              value={dateStart}
+              onChange={(e) => setDateStart(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm">End</label>
-            <input className="input" type="datetime-local" value={dateEnd} onChange={e=>setDateEnd(e.target.value)} />
+            <input
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              type="datetime-local"
+              value={dateEnd}
+              onChange={(e) => setDateEnd(e.target.value)}
+            />
           </div>
         </div>
 
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <h4 className="font-medium">Pickups</h4>
-            <button className="btn-secondary" onClick={()=>addRow(setPickup)}>Add pickup</button>
+            <button
+              className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50"
+              onClick={() => addRow(setPickup)}
+            >
+              Add pickup
+            </button>
           </div>
-          {pickup.map((r,i)=>(
+          {pickup.map((r, i) => (
             <div key={`p-${i}`} className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-              <input className="input" placeholder="Name (e.g., Main Gate)"
-                value={r.name} onChange={e=>setField(setPickup,i,"name",e.target.value)} />
-              <input className="input" placeholder="Address"
-                value={r.address} onChange={e=>setField(setPickup,i,"address",e.target.value)} />
+              <input
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                placeholder="Name (e.g., Main Gate)"
+                value={r.name}
+                onChange={(e) => setField(setPickup, i, "name", e.target.value)}
+              />
+              <input
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                placeholder="Address"
+                value={r.address}
+                onChange={(e) => setField(setPickup, i, "address", e.target.value)}
+              />
               <div className="flex gap-2">
-                <input className="input flex-1" placeholder="Notes"
-                  value={r.notes} onChange={e=>setField(setPickup,i,"notes",e.target.value)} />
-                {pickup.length>1 && (
-                  <button className="btn-danger" onClick={()=>rmRow(setPickup,i)}>✕</button>
+                <input
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  placeholder="Notes"
+                  value={r.notes}
+                  onChange={(e) => setField(setPickup, i, "notes", e.target.value)}
+                />
+                {pickup.length > 1 && (
+                  <button
+                    className="px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                    onClick={() => rmRow(setPickup, i)}
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
             </div>
@@ -132,19 +180,41 @@ function BookingModal({ open, onClose, onSave, context }) {
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <h4 className="font-medium">Drop-offs</h4>
-            <button className="btn-secondary" onClick={()=>addRow(setDropoff)}>Add drop-off</button>
+            <button
+              className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50"
+              onClick={() => addRow(setDropoff)}
+            >
+              Add drop-off
+            </button>
           </div>
-          {dropoff.map((r,i)=>(
+          {dropoff.map((r, i) => (
             <div key={`d-${i}`} className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-              <input className="input" placeholder="Name (e.g., Stadium)"
-                value={r.name} onChange={e=>setField(setDropoff,i,"name",e.target.value)} />
-              <input className="input" placeholder="Address"
-                value={r.address} onChange={e=>setField(setDropoff,i,"address",e.target.value)} />
+              <input
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                placeholder="Name (e.g., Stadium)"
+                value={r.name}
+                onChange={(e) => setField(setDropoff, i, "name", e.target.value)}
+              />
+              <input
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                placeholder="Address"
+                value={r.address}
+                onChange={(e) => setField(setDropoff, i, "address", e.target.value)}
+              />
               <div className="flex gap-2">
-                <input className="input flex-1" placeholder="Notes"
-                  value={r.notes} onChange={e=>setField(setDropoff,i,"notes",e.target.value)} />
-                {dropoff.length>1 && (
-                  <button className="btn-danger" onClick={()=>rmRow(setDropoff,i)}>✕</button>
+                <input
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  placeholder="Notes"
+                  value={r.notes}
+                  onChange={(e) => setField(setDropoff, i, "notes", e.target.value)}
+                />
+                {dropoff.length > 1 && (
+                  <button
+                    className="px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                    onClick={() => rmRow(setDropoff, i)}
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
             </div>
@@ -153,12 +223,25 @@ function BookingModal({ open, onClose, onSave, context }) {
 
         <div className="mt-4">
           <label className="text-sm">Notes</label>
-          <textarea className="input min-h-[80px]" value={notes} onChange={e=>setNotes(e.target.value)} />
+          <textarea
+            className="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40 min-h-[80px]"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" disabled={saving} onClick={submit}>
+          <button
+            className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+            disabled={saving}
+            onClick={submit}
+          >
             {saving ? "Saving..." : "Create booking"}
           </button>
         </div>
@@ -186,16 +269,19 @@ export default function Bookings() {
         tenant_id: context.tenant_id,
         school_org_id: context.school_org_id,
       });
-      setRows(data);
+      setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
       toast.error("Could not load bookings.");
+      setRows([]);
     } finally {
       setLoading(false);
     }
   }, [context.tenant_id, context.school_org_id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onSave = async (payload) => {
     await createBooking(payload);
@@ -209,33 +295,6 @@ export default function Bookings() {
     await load();
   };
 
-  /* -------- tiny CSS helpers (Tailwind friendly) -------- */
-  useEffect(() => {
-    // Inject helper classes on the client only (fixes SSR/Vercel issues).
-    const base =
-      "w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40";
-    const btn =
-      "px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50";
-    const btn2 =
-      "px-3 py-2 rounded border border-gray-300 hover:bg-gray-50";
-    const btnMini =
-      "px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-xs";
-    const btnDangerMini =
-      "px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs";
-
-    const style = document.createElement("style");
-    style.innerHTML = `
-      .input{ ${base} }
-      .btn-primary{ ${btn} }
-      .btn-secondary{ ${btn2} }
-      .btn-mini{ ${btnMini} }
-      .btn-danger{ background:#ef4444;color:#fff;padding:.5rem .75rem;border-radius:.5rem }
-      .btn-danger-mini{ ${btnDangerMini} }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
-
   return (
     <div className="space-y-4">
       <ToastContainer position="top-center" autoClose={1800} hideProgressBar />
@@ -243,7 +302,10 @@ export default function Bookings() {
         <div className="text-sm text-gray-500">Bookings</div>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Bus Bookings</h1>
-          <button className="btn-primary" onClick={() => setOpen(true)}>
+          <button
+            className="px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700"
+            onClick={() => setOpen(true)}
+          >
             + New Booking
           </button>
         </div>
@@ -252,7 +314,7 @@ export default function Bookings() {
         </p>
       </div>
 
-      <div className="bg-white rounded shadow">
+      <div className="bg-white rounded shadow border border-gray-100">
         <div className="grid grid-cols-7 px-4 py-2 text-sm font-medium bg-gray-50">
           <div>Title</div>
           <div>When</div>
@@ -269,7 +331,10 @@ export default function Bookings() {
           <EmptyRow>No bookings yet.</EmptyRow>
         ) : (
           rows.map((r) => (
-            <div key={r.id} className="grid grid-cols-7 px-4 py-2 border-t text-sm items-center">
+            <div
+              key={r.id}
+              className="grid grid-cols-7 px-4 py-2 border-t text-sm items-center"
+            >
               <div className="truncate">{r.title}</div>
               <div>
                 {dayjs(r.date_start).format("MMM D, HH:mm")} →{" "}
@@ -281,10 +346,20 @@ export default function Bookings() {
               <div>{dayjs(r.created_at).format("MMM D, YYYY")}</div>
               <div className="flex gap-2">
                 {r.status !== "approved" && (
-                  <button className="btn-mini" onClick={() => setStatus(r.id, "approved")}>Approve</button>
+                  <button
+                    className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-xs"
+                    onClick={() => setStatus(r.id, "approved")}
+                  >
+                    Approve
+                  </button>
                 )}
                 {r.status !== "cancelled" && (
-                  <button className="btn-danger-mini" onClick={() => setStatus(r.id, "cancelled")}>Cancel</button>
+                  <button
+                    className="px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                    onClick={() => setStatus(r.id, "cancelled")}
+                  >
+                    Cancel
+                  </button>
                 )}
               </div>
             </div>
@@ -292,7 +367,12 @@ export default function Bookings() {
         )}
       </div>
 
-      <BookingModal open={open} onClose={() => setOpen(false)} onSave={onSave} context={context} />
+      <BookingModal
+        open={open}
+        onClose={() => setOpen(false)}
+        onSave={onSave}
+        context={context}
+      />
     </div>
   );
 }
