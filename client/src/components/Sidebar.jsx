@@ -20,6 +20,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
     ...(userRole === "admin"
       ? [{ to: "/admin/global", label: "Global Admin", icon: <FiTable size={18} /> }]
       : []),
+    { to: "/bookings", label: "Bus Bookings", icon: <FiList size={18} /> },
     { to: "/settings", label: "Settings", icon: <FiSettings size={18} /> },
   ];
 
