@@ -19,6 +19,7 @@ model User {
   role         String   @default("school_staff") // e.g. "admin", "finance", ...
   status       String   @default("pending")      // "approved" | "pending" | "blocked"
   createdAt    DateTime @default(now())
+  createdBookings  BusBooking[] @relation("BookingCreator")
 
   // Trips created by this user
   trips Trip[] @relation("TripsByUser")
@@ -140,19 +141,21 @@ model SubTrip {
   @@map("SubTrip")
 }
 
-// --- NEW: Stand-alone bus bookings (separate from trips) ---
+// ── BUS BOOKING (stand-alone, not tied to trips) ──────────────────────────────
 model BusBooking {
   id               Int       @id @default(autoincrement())
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  // who created (mirrors pattern used in Trip)
+  // who created this booking (optional)
   createdById      Int?
-  createdByUser    User?     @relation(fields: [createdById], references: [id])
+  creator          User?     @relation("BookingCreator", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  // redundant metadata you like to store for auditing
   createdBy        String?
   createdByEmail   String?
 
-  // optional org linkage for future multi-tenant filtering
+  // optional org linkage (text id from your global/tenant space if you want)
   orgId            String?
 
   // basics
@@ -160,26 +163,25 @@ model BusBooking {
   purpose          String?
 
   // schedule
-  date             DateTime?     // start date (for calendar views)
-  startTime        String?       // "08:00 AM"
-  endDate          DateTime?     // usually same day; supports multi-day
-  endTime          String?       // "03:30 PM"
+  date             DateTime?
+  startTime        String?     // e.g. "08:00"
+  endDate          DateTime?
+  endTime          String?     // e.g. "15:30"
   durationMinutes  Int?
 
   // passengers
-  students         Int?    @default(0)
-  adults           Int?    @default(0)
+  students         Int         @default(0)
+  adults           Int         @default(0)
   totalPassengers  Int?
 
   // logistics
-  pickupPoints     Json?   // [{ location, time }]
-  dropoffPoints    Json?   // [{ location, time }]
+  pickupPoints     Json?       // [{ location: string, time?: string }]
+  dropoffPoints    Json?       // [{ location: string, time?: string }]
   busesRequested   Int?
   busType          String?
 
   notes            String?
-  status           String?  @default("Requested") // Requested | Approved | Rejected | Cancelled
+  status           String      @default("Requested")
 
-  @@index([createdAt])
-  @@index([status])
+  @@map("BusBooking")          // table name in Postgres
 }
