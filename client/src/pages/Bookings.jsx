@@ -1,5 +1,4 @@
 // client/src/pages/Bookings.jsx
-
 import React, { useCallback, useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -302,6 +301,8 @@ export default function Bookings() {
         <div className="text-sm text-gray-500">Bookings</div>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Bus Bookings</h1>
+
+          {/* Header button */}
           <button
             className="px-3 py-2 rounded bg-violet-600 text-white hover:bg-violet-700"
             onClick={() => setOpen(true)}
@@ -373,6 +374,16 @@ export default function Bookings() {
         onSave={onSave}
         context={context}
       />
+
+      {/* Floating Action Button (always on top-right corner of viewport) */}
+      <button
+        className="fixed bottom-6 right-6 z-50 flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700"
+        onClick={() => setOpen(true)}
+        aria-label="New Booking"
+      >
+        <span className="font-medium hidden sm:inline">New Booking</span>
+        <span className="text-2xl leading-none">+</span>
+      </button>
     </div>
   );
 }
