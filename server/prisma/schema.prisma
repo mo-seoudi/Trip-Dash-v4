@@ -155,33 +155,36 @@ model BusBooking {
   createdBy        String?
   createdByEmail   String?
 
-  // optional org linkage (text id from your global/tenant space if you want)
-  orgId            String?
+  // multi-tenant/org scoping used by UI filters
+  tenant_id        String?   // <-- added to match UI
+  school_org_id    String?   // <-- added to match UI
 
   // basics
   title            String?
   purpose          String?
 
-  // schedule
-  date             DateTime?
-  startTime        String?     // e.g. "08:00"
-  endDate          DateTime?
-  endTime          String?     // e.g. "15:30"
-  durationMinutes  Int?
+  // schedule (match UI field names)
+  date_start       DateTime? // <-- renamed from date/startTime
+  date_end         DateTime? // <-- renamed from endDate/endTime
 
-  // passengers
-  students         Int         @default(0)
-  adults           Int         @default(0)
-  totalPassengers  Int?
+  // passengers (match UI names)
+  passengers_students Int     @default(0)
+  passengers_adults   Int     @default(0)
+  totalPassengers     Int?
 
-  // logistics
-  pickupPoints     Json?       // [{ location: string, time?: string }]
-  dropoffPoints    Json?       // [{ location: string, time?: string }]
+  // logistics (match UI names/shape)
+  pickup           Json?      // [{ name, address, notes }]
+  dropoff          Json?      // [{ name, address, notes }]
   busesRequested   Int?
   busType          String?
 
   notes            String?
-  status           String      @default("Requested")
 
-  @@map("BusBooking")          // table name in Postgres
+  // status values used in UI: "requested" | "approved" | "cancelled"
+  status           String     @default("requested")
+
+  @@index([tenant_id])
+  @@index([school_org_id])
+  @@index([status])
+  @@map("BusBooking")
 }
