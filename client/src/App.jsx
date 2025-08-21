@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import FinancePage from "./pages/Finance";
 import NotFound from "./pages/NotFound";
 import AllTrips from "./pages/AllTrips";
+import BusBookings from "./pages/BusBookings";
 import AdminRoles from "./pages/AdminRoles";
 import AdminUsers from "./pages/AdminUsers";
 import Settings from "./pages/Settings";
@@ -65,6 +66,15 @@ function AppRoutes() {
               element={
                 <ProtectedRoute allowedRoles={["admin","trip_manager","school_staff","bus_company","finance"]}>
                   <AllTrips />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/bookings"
+              element={
+                <ProtectedRoute allowedRoles={["school_staff","trip_manager","admin"]}>
+                  <BusBookings />
                 </ProtectedRoute>
               }
             />
