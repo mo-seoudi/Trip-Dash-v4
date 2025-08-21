@@ -139,3 +139,47 @@ model SubTrip {
   @@index([parentTripId])
   @@map("SubTrip")
 }
+
+// --- NEW: Stand-alone bus bookings (separate from trips) ---
+model BusBooking {
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // who created (mirrors pattern used in Trip)
+  createdById      Int?
+  createdByUser    User?     @relation(fields: [createdById], references: [id])
+  createdBy        String?
+  createdByEmail   String?
+
+  // optional org linkage for future multi-tenant filtering
+  orgId            String?
+
+  // basics
+  title            String?
+  purpose          String?
+
+  // schedule
+  date             DateTime?     // start date (for calendar views)
+  startTime        String?       // "08:00 AM"
+  endDate          DateTime?     // usually same day; supports multi-day
+  endTime          String?       // "03:30 PM"
+  durationMinutes  Int?
+
+  // passengers
+  students         Int?    @default(0)
+  adults           Int?    @default(0)
+  totalPassengers  Int?
+
+  // logistics
+  pickupPoints     Json?   // [{ location, time }]
+  dropoffPoints    Json?   // [{ location, time }]
+  busesRequested   Int?
+  busType          String?
+
+  notes            String?
+  status           String?  @default("Requested") // Requested | Approved | Rejected | Cancelled
+
+  @@index([createdAt])
+  @@index([status])
+}
