@@ -1,29 +1,53 @@
 // client/src/components/Sidebar.jsx
 import React, { useRef, useEffect } from "react";
 import { NavLink } from "react-router-dom";
-import { FiHome, FiList, FiDollarSign, FiSettings, FiTable } from "react-icons/fi";
+import {
+  FiHome,
+  FiList,
+  FiDollarSign,
+  FiSettings,
+  FiTable,
+  FiTruck,
+} from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 
 function Sidebar({ sidebarOpen, setSidebarOpen }) {
-  const sidebar = useRef();
-  const trigger = useRef();
+  const sidebar = useRef(null);
+  const trigger = useRef(null);
   const { profile } = useAuth();
-  const userRole = profile?.role;
 
-  // navigation items
+  // Support either a single role string or an array of roles
+  const roles = Array.isArray(profile?.roles)
+    ? profile.roles
+    : profile?.role
+    ? [profile.role]
+    : [];
+  const has = (r) => roles.includes(r);
+
+  // Build nav items by role
   const links = [
     { to: "/", label: "Dashboard", icon: <FiHome size={18} /> },
     { to: "/trips", label: "All Trips", icon: <FiList size={18} /> },
-    ...(userRole === "admin" || userRole === "finance"
+
+    // Bus Bookings (school staff, trip managers, admins)
+    ...(has("school_staff") || has("trip_manager") || has("admin")
+      ? [{ to: "/bookings", label: "Bus Bookings", icon: <FiTruck size={18} /> }]
+      : []),
+
+    // Finance (finance + admins)
+    ...(has("finance") || has("admin")
       ? [{ to: "/finance", label: "Finance", icon: <FiDollarSign size={18} /> }]
       : []),
-    ...(userRole === "admin"
+
+    // Global Admin (admins only)
+    ...(has("admin")
       ? [{ to: "/admin/global", label: "Global Admin", icon: <FiTable size={18} /> }]
       : []),
-    { to: "/bookings", label: "Bus Bookings", icon: <FiList size={18} /> },
+
     { to: "/settings", label: "Settings", icon: <FiSettings size={18} /> },
   ];
 
+  // Close when clicking outside on mobile
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!sidebar.current || !trigger.current) return;
@@ -36,6 +60,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [sidebarOpen, setSidebarOpen]);
 
+  // Close on Esc
   useEffect(() => {
     const handleEsc = (e) => {
       if (!sidebarOpen || e.key !== "Escape") return;
