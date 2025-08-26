@@ -1,14 +1,14 @@
 // server/src/ms/graphOnBehalf.js
-const fetch = require("node-fetch");
-const { cca } = require("./msalClient");
+import fetch from "node-fetch";
+import { cca } from "./msalClient.js";
 
 /**
  * Exchange the SPA's API token for a Microsoft Graph token (On-Behalf-Of)
- * @param {string[]} scopes - e.g. ["https://graph.microsoft.com/User.Read"]
- * @param {string} userAssertion - the incoming bearer token from the SPA (for your API)
+ * @param {string[]} scopes e.g. ["https://graph.microsoft.com/User.Read"]
+ * @param {string} userAssertion incoming bearer token from the SPA (for your API)
  * @returns {Promise<string>} access token for Graph
  */
-async function oboAcquire(scopes, userAssertion) {
+export async function oboAcquire(scopes, userAssertion) {
   const result = await cca.acquireTokenOnBehalfOf({
     oboAssertion: userAssertion,
     scopes,
@@ -16,7 +16,7 @@ async function oboAcquire(scopes, userAssertion) {
   return result.accessToken;
 }
 
-async function graphGet(path, bearer) {
+export async function graphGet(path, bearer) {
   const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     headers: { Authorization: `Bearer ${bearer}` },
   });
@@ -24,7 +24,7 @@ async function graphGet(path, bearer) {
   return r.json();
 }
 
-async function graphPost(path, bearer, body) {
+export async function graphPost(path, bearer, body) {
   const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     method: "POST",
     headers: {
@@ -38,4 +38,3 @@ async function graphPost(path, bearer, body) {
   return text ? JSON.parse(text) : {};
 }
 
-module.exports = { oboAcquire, graphGet, graphPost };
