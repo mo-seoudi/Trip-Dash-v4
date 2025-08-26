@@ -1,7 +1,7 @@
 // server/src/routes/ms.js
-const { Router } = require("express");
-const { requireApiToken } = require("../ms/requireApiToken");
-const { oboAcquire, graphGet, graphPost } = require("../ms/graphOnBehalf");
+import { Router } from "express";
+import { requireApiToken } from "../ms/requireApiToken.js";
+import { oboAcquire, graphGet, graphPost } from "../ms/graphOnBehalf.js";
 
 const router = Router();
 router.use(requireApiToken);
@@ -32,4 +32,4 @@ router.post("/events", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
