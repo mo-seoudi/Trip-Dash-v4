@@ -1,6 +1,6 @@
 // server/src/ms/requireApiToken.js
-const jwksClient = require("jwks-rsa");
-const jwt = require("jsonwebtoken");
+import jwksClient from "jwks-rsa";
+import jwt from "jsonwebtoken";
 
 // Use "common" JWKS — good for multi-tenant during development
 const client = jwksClient({
@@ -17,6 +17,40 @@ function getKey(header, cb) {
 
 /**
  * Middleware: verifies the SPA's bearer token is meant for YOUR API.
+ * - Checks signature (via JWKS), RS256
+ * - Checks audience against MS_EXPECTED_AUDIENCE (e.g., api://YOUR_API_APP_ID)
+ * - Validates issuer pattern (Microsoft v2.0 endpoints)
+ * - On success: attaches the raw token to req.spaAccessToken
+ */
+export async function requireApiToken(req, res, next) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Missing bearer token" });
+
+  jwt.verify(
+    token,
+    getKey,
+    { algorithms: ["RS256"], audience: process.env.MS_EXPECTED_AUDIENCE },
+    (err, decoded) => {
+      if (err) return res.status(401).json({ error: "Invalid token", details: err.message });
+
+      // Extra safety: basic issuer pattern check
+      const iss = decoded && decoded.iss ? String(decoded.iss) : "";
+      const okIssuer =
+        /https:\/\/sts\.windows\.net\/[^/]+\/?/i.test(iss) ||
+        /https:\/\/login\.microsoftonline\.com\/[^/]+\/v2\.0\/?/i.test(iss);
+
+      if (!okIssuer) {
+        return res.status(401).json({ error: "Invalid issuer", issuer: iss });
+      }
+
+      req.spaAccessToken = token;
+      req.msal = { decoded };
+      next();
+    }
+  );
+}
+ for YOUR API.
  * - Checks signature (via JWKS), RS256
  * - Checks audience against MS_EXPECTED_AUDIENCE (e.g., api://YOUR_API_APP_ID)
  * - Light issuer check (Microsoft v2.0 endpoints)
