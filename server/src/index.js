@@ -17,6 +17,9 @@ import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 import bookingsRoutes from "./routes/bookingsRoutes.js";
 
+// ✅ NEW: MS365 routes (CommonJS export is fine to import as default in ESM)
+import msRoutes from "./routes/ms.js";
+
 dotenv.config();
 
 const app = express();
@@ -201,6 +204,9 @@ app.use("/api/trips", tripsRouter);
 app.use("/api/global", globalRoutes);
 app.use("/api/global", globalRolesRoutes);
 app.use("/api/bookings", bookingsRoutes);
+
+// ✅ NEW: Microsoft 365 integration routes
+app.use("/api/ms", msRoutes);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
