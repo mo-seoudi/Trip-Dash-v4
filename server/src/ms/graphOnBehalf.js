@@ -1,14 +1,9 @@
 // server/src/ms/graphOnBehalf.js
 import fetch from "node-fetch";
-import { cca } from "./msalClient.js";
+import { getCca } from "./msalClient.js";
 
-/**
- * Exchange the SPA's API token for a Microsoft Graph token (On-Behalf-Of)
- * @param {string[]} scopes e.g. ["https://graph.microsoft.com/User.Read"]
- * @param {string} userAssertion incoming bearer token from the SPA (for your API)
- * @returns {Promise<string>} access token for Graph
- */
 export async function oboAcquire(scopes, userAssertion) {
+  const cca = getCca();
   const result = await cca.acquireTokenOnBehalfOf({
     oboAssertion: userAssertion,
     scopes,
@@ -37,4 +32,3 @@ export async function graphPost(path, bearer, body) {
   if (!r.ok) throw new Error(`Graph POST ${path} failed: ${r.status} ${text}`);
   return text ? JSON.parse(text) : {};
 }
-
