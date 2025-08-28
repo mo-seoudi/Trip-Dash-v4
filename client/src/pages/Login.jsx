@@ -5,6 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
 import { useMsal } from "@azure/msal-react";
 
+const API_SCOPE = "api://YOUR_API_APP_ID/access_as_user"; // <-- update this
+
 const Login = () => {
   const { loading, refreshSession } = useAuth();
   const [email, setEmail] = useState("");
@@ -34,40 +36,46 @@ const Login = () => {
     setMsInfo("");
     setMsBusy(true);
     try {
-      // Popup sign-in; ask for minimal scope now (User.Read gives you Graph later if needed)
-      await instance.loginPopup({ scopes: ["User.Read"] });
-      const acct = instance.getAllAccounts()[0];
+      // 1) Sign in with MS (request User.Read + your API scope so we can call the backend)
+      await instance.loginPopup({ scopes: ["User.Read", API_SCOPE] });
 
-      if (!acct) {
+      const account = instance.getAllAccounts()[0];
+      if (!account) {
         setMsInfo("Microsoft sign-in canceled or no account found.");
         return;
       }
 
-      // Attempt optional server-side exchange if you add this endpoint in the future:
-      // POST /auth/login-microsoft { email }
-      // If it doesn't exist, we just prefill the email field and ask user to click Login.
-      try {
-        const resp = await fetch("/api/auth/login-microsoft", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: acct.username }),
-          credentials: "include",
-        });
+      // 2) Acquire API access token (for your backend /api/auth/login-microsoft)
+      const { accessToken } = await instance.acquireTokenSilent({
+        account,
+        scopes: [API_SCOPE],
+      });
 
-        if (resp.ok) {
-          // Server created a session cookie; refresh and go in
-          await refreshSession();
-          navigate("/");
-          return;
-        }
+      // 3) Call backend to create your app session (JWT cookie)
+      const resp = await fetch("/api/auth/login-microsoft", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        credentials: "include", // so cookie is set
+        body: JSON.stringify({}), // identity comes from verified token; body unused
+      });
 
-        // If 404/501/etc., fall back to prefill and guide the user
-        setEmail(acct.username || "");
-        setMsInfo("Microsoft account detected. Email field prefilled — enter your password or ask an admin to enable SSO.");
-      } catch {
-        setEmail(acct.username || "");
-        setMsInfo("Microsoft account detected. Email field prefilled — enter your password or ask an admin to enable SSO.");
+      if (resp.ok) {
+        await refreshSession();
+        navigate("/");
+        return;
       }
+
+      // If backend not ready or user not provisioned, fall back to prefill email
+      setEmail(account.username || "");
+      const text = await resp.text();
+      setMsInfo(
+        `Microsoft account detected. Email prefilled${
+          text ? ` — server says: ${text}` : ""
+        }. You may need admin approval or to finish registration.`
+      );
     } catch (e) {
       console.error(e);
       setError(e?.message || "Microsoft sign-in failed.");
@@ -87,6 +95,7 @@ const Login = () => {
 
         {error && <div className="text-red-600 text-sm">{error}</div>}
 
+        {/* Microsoft 365 SSO */}
         <button
           type="button"
           onClick={onMsSignIn}
@@ -97,6 +106,7 @@ const Login = () => {
         </button>
         {msInfo && <div className="text-xs text-gray-600">{msInfo}</div>}
 
+        {/* Email / Password login (unchanged) */}
         <input
           type="email"
           placeholder="Email"
