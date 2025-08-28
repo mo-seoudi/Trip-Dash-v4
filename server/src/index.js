@@ -19,6 +19,8 @@ import bookingsRoutes from "./routes/bookingsRoutes.js";
 
 // ✅ NEW: MS365 routes (CommonJS export is fine to import as default in ESM)
 import msRoutes from "./routes/ms.js";
+import authMicrosoftRoutes from "./routes/authMicrosoft.js";
+
 
 dotenv.config();
 
@@ -207,6 +209,7 @@ app.use("/api/bookings", bookingsRoutes);
 
 // ✅ NEW: Microsoft 365 integration routes
 app.use("/api/ms", msRoutes);
+app.use("/api/auth", authMicrosoftRoutes);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
