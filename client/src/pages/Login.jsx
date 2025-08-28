@@ -3,13 +3,18 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
+import { useMsal } from "@azure/msal-react";
 
 const Login = () => {
   const { loading, refreshSession } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [msBusy, setMsBusy] = useState(false);
+  const [msInfo, setMsInfo] = useState("");
+
   const navigate = useNavigate();
+  const { instance } = useMsal();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -24,6 +29,53 @@ const Login = () => {
     }
   };
 
+  async function onMsSignIn() {
+    setError("");
+    setMsInfo("");
+    setMsBusy(true);
+    try {
+      // Popup sign-in; ask for minimal scope now (User.Read gives you Graph later if needed)
+      await instance.loginPopup({ scopes: ["User.Read"] });
+      const acct = instance.getAllAccounts()[0];
+
+      if (!acct) {
+        setMsInfo("Microsoft sign-in canceled or no account found.");
+        return;
+      }
+
+      // Attempt optional server-side exchange if you add this endpoint in the future:
+      // POST /auth/login-microsoft { email }
+      // If it doesn't exist, we just prefill the email field and ask user to click Login.
+      try {
+        const resp = await fetch("/api/auth/login-microsoft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: acct.username }),
+          credentials: "include",
+        });
+
+        if (resp.ok) {
+          // Server created a session cookie; refresh and go in
+          await refreshSession();
+          navigate("/");
+          return;
+        }
+
+        // If 404/501/etc., fall back to prefill and guide the user
+        setEmail(acct.username || "");
+        setMsInfo("Microsoft account detected. Email field prefilled — enter your password or ask an admin to enable SSO.");
+      } catch {
+        setEmail(acct.username || "");
+        setMsInfo("Microsoft account detected. Email field prefilled — enter your password or ask an admin to enable SSO.");
+      }
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Microsoft sign-in failed.");
+    } finally {
+      setMsBusy(false);
+    }
+  }
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Loading...</div>;
   }
@@ -34,6 +86,16 @@ const Login = () => {
         <h2 className="text-2xl font-bold text-center">Login</h2>
 
         {error && <div className="text-red-600 text-sm">{error}</div>}
+
+        <button
+          type="button"
+          onClick={onMsSignIn}
+          disabled={msBusy}
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60"
+        >
+          {msBusy ? "Connecting to Microsoft..." : "Sign in with Microsoft 365"}
+        </button>
+        {msInfo && <div className="text-xs text-gray-600">{msInfo}</div>}
 
         <input
           type="email"
