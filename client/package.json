@@ -32,6 +32,8 @@
     "@fullcalendar/daygrid": "^6.1.10",
     "@fullcalendar/react": "^6.1.10",
     "@heroicons/react": "^2.1.1",
+    "@azure/msal-browser": "^3.19.0",
+    "@azure/msal-react": "^2.0.17",
     "ag-grid-community": "^31.3.1",
     "ag-grid-react": "^31.3.1",
     "react-big-calendar": "^1.8.1",
