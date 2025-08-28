@@ -1,4 +1,4 @@
-// src/App.jsx
+//client/src/App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
@@ -112,6 +112,16 @@ function AppRoutes() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <GlobalConsole />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* ✅ Settings page (now accessible and contains the MS365 panel) */}
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={["school_staff","bus_company","trip_manager","admin","finance"]}>
+                  <Settings />
                 </ProtectedRoute>
               }
             />
