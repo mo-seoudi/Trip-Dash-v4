@@ -5,7 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
 import { useMsal } from "@azure/msal-react";
 
-const API_SCOPE = "api://YOUR_API_APP_ID/access_as_user"; // <-- update this
+// Replace with your API Application ID URI
+const API_SCOPE = "api://YOUR_API_APP_ID/access_as_user";
 
 const Login = () => {
   const { loading, refreshSession } = useAuth();
@@ -14,9 +15,9 @@ const Login = () => {
   const [error, setError] = useState("");
   const [msBusy, setMsBusy] = useState(false);
   const [msInfo, setMsInfo] = useState("");
-
   const navigate = useNavigate();
-  const { instance } = useMsal();
+
+  const { instance, inProgress } = useMsal();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -34,10 +35,16 @@ const Login = () => {
   async function onMsSignIn() {
     setError("");
     setMsInfo("");
+
+    if (inProgress !== "none") {
+      setMsInfo("Another Microsoft sign-in is in progress. Please wait and try again.");
+      return;
+    }
+
     setMsBusy(true);
     try {
-      // 1) Sign in with MS (request User.Read + your API scope so we can call the backend)
-      await instance.loginPopup({ scopes: ["User.Read", API_SCOPE] });
+      // 1) Interactive sign-in (request both Graph basic scopes and your API scope)
+      await instance.loginPopup({ scopes: ["openid", "profile", "email", "User.Read", API_SCOPE] });
 
       const account = instance.getAllAccounts()[0];
       if (!account) {
@@ -45,21 +52,21 @@ const Login = () => {
         return;
       }
 
-      // 2) Acquire API access token (for your backend /api/auth/login-microsoft)
+      // 2) Get an API token to call backend SSO endpoint
       const { accessToken } = await instance.acquireTokenSilent({
         account,
         scopes: [API_SCOPE],
       });
 
-      // 3) Call backend to create your app session (JWT cookie)
+      // 3) Exchange for your app session
       const resp = await fetch("/api/auth/login-microsoft", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        credentials: "include", // so cookie is set
-        body: JSON.stringify({}), // identity comes from verified token; body unused
+        credentials: "include",
+        body: JSON.stringify({}), // identity comes from the verified token
       });
 
       if (resp.ok) {
@@ -68,7 +75,7 @@ const Login = () => {
         return;
       }
 
-      // If backend not ready or user not provisioned, fall back to prefill email
+      // Fallback: prefill email and show server message
       setEmail(account.username || "");
       const text = await resp.text();
       setMsInfo(
@@ -99,14 +106,14 @@ const Login = () => {
         <button
           type="button"
           onClick={onMsSignIn}
-          disabled={msBusy}
+          disabled={msBusy || inProgress !== "none"}
           className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60"
         >
           {msBusy ? "Connecting to Microsoft..." : "Sign in with Microsoft 365"}
         </button>
         {msInfo && <div className="text-xs text-gray-600">{msInfo}</div>}
 
-        {/* Email / Password login (unchanged) */}
+        {/* Email / Password login */}
         <input
           type="email"
           placeholder="Email"
