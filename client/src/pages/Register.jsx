@@ -12,14 +12,13 @@ const Register = () => {
   const [error, setError] = useState("");
   const [msBusy, setMsBusy] = useState(false);
   const [msError, setMsError] = useState("");
-
   const navigate = useNavigate();
-  const { instance } = useMsal();
+
+  const { instance, inProgress } = useMsal();
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError("");
-
     try {
       await api.post("/auth/register", { email, password, name, role });
       alert("Registration successful! Wait for admin approval before logging in.");
@@ -31,14 +30,16 @@ const Register = () => {
   };
 
   async function onMsSignIn() {
-    setMsBusy(true);
     setMsError("");
+    if (inProgress !== "none") {
+      setMsError("Another Microsoft sign-in is in progress. Please wait and try again.");
+      return;
+    }
+    setMsBusy(true);
     try {
-      // Ask for minimal scope now; you can add "User.Read" if you want a Graph token later
-      await instance.loginPopup({ scopes: ["User.Read"] });
+      await instance.loginPopup({ scopes: ["openid", "profile", "email", "User.Read"] });
       const acct = instance.getAllAccounts()[0];
       if (acct) {
-        // Prefill from Microsoft account
         if (!name) setName(acct.name || "");
         if (!email) setEmail(acct.username || "");
       }
@@ -59,7 +60,7 @@ const Register = () => {
         <button
           type="button"
           onClick={onMsSignIn}
-          disabled={msBusy}
+          disabled={msBusy || inProgress !== "none"}
           className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60"
         >
           {msBusy ? "Connecting to Microsoft..." : "Sign in with Microsoft 365 (prefill)"}
@@ -119,5 +120,3 @@ const Register = () => {
 };
 
 export default Register;
-
-
