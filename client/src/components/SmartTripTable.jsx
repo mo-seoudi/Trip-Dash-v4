@@ -2,7 +2,7 @@
 import React from "react";
 import { useAuth } from "../context/AuthContext";
 import StatusBadge from "./StatusBadge";
-import { RxCaretSort, RxCaretUp, RxChevronDown } from "react-icons/rx";
+import { RxCaretSort, RxCaretUp, RxChevronDown, RxPerson } from "react-icons/rx";
 import Pagination from "./Pagination";
 import ModalWrapper from "./ModalWrapper";
 import TripDetails from "./TripDetails";
@@ -43,8 +43,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
     handleJump,
   } = usePagination(tripData);
 
-  // We still compute subTripsMap to avoid breaking any upstream logic,
-  // but we no longer render sub-trips inside the table rows.
+  // Keep subTripsMap in case other parts rely on it, but we no longer render sub-trips inline.
   const { subTripsMap } = useSubTrips(tripData);
 
   const { handleStatusChange, handleSoftDelete } = useTripActions(profile, setTripData);
@@ -140,7 +139,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         trip={trip}
                         role={profile?.role}
                         onStatusChange={(trip, status) => {
-                          // Status updates apply to the PARENT trip only (new behavior).
+                          // Parent-trip status updates only.
                           handleStatusChange(trip, status);
                           closeRow();
                         }}
@@ -153,13 +152,15 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         onSoftDelete={handleSoftDelete}
                       />
 
-                      {/* Passengers button — unchanged */}
+                      {/* Passengers button — now styled like command buttons */}
                       {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
                         <button
                           onClick={() => setShowPassengersTrip(trip)}
-                          className="px-3 py-2 rounded bg-indigo-600 text-white"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                          title="View Passengers"
                         >
-                          Passengers
+                          <RxPerson className="text-gray-500" />
+                          <span>Passengers</span>
                         </button>
                       )}
                     </div>
@@ -167,31 +168,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 </tr>
               )}
 
-              {/* ⛔️ Sub-trip rows removed from table (per new behavior).
-                  We keep subTripsMap available for the details modal if needed,
-                  but do not render sub-trips inline here anymore. */}
-              {/*
-              {subTripsMap[trip.id]?.map((subTrip, index) => (
-                <tr key={subTrip.id} className="bg-gray-50 border-b">
-                  <td className="px-4 py-2">↳ Bus #{index + 1}</td>
-                  <td className="px-4 py-2">Seats: {subTrip.busSeats}</td>
-                  <td className="px-4 py-2"></td>
-                  <td className="px-4 py-2"></td>
-                  <td className="px-4 py-2"></td>
-                  <td className="px-4 py-2">
-                    <StatusBadge status={subTrip.status} />
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      onClick={() => setShowDetailsTrip({ ...trip, subTrip })}
-                      className="flex items-center text-green-600 underline hover:text-green-800 transition-colors px-1 text-sm"
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              */}
+              {/* Sub-trip rows intentionally not rendered in table anymore */}
             </React.Fragment>
           ))}
         </tbody>
@@ -210,7 +187,6 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
 
       {showDetailsTrip && (
         <ModalWrapper onClose={() => setShowDetailsTrip(null)}>
-          {/* TripDetails remains the place where buses ("sub-trips") will be shown */}
           <TripDetails trip={showDetailsTrip} />
         </ModalWrapper>
       )}
@@ -244,7 +220,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
         />
       )}
 
-      {/* Passengers modal — unchanged */}
+      {/* Passengers modal */}
       {showPassengersTrip && (
         <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
           <PassengersPanel
