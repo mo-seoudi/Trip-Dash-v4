@@ -32,8 +32,21 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
     setTripData(trips || []);
   }, [trips]);
 
-  const { paginatedData, currentPage, setCurrentPage, rowsPerPage, setRowsPerPage, jumpPageInput, setJumpPageInput, handleJump } = usePagination(tripData);
+  const {
+    paginatedData,
+    currentPage,
+    setCurrentPage,
+    rowsPerPage,
+    setRowsPerPage,
+    jumpPageInput,
+    setJumpPageInput,
+    handleJump,
+  } = usePagination(tripData);
+
+  // We still compute subTripsMap to avoid breaking any upstream logic,
+  // but we no longer render sub-trips inside the table rows.
   const { subTripsMap } = useSubTrips(tripData);
+
   const { handleStatusChange, handleSoftDelete } = useTripActions(profile, setTripData);
 
   const handleDateSortToggle = () => {
@@ -52,8 +65,12 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
             <th className="w-[160px] px-4 py-2 text-left">Trip Type</th>
             <th className="w-[140px] px-4 py-2 text-left">Destination</th>
             <th className="w-[90px] px-4 py-2 text-left">Students</th>
-            <th className="w-[160px] px-4 py-2 text-left cursor-pointer select-none" onClick={handleDateSortToggle}>
-              Date <span className="inline-block w-4">
+            <th
+              className="w-[160px] px-4 py-2 text-left cursor-pointer select-none"
+              onClick={handleDateSortToggle}
+            >
+              Date{" "}
+              <span className="inline-block w-4">
                 {dateSortOrder === "" && <RxCaretSort />}
                 {dateSortOrder === "asc" && "↑"}
                 {dateSortOrder === "desc" && "↓"}
@@ -68,27 +85,50 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
         <tbody>
           {paginatedData.length === 0 && (
             <tr>
-              <td colSpan={7} className="text-center py-4">No trips found.</td>
+              <td colSpan={7} className="text-center py-4">
+                No trips found.
+              </td>
             </tr>
           )}
 
           {paginatedData.map((trip) => (
             <React.Fragment key={trip.id}>
-              <tr className={`border-b transition-colors ${expandedTripId === trip.id ? "bg-gray-50" : "hover:bg-gray-50"} ${trip.status === "Pending" ? "font-semibold" : ""}`}>
-                <td className="px-4 py-2">{trip.tripType === "Other" ? trip.customType : trip.tripType}</td>
-                <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">{trip.destination}</td>
+              <tr
+                className={`border-b transition-colors ${
+                  expandedTripId === trip.id ? "bg-gray-50" : "hover:bg-gray-50"
+                } ${trip.status === "Pending" ? "font-semibold" : ""}`}
+              >
+                <td className="px-4 py-2">
+                  {trip.tripType === "Other" ? trip.customType : trip.tripType}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">
+                  {trip.destination}
+                </td>
                 <td className="px-4 py-2">{trip.students}</td>
                 <td className="px-4 py-2">
-                  {trip.date ? new Date(trip.date).toLocaleDateString(undefined, {
-                    year: "numeric", month: "short", day: "2-digit"
-                  }) : ""}
-                </td>  
+                  {trip.date
+                    ? new Date(trip.date).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "2-digit",
+                      })
+                    : ""}
+                </td>
                 <td className="px-4 py-2">{trip.departureTime}</td>
                 <td className="px-4 py-2">
                   <StatusBadge status={trip.status} />
                 </td>
-                <td className="px-2 py-2 text-center cursor-pointer text-gray-400 hover:text-blue-600 transition" onClick={() => setExpandedTripId(expandedTripId === trip.id ? null : trip.id)}>
-                  {expandedTripId === trip.id ? <RxCaretUp size={24} className="mx-auto" /> : <RxChevronDown size={24} className="mx-auto" />}
+                <td
+                  className="px-2 py-2 text-center cursor-pointer text-gray-400 hover:text-blue-600 transition"
+                  onClick={() =>
+                    setExpandedTripId(expandedTripId === trip.id ? null : trip.id)
+                  }
+                >
+                  {expandedTripId === trip.id ? (
+                    <RxCaretUp size={24} className="mx-auto" />
+                  ) : (
+                    <RxChevronDown size={24} className="mx-auto" />
+                  )}
                 </td>
               </tr>
 
@@ -100,17 +140,20 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         trip={trip}
                         role={profile?.role}
                         onStatusChange={(trip, status) => {
+                          // Status updates apply to the PARENT trip only (new behavior).
                           handleStatusChange(trip, status);
                           closeRow();
                         }}
                         onAssignBus={(trip) => setAssignTrip(trip)}
-                        onConfirmAction={(trip, label, nextStatus) => setConfirmAction({ trip, label, nextStatus })}
+                        onConfirmAction={(trip, label, nextStatus) =>
+                          setConfirmAction({ trip, label, nextStatus })
+                        }
                         onView={(trip) => setShowDetailsTrip(trip)}
                         onEdit={(trip) => setEditTrip(trip)}
                         onSoftDelete={handleSoftDelete}
                       />
 
-                      {/* NEW: Passengers button — only when the trip is beyond Pending */}
+                      {/* Passengers button — unchanged */}
                       {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
                         <button
                           onClick={() => setShowPassengersTrip(trip)}
@@ -124,6 +167,10 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 </tr>
               )}
 
+              {/* ⛔️ Sub-trip rows removed from table (per new behavior).
+                  We keep subTripsMap available for the details modal if needed,
+                  but do not render sub-trips inline here anymore. */}
+              {/*
               {subTripsMap[trip.id]?.map((subTrip, index) => (
                 <tr key={subTrip.id} className="bg-gray-50 border-b">
                   <td className="px-4 py-2">↳ Bus #{index + 1}</td>
@@ -135,12 +182,16 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                     <StatusBadge status={subTrip.status} />
                   </td>
                   <td className="px-4 py-2">
-                    <button onClick={() => setShowDetailsTrip({ ...trip, subTrip })} className="flex items-center text-green-600 underline hover:text-green-800 transition-colors px-1 text-sm">
+                    <button
+                      onClick={() => setShowDetailsTrip({ ...trip, subTrip })}
+                      className="flex items-center text-green-600 underline hover:text-green-800 transition-colors px-1 text-sm"
+                    >
                       View
                     </button>
                   </td>
                 </tr>
               ))}
+              */}
             </React.Fragment>
           ))}
         </tbody>
@@ -159,6 +210,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
 
       {showDetailsTrip && (
         <ModalWrapper onClose={() => setShowDetailsTrip(null)}>
+          {/* TripDetails remains the place where buses ("sub-trips") will be shown */}
           <TripDetails trip={showDetailsTrip} />
         </ModalWrapper>
       )}
@@ -192,7 +244,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
         />
       )}
 
-      {/* NEW: Passengers modal */}
+      {/* Passengers modal — unchanged */}
       {showPassengersTrip && (
         <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
           <PassengersPanel
