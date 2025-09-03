@@ -156,11 +156,11 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                       {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
                         <button
                           onClick={() => setShowPassengersTrip(trip)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                          className="flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 text-gray-700 hover:text-gray-900"
                           title="View Passengers"
                         >
-                          <RxPerson className="text-gray-500" />
-                          <span>Passengers</span>
+                          <RxPerson className="mr-1" />
+                          Passengers
                         </button>
                       )}
                     </div>
