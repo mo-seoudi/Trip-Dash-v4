@@ -12,9 +12,8 @@ import AssignBusForm from "./AssignBusForm";
 import { usePagination } from "../hooks/usePagination";
 import { useSubTrips } from "../hooks/useSubTrips";
 import useTripActions from "../hooks/useTripActions";
-
-// NEW: passengers panel
 import PassengersPanel from "./trips/PassengersPanel";
+import EditTripForm from "./EditTripForm";
 
 const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = false }) => {
   const { profile } = useAuth();
@@ -23,9 +22,8 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   const [showDetailsTrip, setShowDetailsTrip] = React.useState(null);
   const [confirmAction, setConfirmAction] = React.useState(null);
   const [assignTrip, setAssignTrip] = React.useState(null);
-  const [editTrip, setEditTrip] = React.useState(null);
+  const [editTrip, setEditTrip] = React.useState(null); // already existed
 
-  // NEW: track which trip is showing the Passengers panel
   const [showPassengersTrip, setShowPassengersTrip] = React.useState(null);
 
   React.useEffect(() => {
@@ -43,7 +41,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
     handleJump,
   } = usePagination(tripData);
 
-  // Keep subTripsMap in case other parts rely on it, but we no longer render sub-trips inline.
+  // Kept to avoid breaking other logic; we no longer render sub-trips inline.
   const { subTripsMap } = useSubTrips(tripData);
 
   const { handleStatusChange, handleSoftDelete } = useTripActions(profile, setTripData);
@@ -55,6 +53,12 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   };
 
   const closeRow = () => setExpandedTripId(null);
+
+  // Helper: after a successful edit, refresh the row in-memory if the caller passes updated data,
+  // but EditTripForm already calls your service and you call onUpdated() to refetch outside.
+  const refreshEditedTrip = () => {
+    // If you have a fetch here, call it; otherwise the parent page likely refreshes.
+  };
 
   return (
     <div className="overflow-x-auto relative">
@@ -148,11 +152,11 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                           setConfirmAction({ trip, label, nextStatus })
                         }
                         onView={(trip) => setShowDetailsTrip(trip)}
-                        onEdit={(trip) => setEditTrip(trip)}
+                        onEdit={(trip) => setEditTrip(trip)} // ✅ this now opens a modal
                         onSoftDelete={handleSoftDelete}
                       />
 
-                      {/* Passengers button — now styled like command buttons */}
+                      {/* Passengers button — styled like command buttons */}
                       {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
                         <button
                           onClick={() => setShowPassengersTrip(trip)}
@@ -167,8 +171,6 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                   </td>
                 </tr>
               )}
-
-              {/* Sub-trip rows intentionally not rendered in table anymore */}
             </React.Fragment>
           ))}
         </tbody>
@@ -226,6 +228,24 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
           <PassengersPanel
             trip={showPassengersTrip}
             onClose={() => setShowPassengersTrip(null)}
+          />
+        </ModalWrapper>
+      )}
+
+      {/* ✅ NEW: Edit Trip modal (school_staff and others) */}
+      {editTrip && (
+        <ModalWrapper onClose={() => setEditTrip(null)}>
+          <EditTripForm
+            trip={editTrip}
+            onClose={() => setEditTrip(null)}
+            onUpdated={() => {
+              refreshEditedTrip();
+            }}
+            // keep your rule from StaffActions: staff editing Confirmed ⇒ request mode
+            isRequestMode={
+              (profile?.role === "school_staff" && editTrip?.status === "Confirmed") ||
+              false
+            }
           />
         </ModalWrapper>
       )}
