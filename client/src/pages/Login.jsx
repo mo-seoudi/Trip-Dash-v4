@@ -5,7 +5,6 @@ import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
 import { useMsal } from "@azure/msal-react";
 
-// Replace with your API Application ID URI
 const API_SCOPE = "api://YOUR_API_APP_ID/access_as_user";
 
 const Login = () => {
@@ -13,7 +12,7 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [info, setInfo] = useState(""); // generic info (e.g., SSO messages)
+  const [info, setInfo] = useState("");
 
   const [msBusy, setMsBusy] = useState(false);
   const [gBusy, setGBusy] = useState(false);
@@ -26,8 +25,8 @@ const Login = () => {
     setError("");
     setInfo("");
     try {
-      await apiLogin(email, password); // sets cookie on success
-      await refreshSession();          // pull user into context
+      await apiLogin(email, password);
+      await refreshSession();
       navigate("/");
     } catch (err) {
       console.error(err);
@@ -38,49 +37,33 @@ const Login = () => {
   async function onMsSignIn() {
     setError("");
     setInfo("");
-
     if (inProgress !== "none") {
       setInfo("Another Microsoft sign-in is in progress. Please try again in a moment.");
       return;
     }
-
     setMsBusy(true);
     try {
-      // 1) Interactive sign-in (request Graph basics + your API scope)
-      await instance.loginPopup({
-        scopes: ["openid", "profile", "email", "User.Read", API_SCOPE],
-      });
-
+      await instance.loginPopup({ scopes: ["openid", "profile", "email", "User.Read", API_SCOPE] });
       const account = instance.getAllAccounts()[0];
       if (!account) {
         setInfo("Microsoft sign-in canceled or no account found.");
         return;
       }
-
-      // 2) Get API token for backend SSO exchange
       const { accessToken } = await instance.acquireTokenSilent({
         account,
         scopes: [API_SCOPE],
       });
-
-      // 3) Exchange for your app session
       const resp = await fetch("/api/auth/login-microsoft", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         credentials: "include",
         body: JSON.stringify({}),
       });
-
       if (resp.ok) {
         await refreshSession();
         navigate("/");
         return;
       }
-
-      // Fallback UX: prefill email + show server response
       setEmail(account.username || "");
       const text = await resp.text();
       setInfo(
@@ -96,35 +79,21 @@ const Login = () => {
     }
   }
 
-  // Placeholder Google handler (UI only for now)
-  async function onGoogleSignIn() {
+  function onGoogleSignIn() {
     setError("");
-    setInfo("");
-    setGBusy(true);
-    try {
-      // Put your Google auth flow here later.
-      setInfo("Google sign-in isn’t configured yet. This button is a placeholder.");
-    } finally {
-      setGBusy(false);
-    }
+    setInfo("Google sign-in isn’t configured yet. This button is a placeholder.");
+    setGBusy(false);
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        Loading...
-      </div>
-    );
+    return <div className="flex justify-center items-center h-screen">Loading...</div>;
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="bg-white w-full max-w-5xl rounded-xl shadow-lg p-6 md:p-10">
-        <h1 className="text-3xl font-semibold text-center mb-8">
-          Log in to TripDash
-        </h1>
+      <div className="bg-white w-full max-w-[1100px] rounded-xl shadow-lg p-6 md:p-10">
+        <h1 className="text-3xl font-semibold text-center mb-8">Log in to TripDash</h1>
 
-        {/* Messages */}
         {(error || info) && (
           <div className="mb-6">
             {error && <div className="text-red-600 text-sm">{error}</div>}
@@ -132,14 +101,16 @@ const Login = () => {
           </div>
         )}
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-          {/* Left: Email/Password form (spans 2 cols on md+) */}
-          <form
-            onSubmit={handleLogin}
-            className="md:col-span-2 space-y-4"
-            aria-label="Email password login form"
-          >
+        {/* Side-by-side layout with fixed, slimmer columns on desktop */}
+        <div
+          className="
+            grid gap-8 justify-center
+            grid-cols-1
+            md:grid-cols-[420px_72px_360px]
+          "
+        >
+          {/* Left: compact email/password form */}
+          <form onSubmit={handleLogin} className="space-y-4" aria-label="Email password login form">
             <div>
               <label className="block text-sm font-medium mb-1">Email</label>
               <input
@@ -181,16 +152,14 @@ const Login = () => {
             </p>
           </form>
 
-          {/* Middle: vertical OR divider (shown on md+) / horizontal on mobile */}
+          {/* Center: vertical OR divider (becomes horizontal on mobile) */}
           <div className="flex md:flex-col items-center justify-center">
             <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
-            <span className="mx-4 md:my-3 text-sm text-gray-500 font-medium">
-              OR
-            </span>
+            <span className="mx-4 md:my-3 text-sm text-gray-500 font-medium">OR</span>
             <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
           </div>
 
-          {/* Right: Social / Enterprise sign-in */}
+          {/* Right: SSO buttons */}
           <div className="space-y-3">
             <button
               type="button"
@@ -198,7 +167,6 @@ const Login = () => {
               disabled={msBusy || inProgress !== "none"}
               className="w-full inline-flex items-center justify-center gap-2 bg-[#2F2F2F] text-white py-3 rounded-lg hover:opacity-90 transition disabled:opacity-60"
             >
-              {/* Microsoft icon (simple squares) */}
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="2" y="2" width="9" height="9" />
                 <rect x="13" y="2" width="9" height="9" />
@@ -214,7 +182,6 @@ const Login = () => {
               disabled={gBusy}
               className="w-full inline-flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:opacity-60"
             >
-              {/* Google G (simple placeholder) */}
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
               </svg>
