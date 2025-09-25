@@ -13,46 +13,51 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [msBusy, setMsBusy] = useState(false);
-  const [msInfo, setMsInfo] = useState("");
-  const navigate = useNavigate();
+  const [info, setInfo] = useState(""); // generic info (e.g., SSO messages)
 
+  const [msBusy, setMsBusy] = useState(false);
+  const [gBusy, setGBusy] = useState(false);
+
+  const navigate = useNavigate();
   const { instance, inProgress } = useMsal();
 
-  const handleLogin = async (e) => {
+  async function handleLogin(e) {
     e.preventDefault();
     setError("");
+    setInfo("");
     try {
-      await apiLogin(email, password);   // sets cookie on success
-      await refreshSession();            // pull user into context
+      await apiLogin(email, password); // sets cookie on success
+      await refreshSession();          // pull user into context
       navigate("/");
     } catch (err) {
       console.error(err);
       setError("Login failed. Please try again.");
     }
-  };
+  }
 
   async function onMsSignIn() {
     setError("");
-    setMsInfo("");
+    setInfo("");
 
     if (inProgress !== "none") {
-      setMsInfo("Another Microsoft sign-in is in progress. Please wait and try again.");
+      setInfo("Another Microsoft sign-in is in progress. Please try again in a moment.");
       return;
     }
 
     setMsBusy(true);
     try {
-      // 1) Interactive sign-in (request both Graph basic scopes and your API scope)
-      await instance.loginPopup({ scopes: ["openid", "profile", "email", "User.Read", API_SCOPE] });
+      // 1) Interactive sign-in (request Graph basics + your API scope)
+      await instance.loginPopup({
+        scopes: ["openid", "profile", "email", "User.Read", API_SCOPE],
+      });
 
       const account = instance.getAllAccounts()[0];
       if (!account) {
-        setMsInfo("Microsoft sign-in canceled or no account found.");
+        setInfo("Microsoft sign-in canceled or no account found.");
         return;
       }
 
-      // 2) Get an API token to call backend SSO endpoint
+      // 2) Get API token for backend SSO exchange
       const { accessToken } = await instance.acquireTokenSilent({
         account,
         scopes: [API_SCOPE],
@@ -66,7 +71,7 @@ const Login = () => {
           Authorization: `Bearer ${accessToken}`,
         },
         credentials: "include",
-        body: JSON.stringify({}), // identity comes from the verified token
+        body: JSON.stringify({}),
       });
 
       if (resp.ok) {
@@ -75,10 +80,10 @@ const Login = () => {
         return;
       }
 
-      // Fallback: prefill email and show server message
+      // Fallback UX: prefill email + show server response
       setEmail(account.username || "");
       const text = await resp.text();
-      setMsInfo(
+      setInfo(
         `Microsoft account detected. Email prefilled${
           text ? ` — server says: ${text}` : ""
         }. You may need admin approval or to finish registration.`
@@ -91,58 +96,137 @@ const Login = () => {
     }
   }
 
+  // Placeholder Google handler (UI only for now)
+  async function onGoogleSignIn() {
+    setError("");
+    setInfo("");
+    setGBusy(true);
+    try {
+      // Put your Google auth flow here later.
+      setInfo("Google sign-in isn’t configured yet. This button is a placeholder.");
+    } finally {
+      setGBusy(false);
+    }
+  }
+
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
-      <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow w-96 space-y-4">
-        <h2 className="text-2xl font-bold text-center">Login</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="bg-white w-full max-w-5xl rounded-xl shadow-lg p-6 md:p-10">
+        <h1 className="text-3xl font-semibold text-center mb-8">
+          Log in to TripDash
+        </h1>
 
-        {error && <div className="text-red-600 text-sm">{error}</div>}
+        {/* Messages */}
+        {(error || info) && (
+          <div className="mb-6">
+            {error && <div className="text-red-600 text-sm">{error}</div>}
+            {info && <div className="text-gray-600 text-sm mt-1">{info}</div>}
+          </div>
+        )}
 
-        {/* Microsoft 365 SSO */}
-        <button
-          type="button"
-          onClick={onMsSignIn}
-          disabled={msBusy || inProgress !== "none"}
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60"
-        >
-          {msBusy ? "Connecting to Microsoft..." : "Sign in with Microsoft 365"}
-        </button>
-        {msInfo && <div className="text-xs text-gray-600">{msInfo}</div>}
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+          {/* Left: Email/Password form (spans 2 cols on md+) */}
+          <form
+            onSubmit={handleLogin}
+            className="md:col-span-2 space-y-4"
+            aria-label="Email password login form"
+          >
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <input
+                type="email"
+                placeholder="you@school.com"
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
 
-        {/* Email / Password login */}
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full p-2 border rounded"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
+            <div>
+              <label className="block text-sm font-medium mb-1">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-2 border rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60"
+            >
+              Log in
+            </button>
 
-        <button type="submit" className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
-          Login
-        </button>
+            <p className="text-sm">
+              Don’t have an account?{" "}
+              <a href="/register" className="text-blue-600 underline">
+                Register here
+              </a>
+            </p>
+          </form>
 
-        <p className="text-sm text-center">
-          Don’t have an account?{" "}
-          <a href="/register" className="text-blue-500 underline">
-            Register here
-          </a>
-        </p>
-      </form>
+          {/* Middle: vertical OR divider (shown on md+) / horizontal on mobile */}
+          <div className="flex md:flex-col items-center justify-center">
+            <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
+            <span className="mx-4 md:my-3 text-sm text-gray-500 font-medium">
+              OR
+            </span>
+            <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
+          </div>
+
+          {/* Right: Social / Enterprise sign-in */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={onMsSignIn}
+              disabled={msBusy || inProgress !== "none"}
+              className="w-full inline-flex items-center justify-center gap-2 bg-[#2F2F2F] text-white py-3 rounded-lg hover:opacity-90 transition disabled:opacity-60"
+            >
+              {/* Microsoft icon (simple squares) */}
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="2" y="2" width="9" height="9" />
+                <rect x="13" y="2" width="9" height="9" />
+                <rect x="2" y="13" width="9" height="9" />
+                <rect x="13" y="13" width="9" height="9" />
+              </svg>
+              {msBusy ? "Connecting to Microsoft…" : "Continue with Microsoft"}
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoogleSignIn}
+              disabled={gBusy}
+              className="w-full inline-flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:opacity-60"
+            >
+              {/* Google G (simple placeholder) */}
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+              {gBusy ? "Opening Google…" : "Continue with Google"}
+            </button>
+
+            <p className="text-xs text-gray-500">
+              Single sign-on options may require your school admin to enable access.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
