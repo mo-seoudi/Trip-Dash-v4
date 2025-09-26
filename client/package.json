@@ -37,7 +37,7 @@
     "ag-grid-community": "^31.3.1",
     "ag-grid-react": "^31.3.1",
     "react-big-calendar": "^1.8.1",
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
     "recharts": "^2.8.0",
     "dayjs": "^1.11.0"
   },
