@@ -26,10 +26,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
     }
   };
 
-  const canShowPassengers =
-    trip?.status === "Accepted" ||
-    trip?.status === "Confirmed" ||
-    trip?.status === "Completed";
+  
 
   return (
     <>
