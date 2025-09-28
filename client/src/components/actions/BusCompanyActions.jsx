@@ -3,7 +3,6 @@ import ConfirmActionPopup from "../ConfirmActionPopup";
 import { updateTrip } from "../../services/tripService";
 import AssignBusForm from "../AssignBusForm";
 import EditBusForm from "../EditBusForm";
-import PassengersPanel from "../trips/PassengersPanel"; // NEW
 
 const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showConfirmReject, setShowConfirmReject] = useState(false);
@@ -11,7 +10,6 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showConfirmComplete, setShowConfirmComplete] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [showEditInfo, setShowEditInfo] = useState(false);
-  const [showPassengers, setShowPassengers] = useState(false); // NEW
   const [loadingAcceptId, setLoadingAcceptId] = useState(null);
 
   const handleUpdateStatus = async (status) => {
@@ -93,15 +91,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
           </button>
         )}
 
-        {canShowPassengers && (
-          <button
-            onClick={() => setShowPassengers(true)}
-            className="text-indigo-600 underline hover:text-indigo-800 transition-colors px-1"
-            title="View passengers list (may require access)"
-          >
-            Passengers
-          </button>
-        )}
+
       </div>
 
       {/* Confirm Reject */}
