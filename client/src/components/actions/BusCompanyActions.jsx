@@ -169,17 +169,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
         </div>
       )}
 
-      {/* Passengers Panel */}
-      {showPassengers && (
-        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full">
-            <PassengersPanel
-              trip={trip}
-              onClose={() => setShowPassengers(false)}
-            />
-          </div>
-        </div>
-      )}
+
     </>
   );
 };
