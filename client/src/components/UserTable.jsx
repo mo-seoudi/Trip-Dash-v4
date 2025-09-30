@@ -3,19 +3,18 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const roles = ["admin", "school_staff", "bus_company", "finance"];
-
-// normalize to string so includes() never fails due to type differences
 const keyOf = (id) => String(id);
 
 const UserTable = ({ users = [] }) => {
   const [editedUsers, setEditedUsers] = useState(users);
   const [originalUsers, setOriginalUsers] = useState(users);
-  const [savingUserIds, setSavingUserIds] = useState([]); // array of string keys
+  const [savingUserIds, setSavingUserIds] = useState([]); // array of string IDs
 
-  // keep local state in sync if parent refetches
+  // keep local state in sync when parent prop changes
   useEffect(() => {
     setEditedUsers(users);
     setOriginalUsers(users);
+    // NOTE: DO NOT reset savingUserIds here; let the request finish naturally
   }, [users]);
 
   // which rows are dirty?
@@ -23,8 +22,7 @@ const UserTable = ({ users = [] }) => {
     const map = new Map();
     for (const u of editedUsers) {
       const orig = originalUsers.find((o) => keyOf(o.id) === keyOf(u.id));
-      const dirty = !!orig && orig.role !== u.role;
-      map.set(keyOf(u.id), dirty);
+      map.set(keyOf(u.id), !!orig && orig.role !== u.role);
     }
     return map;
   }, [editedUsers, originalUsers]);
@@ -41,10 +39,9 @@ const UserTable = ({ users = [] }) => {
     const orig = originalUsers.find((u) => keyOf(u.id) === rowKey);
     if (!userToUpdate || !orig) return;
 
-    // nothing to save
-    if (!dirtyMap.get(rowKey)) return;
+    if (!dirtyMap.get(rowKey)) return; // nothing to save
 
-    setSavingUserIds((prev) => [...prev, rowKey]);
+    setSavingUserIds((prev) => [...prev, rowKey]); // <-- VISUAL “Saving…”
 
     try {
       const apiBase =
@@ -52,15 +49,15 @@ const UserTable = ({ users = [] }) => {
         import.meta?.env?.VITE_API_URL /* Vite */ ||
         "";
 
+      // Minimal payload: only send changed fields
       const res = await fetch(`${apiBase}/api/users/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: userToUpdate.role }), // minimal payload
+        body: JSON.stringify({ role: userToUpdate.role }),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // if your API returns the updated user, you could merge it here instead
+      // Mark row as clean so Save disables again
       setOriginalUsers((prev) =>
         prev.map((u) =>
           keyOf(u.id) === rowKey ? { ...u, role: userToUpdate.role } : u
@@ -69,11 +66,9 @@ const UserTable = ({ users = [] }) => {
 
       toast.success(`User "${userToUpdate.name}" updated successfully!`);
     } catch (err) {
-      // revert UI on failure
+      // Revert role in UI
       setEditedUsers((prev) =>
-        prev.map((u) =>
-          keyOf(u.id) === rowKey ? { ...u, role: orig.role } : u
-        )
+        prev.map((u) => (keyOf(u.id) === rowKey ? { ...u, role: orig.role } : u))
       );
       console.error("Update failed", err);
       toast.error(`Failed to update user "${userToUpdate.name}".`);
@@ -128,6 +123,7 @@ const UserTable = ({ users = [] }) => {
               </td>
               <td className="p-2">
                 <button
+                  type="button"                    {/* prevents parent form submit */}
                   onClick={() => handleSave(user.id)}
                   className={`px-3 py-1 rounded text-white ${
                     isSaving
