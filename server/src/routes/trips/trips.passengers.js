@@ -4,16 +4,30 @@ import { prisma } from "../../lib/prisma.js";
 
 const router = Router();
 
+function toInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 // GET /api/trips/:id/passengers
 router.get("/:id/passengers", async (req, res, next) => {
   try {
-    const tripId = Number(req.params.id);
+    const tripId = toInt(req.params.id);
+    if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
+
+    // Optional: ensure trip exists (helps produce 404 instead of generic 500)
+    const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+
     const passengers = await prisma.tripPassenger.findMany({
       where: { tripId },
       orderBy: { createdAt: "asc" },
     });
+
     res.json({ passengers });
   } catch (e) {
+    // Log more of the Prisma error to your server logs
+    console.error("GET /trips/:id/passengers error:", e);
     next(e);
   }
 });
@@ -21,17 +35,17 @@ router.get("/:id/passengers", async (req, res, next) => {
 // POST /api/trips/:id/passengers  { items: [...], createDirectory?: boolean }
 router.post("/:id/passengers", async (req, res, next) => {
   try {
-    const tripId = Number(req.params.id);
-    let { items = [], createDirectory = true } = req.body;
+    const tripId = toInt(req.params.id);
+    if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
+    const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+    let { items = [], createDirectory = true } = req.body;
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: "items must be an array" });
     }
 
-    // Normalize inputs:
-    // - allow plain strings ("Jack Smith")
-    // - allow { name: "Jack Smith", ... }
-    // - allow { fullName: "Jack Smith", ... }
     const normalized = items
       .map((raw) => {
         if (typeof raw === "string") {
@@ -62,7 +76,7 @@ router.post("/:id/passengers", async (req, res, next) => {
         prisma.tripPassenger.create({
           data: {
             tripId,
-            fullName: p.fullName, // guaranteed non-empty string
+            fullName: p.fullName,
             grade: p.grade,
             guardianName: p.guardianName,
             guardianPhone: p.guardianPhone,
@@ -77,7 +91,7 @@ router.post("/:id/passengers", async (req, res, next) => {
       )
     );
 
-    // Optional directory upserts (best effort)
+    // Optional directory upserts
     if (createDirectory) {
       for (const p of normalized) {
         try {
@@ -86,14 +100,16 @@ router.post("/:id/passengers", async (req, res, next) => {
             update: { grade: p.grade ?? undefined },
             create: { fullName: p.fullName, grade: p.grade ?? null },
           });
-        } catch {
+        } catch (err) {
           // ignore duplicate/constraint noise
+          console.warn("Directory upsert warning:", err?.code || err?.message);
         }
       }
     }
 
     res.status(201).json(created);
   } catch (e) {
+    console.error("POST /trips/:id/passengers error:", e);
     next(e);
   }
 });
@@ -101,13 +117,16 @@ router.post("/:id/passengers", async (req, res, next) => {
 // PATCH /api/trips/:id/passengers/:rowId
 router.patch("/:id/passengers/:rowId", async (req, res, next) => {
   try {
-    const id = Number(req.params.rowId);
+    const rowId = toInt(req.params.rowId);
+    if (!rowId) return res.status(400).json({ error: "Invalid row id" });
+
     const updated = await prisma.tripPassenger.update({
-      where: { id },
+      where: { id: rowId },
       data: { ...req.body },
     });
     res.json(updated);
   } catch (e) {
+    console.error("PATCH /trips/:id/passengers/:rowId error:", e);
     next(e);
   }
 });
@@ -115,7 +134,9 @@ router.patch("/:id/passengers/:rowId", async (req, res, next) => {
 // POST /api/trips/:id/passengers/:rowId/payment
 router.post("/:id/passengers/:rowId/payment", async (req, res, next) => {
   try {
-    const tripPassengerId = Number(req.params.rowId);
+    const rowId = toInt(req.params.rowId);
+    if (!rowId) return res.status(400).json({ error: "Invalid row id" });
+
     const {
       amountDue,
       amountPaid = 0,
@@ -127,7 +148,7 @@ router.post("/:id/passengers/:rowId/payment", async (req, res, next) => {
 
     const payment = await prisma.tripPassengerPayment.create({
       data: {
-        tripPassengerId,
+        tripPassengerId: rowId,
         amountDue: Number(amountDue),
         amountPaid: Number(amountPaid),
         status,
@@ -139,6 +160,7 @@ router.post("/:id/passengers/:rowId/payment", async (req, res, next) => {
 
     res.status(201).json(payment);
   } catch (e) {
+    console.error("POST /trips/:id/passengers/:rowId/payment error:", e);
     next(e);
   }
 });
