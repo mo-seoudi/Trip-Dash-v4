@@ -60,6 +60,13 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
     // If you have a fetch here, call it; otherwise the parent page likely refreshes.
   };
 
+  // Role helpers for passengers feature
+  const canSeePassengersButton = (role, status) =>
+    (role === "school_staff" || role === "admin") &&
+    ["Accepted", "Confirmed", "Completed"].includes(status);
+
+  const isPassengersReadOnly = (role) => role !== "school_staff"; // admin = readOnly, staff = editable
+
   return (
     <div className="overflow-x-auto relative">
       <table className="min-w-full text-sm table-fixed">
@@ -156,12 +163,12 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         onSoftDelete={handleSoftDelete}
                       />
 
-                      {/* Passengers button — styled like command buttons */}
-                      {["Accepted", "Confirmed", "Completed"].includes(trip.status) && (
+                      {/* Passengers button — staff (manage) & admin (view only). Hidden for bus_company */}
+                      {canSeePassengersButton(profile?.role, trip.status) && (
                         <button
                           onClick={() => setShowPassengersTrip(trip)}
                           className="flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 text-gray-700 hover:text-gray-900"
-                          title="View Passengers"
+                          title={profile?.role === "admin" ? "View Passengers" : "Manage Passengers"}
                         >
                           <RxPerson className="mr-1" />
                           Passengers
@@ -228,6 +235,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
           <PassengersPanel
             trip={showPassengersTrip}
             onClose={() => setShowPassengersTrip(null)}
+            readOnly={isPassengersReadOnly(profile?.role)} // admin = view-only, staff = can edit
           />
         </ModalWrapper>
       )}
@@ -254,3 +262,4 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
 };
 
 export default SmartTripTable;
+
