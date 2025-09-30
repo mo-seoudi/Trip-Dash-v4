@@ -1,12 +1,16 @@
-// src/pages/AdminUsers.jsx
+// src/pages/AdminUsers.jsx 
 import React, { useEffect, useState } from "react";
 import api from "../services/apiClient";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const roles = ["admin", "school_staff", "finance", "bus_company"];
+const statuses = ["approved", "pending"];
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [savingUserIds, setSavingUserIds] = useState([]);
 
   useEffect(() => {
     fetchUsers();
@@ -19,6 +23,7 @@ const AdminUsers = () => {
       setUsers(res.data);
     } catch (err) {
       console.error("Failed to fetch users", err);
+      toast.error("Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -40,14 +45,19 @@ const AdminUsers = () => {
     const user = users.find((u) => u.id === userId);
     if (!user) return;
 
+    setSavingUserIds((prev) => [...prev, userId]);
+
     try {
       await api.put(`/users/${userId}`, {
         role: user.role,
         status: user.status,
       });
-      console.log("User updated:", userId);
+      toast.success(`User "${user.name}" updated successfully!`);
     } catch (err) {
       console.error("Failed to update user", err);
+      toast.error(`Failed to update user "${user?.name}"`);
+    } finally {
+      setSavingUserIds((prev) => prev.filter((id) => id !== userId));
     }
   };
 
@@ -91,16 +101,24 @@ const AdminUsers = () => {
                     onChange={(e) => handleStatusChange(u.id, e.target.value)}
                     className="border rounded p-1"
                   >
-                    <option value="approved">Approved</option>
-                    <option value="pending">Pending</option>
+                    {statuses.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td className="p-3">
                   <button
-                    className="bg-blue-500 text-white px-3 py-1 rounded"
                     onClick={() => handleSave(u.id)}
+                    className={`px-3 py-1 rounded text-white ${
+                      savingUserIds.includes(u.id)
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-blue-500 hover:bg-blue-600"
+                    }`}
+                    disabled={savingUserIds.includes(u.id)}
                   >
-                    Save
+                    {savingUserIds.includes(u.id) ? "Saving..." : "Save"}
                   </button>
                 </td>
               </tr>
@@ -113,4 +131,3 @@ const AdminUsers = () => {
 };
 
 export default AdminUsers;
-
