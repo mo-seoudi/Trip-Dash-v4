@@ -10,7 +10,12 @@ const Spinner = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
-export default function PassengersPanel({ trip, onClose }) {
+/**
+ * Pass `readOnly` to control edit capability:
+ * - readOnly = true  -> hide Add row (view-only)
+ * - readOnly = false -> allow adding passengers
+ */
+export default function PassengersPanel({ trip, onClose, readOnly = false }) {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -39,6 +44,8 @@ export default function PassengersPanel({ trip, onClose }) {
   }, [tripId]);
 
   const handleAdd = async () => {
+    if (readOnly) return; // guard: no-op when read-only
+
     const fullName = nameInput.trim();
     if (!fullName) {
       inputRef.current?.focus();
@@ -69,7 +76,7 @@ export default function PassengersPanel({ trip, onClose }) {
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!adding) handleAdd();
+      if (!adding && !readOnly) handleAdd();
     }
   };
 
@@ -85,28 +92,30 @@ export default function PassengersPanel({ trip, onClose }) {
         </button>
       </div>
 
-      {/* add row */}
-      <div className="flex gap-2 mb-3">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Type passenger name and press Add…"
-          className="flex-1 border rounded px-3 py-2"
-          value={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={adding}
-        />
-        <button
-          onClick={handleAdd}
-          disabled={adding || !nameInput.trim()}
-          className={`px-4 py-2 rounded text-white flex items-center gap-2
-          ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
-        >
-          {adding ? <Spinner /> : null}
-          <span>{adding ? "Adding…" : "Add"}</span>
-        </button>
-      </div>
+      {/* Add row (hidden in read-only mode) */}
+      {!readOnly && (
+        <div className="flex gap-2 mb-3">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Type passenger name and press Add…"
+            className="flex-1 border rounded px-3 py-2"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={adding}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding || !nameInput.trim()}
+            className={`px-4 py-2 rounded text-white flex items-center gap-2
+            ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+          >
+            {adding ? <Spinner /> : null}
+            <span>{adding ? "Adding…" : "Add"}</span>
+          </button>
+        </div>
+      )}
 
       <div className="border rounded">
         <div className="grid grid-cols-6 gap-2 px-3 py-2 text-sm font-semibold bg-gray-50">
