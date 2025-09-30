@@ -17,10 +17,12 @@ import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 import bookingsRoutes from "./routes/bookingsRoutes.js";
 
-// ✅ NEW: MS365 routes (CommonJS export is fine to import as default in ESM)
+// ✅ MS365 routes
 import msRoutes from "./routes/ms.js";
 import authMicrosoftRoutes from "./routes/authMicrosoft.js";
 
+// ✅ Passengers subrouter (this is the key new import)
+import tripsPassengersRouter from "./routes/trips/trips.passengers.js";
 
 dotenv.config();
 
@@ -66,6 +68,7 @@ app.options("*", cors(corsOptions));
 
 /* ---------------- Parsers ---------------- */
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true })); // harmless, helps form posts
 app.use(cookieParser());
 
 /* ---------------- Health ---------------- */
@@ -87,10 +90,6 @@ function getDecodedUser(req) {
 }
 
 /* ---------------- Session / Me endpoints ---------------- */
-/**
- * Returns the app user + the organizations they belong to in the global control plane,
- * plus the currently active organization (from cookie).
- */
 app.get("/api/me", async (req, res) => {
   try {
     const decoded = getDecodedUser(req); // expects your JWT to contain { id, email, ... }
@@ -189,7 +188,6 @@ app.post("/api/session/set-org", async (req, res) => {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      // you can add `domain` if you need cross-subdomain sharing
     });
     res.sendStatus(204);
   } catch (e) {
@@ -202,12 +200,19 @@ app.post("/api/session/set-org", async (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
+
+// Main trips router
 app.use("/api/trips", tripsRouter);
+
+// ✅ Mount passengers subrouter under /api/trips
+//    This makes GET /api/trips/:id/passengers, POST /api/trips/:id/passengers, etc. work.
+app.use("/api/trips", tripsPassengersRouter);
+
 app.use("/api/global", globalRoutes);
 app.use("/api/global", globalRolesRoutes);
 app.use("/api/bookings", bookingsRoutes);
 
-// ✅ NEW: Microsoft 365 integration routes
+// ✅ Microsoft 365 integration routes
 app.use("/api/ms", msRoutes);
 app.use("/api/auth", authMicrosoftRoutes);
 
@@ -234,3 +239,4 @@ async function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
