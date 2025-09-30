@@ -1,3 +1,5 @@
+// client/src/components/actions/StaffActions.jsx
+
 import React, { useState } from "react";
 import EditTripForm from "../EditTripForm";
 import ConfirmActionPopup from "../ConfirmActionPopup";
@@ -82,13 +84,14 @@ const StaffActions = ({ trip, refreshCallback }) => {
         </div>
       )}
 
-      {/* Passengers Panel */}
+      {/* Passengers Panel (staff has full access → readOnly=false) */}
       {showPassengers && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full">
             <PassengersPanel
               trip={trip}
               onClose={() => setShowPassengers(false)}
+              readOnly={false}
             />
           </div>
         </div>
