@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-const roles = ["admin", "school_staff", "bus_company", "finance", "Seoudi"];
+const roles = ["admin", "school_staff", "bus_company", "finance"];
 const keyOf = (id) => String(id);
 
 const UserTable = ({ users = [] }) => {
