@@ -15,20 +15,25 @@ router.get("/:id/passengers", async (req, res, next) => {
     const tripId = toInt(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    // Optional: ensure trip exists (helps produce 404 instead of generic 500)
-    const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+    // Optional: ensure trip exists (more helpful 404)
+    const trip = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { id: true },
+    });
     if (!trip) return res.status(404).json({ error: "Trip not found" });
 
     const passengers = await prisma.tripPassenger.findMany({
       where: { tripId },
-      orderBy: { createdAt: "asc" },
+      // ↓ Quick fix: use a column that exists in every DB
+      orderBy: { id: "asc" },
+      // If you add createdAt later, you can switch to:
+      // orderBy: { createdAt: "asc" },
     });
 
     res.json({ passengers });
   } catch (e) {
-    // Log more of the Prisma error to your server logs
     console.error("GET /trips/:id/passengers error:", e);
-    next(e);
+    res.status(500).json({ message: "Failed to load passengers" });
   }
 });
 
@@ -38,7 +43,10 @@ router.post("/:id/passengers", async (req, res, next) => {
     const tripId = toInt(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+    const trip = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { id: true },
+    });
     if (!trip) return res.status(404).json({ error: "Trip not found" });
 
     let { items = [], createDirectory = true } = req.body;
@@ -91,7 +99,6 @@ router.post("/:id/passengers", async (req, res, next) => {
       )
     );
 
-    // Optional directory upserts
     if (createDirectory) {
       for (const p of normalized) {
         try {
@@ -101,8 +108,8 @@ router.post("/:id/passengers", async (req, res, next) => {
             create: { fullName: p.fullName, grade: p.grade ?? null },
           });
         } catch (err) {
-          // ignore duplicate/constraint noise
-          console.warn("Directory upsert warning:", err?.code || err?.message);
+          // harmless duplicates, log as warn
+          console.warn("Directory upsert warn:", err?.code || err?.message);
         }
       }
     }
@@ -110,12 +117,12 @@ router.post("/:id/passengers", async (req, res, next) => {
     res.status(201).json(created);
   } catch (e) {
     console.error("POST /trips/:id/passengers error:", e);
-    next(e);
+    res.status(500).json({ message: "Failed to add passengers" });
   }
 });
 
 // PATCH /api/trips/:id/passengers/:rowId
-router.patch("/:id/passengers/:rowId", async (req, res, next) => {
+router.patch("/:id/passengers/:rowId", async (req, res) => {
   try {
     const rowId = toInt(req.params.rowId);
     if (!rowId) return res.status(400).json({ error: "Invalid row id" });
@@ -127,12 +134,12 @@ router.patch("/:id/passengers/:rowId", async (req, res, next) => {
     res.json(updated);
   } catch (e) {
     console.error("PATCH /trips/:id/passengers/:rowId error:", e);
-    next(e);
+    res.status(500).json({ message: "Failed to update passenger row" });
   }
 });
 
 // POST /api/trips/:id/passengers/:rowId/payment
-router.post("/:id/passengers/:rowId/payment", async (req, res, next) => {
+router.post("/:id/passengers/:rowId/payment", async (req, res) => {
   try {
     const rowId = toInt(req.params.rowId);
     if (!rowId) return res.status(400).json({ error: "Invalid row id" });
@@ -161,7 +168,7 @@ router.post("/:id/passengers/:rowId/payment", async (req, res, next) => {
     res.status(201).json(payment);
   } catch (e) {
     console.error("POST /trips/:id/passengers/:rowId/payment error:", e);
-    next(e);
+    res.status(500).json({ message: "Failed to record payment" });
   }
 });
 
