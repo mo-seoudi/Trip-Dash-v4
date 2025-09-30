@@ -26,6 +26,7 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
 
   // load roster
   useEffect(() => {
+    if (!tripId) return;
     let mounted = true;
     (async () => {
       try {
@@ -54,7 +55,7 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
 
     try {
       setAdding(true);
-      // server accepts { fullName } and also normalizes { name } / strings
+      // Server supports strings or objects; we send an object with fullName
       const created = await addTripPassengers(tripId, [{ fullName }], true);
       // append to roster (API returns created rows)
       setRoster((prev) => [...created, ...prev]);
@@ -154,3 +155,4 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
     </div>
   );
 }
+
