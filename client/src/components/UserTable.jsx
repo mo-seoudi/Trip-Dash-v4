@@ -4,42 +4,47 @@ import "react-toastify/dist/ReactToastify.css";
 
 const roles = ["admin", "school_staff", "bus_company", "finance"];
 
+// normalize to string so includes() never fails due to type differences
+const keyOf = (id) => String(id);
+
 const UserTable = ({ users = [] }) => {
   const [editedUsers, setEditedUsers] = useState(users);
-  const [savingUserIds, setSavingUserIds] = useState([]); // IDs currently saving
-  const [originalUsers, setOriginalUsers] = useState(users); // for revert on error
+  const [originalUsers, setOriginalUsers] = useState(users);
+  const [savingUserIds, setSavingUserIds] = useState([]); // array of string keys
 
-  // keep local state in sync when prop changes
+  // keep local state in sync if parent refetches
   useEffect(() => {
     setEditedUsers(users);
     setOriginalUsers(users);
   }, [users]);
 
-  // map of id -> whether row is dirty
+  // which rows are dirty?
   const dirtyMap = useMemo(() => {
     const map = new Map();
     for (const u of editedUsers) {
-      const orig = originalUsers.find((o) => o.id === u.id);
-      map.set(u.id, !!orig && JSON.stringify({ role: u.role }) !== JSON.stringify({ role: orig.role }));
+      const orig = originalUsers.find((o) => keyOf(o.id) === keyOf(u.id));
+      const dirty = !!orig && orig.role !== u.role;
+      map.set(keyOf(u.id), dirty);
     }
     return map;
   }, [editedUsers, originalUsers]);
 
   const handleRoleChange = (id, newRole) => {
     setEditedUsers((prev) =>
-      prev.map((user) => (user.id === id ? { ...user, role: newRole } : user))
+      prev.map((u) => (keyOf(u.id) === keyOf(id) ? { ...u, role: newRole } : u))
     );
   };
 
   const handleSave = async (id) => {
-    const userToUpdate = editedUsers.find((u) => u.id === id);
-    const orig = originalUsers.find((u) => u.id === id);
+    const rowKey = keyOf(id);
+    const userToUpdate = editedUsers.find((u) => keyOf(u.id) === rowKey);
+    const orig = originalUsers.find((u) => keyOf(u.id) === rowKey);
     if (!userToUpdate || !orig) return;
 
-    // no-op if not dirty
-    if (!dirtyMap.get(id)) return;
+    // nothing to save
+    if (!dirtyMap.get(rowKey)) return;
 
-    setSavingUserIds((prev) => [...prev, id]);
+    setSavingUserIds((prev) => [...prev, rowKey]);
 
     try {
       const apiBase =
@@ -50,27 +55,30 @@ const UserTable = ({ users = [] }) => {
       const res = await fetch(`${apiBase}/api/users/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: userToUpdate.role }), // send minimal payload
+        body: JSON.stringify({ role: userToUpdate.role }), // minimal payload
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // Optionally merge server response if it returns the updated user
-      // const updated = await res.json();
+      // if your API returns the updated user, you could merge it here instead
       setOriginalUsers((prev) =>
-        prev.map((u) => (u.id === id ? { ...u, role: userToUpdate.role } : u))
+        prev.map((u) =>
+          keyOf(u.id) === rowKey ? { ...u, role: userToUpdate.role } : u
+        )
       );
 
       toast.success(`User "${userToUpdate.name}" updated successfully!`);
     } catch (err) {
-      // revert local change
+      // revert UI on failure
       setEditedUsers((prev) =>
-        prev.map((u) => (u.id === id ? { ...u, role: orig.role } : u))
+        prev.map((u) =>
+          keyOf(u.id) === rowKey ? { ...u, role: orig.role } : u
+        )
       );
       console.error("Update failed", err);
       toast.error(`Failed to update user "${userToUpdate.name}".`);
     } finally {
-      setSavingUserIds((prev) => prev.filter((userId) => userId !== id));
+      setSavingUserIds((prev) => prev.filter((k) => k !== rowKey));
     }
   };
 
@@ -94,18 +102,19 @@ const UserTable = ({ users = [] }) => {
       </thead>
       <tbody>
         {editedUsers.map((user) => {
-          const isSaving = savingUserIds.includes(user.id);
-          const isDirty = dirtyMap.get(user.id);
+          const rowKey = keyOf(user.id);
+          const isSaving = savingUserIds.includes(rowKey);
+          const isDirty = !!dirtyMap.get(rowKey);
           return (
-            <tr key={user.id} className="border-t">
+            <tr key={rowKey} className="border-t">
               <td className="p-2">{user.name}</td>
               <td className="p-2">{user.email}</td>
               <td className="p-2">
-                <label className="sr-only" htmlFor={`role-${user.id}`}>
+                <label className="sr-only" htmlFor={`role-${rowKey}`}>
                   Role for {user.name}
                 </label>
                 <select
-                  id={`role-${user.id}`}
+                  id={`role-${rowKey}`}
                   value={user.role}
                   onChange={(e) => handleRoleChange(user.id, e.target.value)}
                   className="border p-1 rounded"
@@ -128,7 +137,6 @@ const UserTable = ({ users = [] }) => {
                       : "bg-gray-300 cursor-not-allowed"
                   }`}
                   disabled={isSaving || !isDirty}
-                  aria-disabled={isSaving || !isDirty}
                 >
                   {isSaving ? "Saving..." : "Save"}
                 </button>
