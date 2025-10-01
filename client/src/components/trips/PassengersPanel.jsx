@@ -4,7 +4,7 @@ import { getTripPassengers, addTripPassengers } from "../../services/tripService
 import { toast } from "react-toastify";
 
 const Spinner = ({ className = "w-4 h-4" }) => (
-  <svg className={`animate-spin ${className}`} viewBox="0 0 24 24">
+  <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" aria-hidden="true">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
   </svg>
@@ -43,7 +43,7 @@ export default function PassengersPanel({ trip, readOnly = false }) {
   }, [tripId]);
 
   const handleAdd = async () => {
-    if (readOnly) return; // guard: no-op when read-only
+    if (readOnly) return;
     const fullName = nameInput.trim();
     if (!fullName) {
       inputRef.current?.focus();
@@ -82,31 +82,38 @@ export default function PassengersPanel({ trip, readOnly = false }) {
         <h3 className="text-lg font-semibold">Passengers — Trip #{tripId}</h3>
       </div>
 
-      {/* Add row (hidden in read-only mode) — add right padding too */}
+      {/* Add row (hidden in read-only mode) */}
       {!readOnly && (
-        <div className="flex gap-2 mb-3 pr-12">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Type passenger name and press Add…"
-            className="flex-1 border rounded px-3 py-2"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={adding}
-          />
-          <button
-            onClick={handleAdd}
-            disabled={adding || !nameInput.trim()}
-            className={`px-4 py-2 rounded text-white flex items-center gap-2 w-40 justify-center
-            ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
-          >
-            {adding ? <Spinner /> : null}
-            <span>{adding ? "Adding…" : "Add"}</span>
-          </button>
+        <div className="mb-3 pr-12">
+          <div className="flex w-full items-stretch gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type passenger name and press Add…"
+              className="flex-[3] border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={adding}
+              aria-label="Passenger full name"
+            />
+
+            <button
+              onClick={handleAdd}
+              disabled={adding || !nameInput.trim()}
+              className={`flex-[1] px-4 py-2 rounded text-white flex items-center justify-center gap-2
+                ${adding || !nameInput.trim()
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"}`}
+            >
+              {adding ? <Spinner /> : null}
+              <span>{adding ? "Adding…" : "Add"}</span>
+            </button>
+          </div>
         </div>
       )}
 
+      {/* Table */}
       <div className="border rounded">
         <div className="grid grid-cols-6 gap-2 px-3 py-2 text-sm font-semibold bg-gray-50">
           <div>Name</div>
