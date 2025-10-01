@@ -98,7 +98,7 @@ export default function PassengersPanel({ trip, readOnly = false }) {
           <button
             onClick={handleAdd}
             disabled={adding || !nameInput.trim()}
-            className={`px-4 py-2 rounded text-white flex items-center gap-2 min-w-[72px] justify-center
+            className={`px-4 py-2 rounded text-white flex items-center gap-2 w-40 justify-center
             ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
           >
             {adding ? <Spinner /> : null}
