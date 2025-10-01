@@ -84,7 +84,7 @@ export default function PassengersPanel({ trip, readOnly = false }) {
 
       {/* Add row (hidden in read-only mode) */}
       {!readOnly && (
-        <div className="mb-3 pr-12">
+        <div className="mb-3">
           <div className="flex w-full items-stretch gap-2">
             <input
               ref={inputRef}
@@ -95,7 +95,6 @@ export default function PassengersPanel({ trip, readOnly = false }) {
               onChange={(e) => setNameInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={adding}
-              aria-label="Passenger full name"
             />
 
             <button
