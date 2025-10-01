@@ -5,8 +5,20 @@ import { toast } from "react-toastify";
 
 const Spinner = ({ className = "w-4 h-4" }) => (
   <svg className={`animate-spin ${className}`} viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+      fill="none"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+    />
   </svg>
 );
 
@@ -14,8 +26,11 @@ const Spinner = ({ className = "w-4 h-4" }) => (
  * Pass `readOnly` to control edit capability:
  * - readOnly = true  -> hide Add row (view-only)
  * - readOnly = false -> allow adding passengers
+ *
+ * NOTE: This component no longer shows its own "Close" button.
+ * Wrap it with <ModalWrapper ...> and pass the title/close there.
  */
-export default function PassengersPanel({ trip, onClose, readOnly = false }) {
+export default function PassengersPanel({ trip, readOnly = false }) {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -83,15 +98,8 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
 
   return (
     <div className="w-full max-w-3xl">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">Passengers — Trip #{tripId}</h3>
-        <button
-          onClick={onClose}
-          className="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300"
-        >
-          Close
-        </button>
-      </div>
+      {/* We intentionally removed the header/Close row.
+          Provide the title and close control via <ModalWrapper>. */}
 
       {/* Add row (hidden in read-only mode) */}
       {!readOnly && (
@@ -109,8 +117,11 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
           <button
             onClick={handleAdd}
             disabled={adding || !nameInput.trim()}
-            className={`px-4 py-2 rounded text-white flex items-center gap-2
-            ${adding || !nameInput.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+            className={`px-4 py-2 rounded text-white flex items-center gap-2 ${
+              adding || !nameInput.trim()
+                ? "bg-blue-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
           >
             {adding ? <Spinner /> : null}
             <span>{adding ? "Adding…" : "Add"}</span>
@@ -134,11 +145,16 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
             Loading passengers…
           </div>
         ) : roster.length === 0 ? (
-          <div className="px-3 py-6 text-gray-500 text-sm">No passengers yet.</div>
+          <div className="px-3 py-6 text-gray-500 text-sm">
+            No passengers yet.
+          </div>
         ) : (
           <ul className="divide-y">
             {roster.map((p) => (
-              <li key={p.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm">
+              <li
+                key={p.id}
+                className="grid grid-cols-6 gap-2 px-3 py-2 text-sm"
+              >
                 <div className="truncate">{p.fullName}</div>
                 <div className="truncate">{p.seatNumber || "-"}</div>
                 <div className="truncate">{p.pickupPoint || "-"}</div>
@@ -155,4 +171,3 @@ export default function PassengersPanel({ trip, onClose, readOnly = false }) {
     </div>
   );
 }
-
