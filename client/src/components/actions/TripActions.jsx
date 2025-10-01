@@ -1,6 +1,8 @@
+// client/src/components/TripActions.jsx
+
 import React from "react";
-import BusCompanyActions from "./BusCompanyActions";
-import StaffActions from "./StaffActions";
+import BusCompanyActions from "./actions/BusCompanyActions";
+import StaffActions from "./actions/StaffActions";
 
 const TripActions = ({ trip, profile, refreshCallback }) => {
   if (profile?.role === "bus_company") {
