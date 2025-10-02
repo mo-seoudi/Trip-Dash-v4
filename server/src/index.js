@@ -30,35 +30,39 @@ const app = express();
 const prisma = new PrismaClient();
 const prismaGlobal = new PrismaGlobal();
 
-// Render/other hosts are behind proxies; needed for secure cookies
+// Behind proxies (Render, etc.) so secure cookies work
 app.set("trust proxy", 1);
 
-/* ---------------- CORS (hosting-agnostic) ----------------
-   Configure via env:
-     ALLOWED_ORIGINS="https://your-app.com, http://localhost:5173"
-     PREVIEW_ORIGIN_REGEX="^https:\\/\\/.*\\.vercel\\.app$"   (optional)
+/* ---------------- CORS (fully hosting-agnostic) ----------------
+   Configure via env on the host (Render, etc.):
+     ALLOWED_ORIGINS="https://your-prod.app, http://localhost:5173"
+     ALLOWED_ORIGIN_REGEXES="^https:\/\/.*\.vercel\.app$"   (CSV of regexes; optional)
 ---------------------------------------------------------------- */
 const DEV_DEFAULT = "http://localhost:5173";
-const PROD_DEFAULT = ""; // no default in prod; rely on env when possible
-
 const rawOrigins =
   (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim()) ||
-  (process.env.NODE_ENV === "production" ? PROD_DEFAULT : DEV_DEFAULT);
+  (process.env.NODE_ENV === "production" ? "" : DEV_DEFAULT);
 
+// normalize host-only to https://host
 const normalize = (s) => (s?.startsWith("http") ? s : s ? `https://${s}` : s);
 const allowList = rawOrigins
   .split(",")
   .map((s) => normalize(s.trim()))
   .filter(Boolean);
 
-let previewRe = null;
-if (process.env.PREVIEW_ORIGIN_REGEX) {
-  try {
-    previewRe = new RegExp(process.env.PREVIEW_ORIGIN_REGEX);
-  } catch {
-    // ignore bad regex
-  }
-}
+// compile regex list from env (CSV). e.g. ^https:\/\/.*\.vercel\.app$
+const regexList = (process.env.ALLOWED_ORIGIN_REGEXES || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((pattern) => {
+    try {
+      return new RegExp(pattern);
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
 
 const corsOptions = {
   credentials: true,
@@ -67,14 +71,15 @@ const corsOptions = {
   origin(origin, cb) {
     // allow server-to-server (no Origin) like health checks, SSR, curl
     if (!origin) return cb(null, true);
-    const ok =
-      allowList.includes(origin) || (previewRe ? previewRe.test(origin) : false);
+    const ok = allowList.includes(origin) || regexList.some((re) => re.test(origin));
+    // Uncomment while tuning:
+    // if (!ok) console.warn("CORS blocked:", origin, { allowList, regexList: regexList.map(String) });
     return cb(null, ok);
   },
 };
 
-// set credential header early (for some proxies)
 app.use((req, res, next) => {
+  // important for cross-site cookies
   res.header("Access-Control-Allow-Credentials", "true");
   next();
 });
@@ -230,7 +235,9 @@ app.use("/api/auth", authMicrosoftRoutes);
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ message: err.message || "Internal server error" });
+  res
+    .status(err.status || 500)
+    .json({ message: err.message || "Internal server error" });
 });
 
 /* ---------------- Boot ---------------- */
