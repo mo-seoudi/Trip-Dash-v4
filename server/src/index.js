@@ -17,11 +17,11 @@ import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 import bookingsRoutes from "./routes/bookingsRoutes.js";
 
-// ✅ MS365 routes
+// MS365 routes
 import msRoutes from "./routes/ms.js";
 import authMicrosoftRoutes from "./routes/authMicrosoft.js";
 
-// ✅ Passengers subrouter (this is the key new import)
+// Passengers subrouter (mounted under /api/trips)
 import tripsPassengersRouter from "./routes/trips/trips.passengers.js";
 
 dotenv.config();
@@ -30,45 +30,60 @@ const app = express();
 const prisma = new PrismaClient();
 const prismaGlobal = new PrismaGlobal();
 
-// Render is behind a proxy; needed for secure cookies
+// Render/other hosts are behind proxies; needed for secure cookies
 app.set("trust proxy", 1);
 
-/* ---------------- CORS (simple + safe) ---------------- */
-const fallbackProd = "https://trip-dash-v4.vercel.app";
-const fallbackDev = "http://localhost:5173";
+/* ---------------- CORS (hosting-agnostic) ----------------
+   Configure via env:
+     ALLOWED_ORIGINS="https://your-app.com, http://localhost:5173"
+     PREVIEW_ORIGIN_REGEX="^https:\\/\\/.*\\.vercel\\.app$"   (optional)
+---------------------------------------------------------------- */
+const DEV_DEFAULT = "http://localhost:5173";
+const PROD_DEFAULT = ""; // no default in prod; rely on env when possible
 
-const base = process.env.NODE_ENV === "production" ? fallbackProd : fallbackDev;
-const explicit = (process.env.ALLOWED_ORIGINS || base)
+const rawOrigins =
+  (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim()) ||
+  (process.env.NODE_ENV === "production" ? PROD_DEFAULT : DEV_DEFAULT);
+
+const normalize = (s) => (s?.startsWith("http") ? s : s ? `https://${s}` : s);
+const allowList = rawOrigins
   .split(",")
-  .map((s) => s.trim())
+  .map((s) => normalize(s.trim()))
   .filter(Boolean);
 
-const allowed = new Set(explicit);
-
-// Allow any Vercel preview for this project (optional but handy)
-const VERCEL_PROJECT_SLUG = process.env.VERCEL_PROJECT_SLUG || "trip-dash-v4";
-const vercelPreviewPattern = new RegExp(
-  `^https:\\/\\/${VERCEL_PROJECT_SLUG}-[a-z0-9-]+\\.vercel\\.app$`
-);
+let previewRe = null;
+if (process.env.PREVIEW_ORIGIN_REGEX) {
+  try {
+    previewRe = new RegExp(process.env.PREVIEW_ORIGIN_REGEX);
+  } catch {
+    // ignore bad regex
+  }
+}
 
 const corsOptions = {
-  origin(origin, cb) {
-    // allow server-to-server (no Origin)
-    if (!origin) return cb(null, true);
-    if (allowed.has(origin) || vercelPreviewPattern.test(origin))
-      return cb(null, true);
-    return cb(null, false);
-  },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  origin(origin, cb) {
+    // allow server-to-server (no Origin) like health checks, SSR, curl
+    if (!origin) return cb(null, true);
+    const ok =
+      allowList.includes(origin) || (previewRe ? previewRe.test(origin) : false);
+    return cb(null, ok);
+  },
 };
+
+// set credential header early (for some proxies)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Credentials", "true");
+  next();
+});
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+app.options("*", cors(corsOptions)); // preflight
 
 /* ---------------- Parsers ---------------- */
 app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true })); // harmless, helps form posts
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 /* ---------------- Health ---------------- */
@@ -92,7 +107,7 @@ function getDecodedUser(req) {
 /* ---------------- Session / Me endpoints ---------------- */
 app.get("/api/me", async (req, res) => {
   try {
-    const decoded = getDecodedUser(req); // expects your JWT to contain { id, email, ... }
+    const decoded = getDecodedUser(req); // expects JWT to contain { id, email, ... }
     let appUser = null;
 
     if (decoded?.id) {
@@ -102,7 +117,7 @@ app.get("/api/me", async (req, res) => {
       });
     }
 
-    // Try to find the corresponding global user (by legacy_user_id, fallback by email)
+    // Find corresponding global user (by legacy_user_id, fallback by email)
     let gUser = null;
     if (appUser) {
       gUser =
@@ -119,11 +134,7 @@ app.get("/api/me", async (req, res) => {
     const roles = gUser
       ? await prismaGlobal.userRoles.findMany({
           where: { user_id: gUser.id },
-          include: {
-            organizations: {
-              select: { id: true, name: true, type: true },
-            },
-          },
+          include: { organizations: { select: { id: true, name: true, type: true } } },
           orderBy: { org_id: "asc" },
         })
       : [];
@@ -146,6 +157,7 @@ app.get("/api/me", async (req, res) => {
 
 /**
  * Sets active organization cookie after verifying the user is a member of that org.
+ * Cross-site cookie => SameSite=None; Secure
  */
 app.post("/api/session/set-org", async (req, res) => {
   try {
@@ -179,15 +191,14 @@ app.post("/api/session/set-org", async (req, res) => {
       select: { user_id: true, org_id: true },
     });
     if (!membership)
-      return res
-        .status(403)
-        .json({ message: "Not a member of this organization" });
+      return res.status(403).json({ message: "Not a member of this organization" });
 
-    // Set cookie for the browser session
+    // Cross-site cookie for different frontend domain
     res.cookie("td_active_org", org_id, {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+      secure: true, // required with SameSite=None
+      path: "/",
     });
     res.sendStatus(204);
   } catch (e) {
@@ -201,27 +212,25 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 
-// Main trips router
+// Trips + passengers
 app.use("/api/trips", tripsRouter);
-
-// ✅ Mount passengers subrouter under /api/trips
-//    This makes GET /api/trips/:id/passengers, POST /api/trips/:id/passengers, etc. work.
 app.use("/api/trips", tripsPassengersRouter);
 
+// Global
 app.use("/api/global", globalRoutes);
 app.use("/api/global", globalRolesRoutes);
+
+// Bookings
 app.use("/api/bookings", bookingsRoutes);
 
-// ✅ Microsoft 365 integration routes
+// Microsoft 365 integration
 app.use("/api/ms", msRoutes);
 app.use("/api/auth", authMicrosoftRoutes);
 
 /* ---------------- Error handler ---------------- */
 app.use((err, req, res, next) => {
   console.error(err);
-  res
-    .status(err.status || 500)
-    .json({ message: err.message || "Internal server error" });
+  res.status(err.status || 500).json({ message: err.message || "Internal server error" });
 });
 
 /* ---------------- Boot ---------------- */
@@ -239,4 +248,3 @@ async function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
-
