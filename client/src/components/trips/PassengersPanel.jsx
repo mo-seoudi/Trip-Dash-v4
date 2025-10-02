@@ -89,7 +89,7 @@ export default function PassengersPanel({ trip, readOnly = false }) {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Type passenger name and press Add…"
+              placeholder="Add a passenger's name"
               className="flex-[3] border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
