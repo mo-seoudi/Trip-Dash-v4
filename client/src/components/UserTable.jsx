@@ -1,6 +1,8 @@
+// client/src/components/UserTable.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import api from "../services/apiClient"; // <-- use the shared axios client
 
 const roles = ["admin", "school_staff", "bus_company", "finance"];
 const keyOf = (id) => String(id);
@@ -14,7 +16,7 @@ const UserTable = ({ users = [] }) => {
   useEffect(() => {
     setEditedUsers(users);
     setOriginalUsers(users);
-    // NOTE: DO NOT reset savingUserIds here; let the request finish naturally
+    // NOTE: DO NOT reset savingUserIds here; let any in-flight request finish naturally
   }, [users]);
 
   // which rows are dirty?
@@ -41,23 +43,13 @@ const UserTable = ({ users = [] }) => {
 
     if (!dirtyMap.get(rowKey)) return; // nothing to save
 
-    setSavingUserIds((prev) => [...prev, rowKey]); // <-- VISUAL “Saving…”
+    setSavingUserIds((prev) => [...prev, rowKey]);
 
     try {
-      const apiBase =
-        process.env.REACT_APP_API_URL /* CRA */ ||
-        import.meta?.env?.VITE_API_URL /* Vite */ ||
-        "";
+      // use axios client (sends cookies + optional bearer automatically)
+      await api.put(`/users/${id}`, { role: userToUpdate.role });
 
-      // Minimal payload: only send changed fields
-      const res = await fetch(`${apiBase}/api/users/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: userToUpdate.role }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      // Mark row as clean so Save disables again
+      // mark row as clean so Save disables again
       setOriginalUsers((prev) =>
         prev.map((u) =>
           keyOf(u.id) === rowKey ? { ...u, role: userToUpdate.role } : u
@@ -66,12 +58,18 @@ const UserTable = ({ users = [] }) => {
 
       toast.success(`User "${userToUpdate.name}" updated successfully!`);
     } catch (err) {
-      // Revert role in UI
+      // revert role in UI
       setEditedUsers((prev) =>
         prev.map((u) => (keyOf(u.id) === rowKey ? { ...u, role: orig.role } : u))
       );
       console.error("Update failed", err);
-      toast.error(`Failed to update user "${userToUpdate.name}".`);
+      const msg =
+        err?.response?.status === 401
+          ? "Not authorized — please log in again."
+          : err?.response?.status === 403
+          ? "Forbidden — you don't have permission to update users."
+          : "Failed to update user.";
+      toast.error(`${msg}`);
     } finally {
       setSavingUserIds((prev) => prev.filter((k) => k !== rowKey));
     }
@@ -122,8 +120,9 @@ const UserTable = ({ users = [] }) => {
                 </select>
               </td>
               <td className="p-2">
+                {/* prevents parent form submit */}
                 <button
-                  type="button"                    {/* prevents parent form submit */}
+                  type="button"
                   onClick={() => handleSave(user.id)}
                   className={`px-3 py-1 rounded text-white ${
                     isSaving
