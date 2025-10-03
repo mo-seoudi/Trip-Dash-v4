@@ -33,34 +33,28 @@ const prismaGlobal = new PrismaGlobal();
 // Behind proxies (Render, etc.) so secure cookies work
 app.set("trust proxy", 1);
 
-/* ---------------- CORS (fully hosting-agnostic) ----------------
-   Configure via env on the host (Render, etc.):
-     ALLOWED_ORIGINS="https://your-prod.app, http://localhost:5173"
-     ALLOWED_ORIGIN_REGEXES="^https:\/\/.*\.vercel\.app$"   (CSV of regexes; optional)
+/* ---------------- CORS (hosting-agnostic) ----------------
+   Configure via env on the host:
+     ALLOWED_ORIGINS="https://trip-dash-v4.vercel.app, http://localhost:5173"
+     ALLOWED_ORIGIN_REGEXES="^https:\\/\\/trip-dash-v4-[a-z0-9-]+\\.vercel\\.app$"
 ---------------------------------------------------------------- */
 const DEV_DEFAULT = "http://localhost:5173";
 const rawOrigins =
   (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim()) ||
   (process.env.NODE_ENV === "production" ? "" : DEV_DEFAULT);
 
-// normalize host-only to https://host
 const normalize = (s) => (s?.startsWith("http") ? s : s ? `https://${s}` : s);
 const allowList = rawOrigins
   .split(",")
   .map((s) => normalize(s.trim()))
   .filter(Boolean);
 
-// compile regex list from env (CSV). e.g. ^https:\/\/.*\.vercel\.app$
 const regexList = (process.env.ALLOWED_ORIGIN_REGEXES || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
   .map((pattern) => {
-    try {
-      return new RegExp(pattern);
-    } catch {
-      return null;
-    }
+    try { return new RegExp(pattern); } catch { return null; }
   })
   .filter(Boolean);
 
@@ -69,22 +63,18 @@ const corsOptions = {
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   origin(origin, cb) {
-    // allow server-to-server (no Origin) like health checks, SSR, curl
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true); // health checks / server-to-server
     const ok = allowList.includes(origin) || regexList.some((re) => re.test(origin));
-    // Uncomment while tuning:
-    // if (!ok) console.warn("CORS blocked:", origin, { allowList, regexList: regexList.map(String) });
     return cb(null, ok);
   },
 };
 
 app.use((req, res, next) => {
-  // important for cross-site cookies
   res.header("Access-Control-Allow-Credentials", "true");
   next();
 });
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // preflight
+app.options("*", cors(corsOptions));
 
 /* ---------------- Parsers ---------------- */
 app.use(express.json({ limit: "1mb" }));
@@ -101,9 +91,9 @@ function getDecodedUser(req) {
     const bearer = req.headers.authorization || "";
     const token = bearer.startsWith("Bearer ")
       ? bearer.slice(7)
-      : req.cookies?.token;
+      : req.cookies?.token;              // <— cookie name MUST be "token"
     if (!token) return null;
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, process.env.JWT_SECRET || "dev-secret");
   } catch {
     return null;
   }
@@ -112,7 +102,7 @@ function getDecodedUser(req) {
 /* ---------------- Session / Me endpoints ---------------- */
 app.get("/api/me", async (req, res) => {
   try {
-    const decoded = getDecodedUser(req); // expects JWT to contain { id, email, ... }
+    const decoded = getDecodedUser(req); // expects { id, email, ... }
     let appUser = null;
 
     if (decoded?.id) {
@@ -198,11 +188,10 @@ app.post("/api/session/set-org", async (req, res) => {
     if (!membership)
       return res.status(403).json({ message: "Not a member of this organization" });
 
-    // Cross-site cookie for different frontend domain
     res.cookie("td_active_org", org_id, {
       httpOnly: true,
       sameSite: "none",
-      secure: true, // required with SameSite=None
+      secure: true,
       path: "/",
     });
     res.sendStatus(204);
@@ -255,3 +244,4 @@ async function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
