@@ -37,9 +37,6 @@ const Dashboard = () => {
       // Try the same endpoints your All Trips page might be using
       const endpoints = [
         "/api/trips",
-        "/api/trips?scope=mine",
-        "/api/trips/all",
-        "/api/trips/list",
       ];
       for (const path of endpoints) {
         try {
