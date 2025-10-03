@@ -2,6 +2,7 @@
 
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
+import jwt from "jsonwebtoken"; // ← NEW
 
 const router = Router();
 
@@ -13,9 +14,26 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true, // keep this name to match your schema relation
 };
 
+/** Read JWT from Authorization: Bearer <token> or cookie ('token' or legacy 'session') */
+function getDecodedUser(req) {
+  try {
+    const bearer = req.headers.authorization || "";
+    const token = bearer.startsWith("Bearer ")
+      ? bearer.slice(7)
+      : (req.cookies?.token || req.cookies?.session);
+    if (!token) return null;
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * GET /api/trips?createdBy=Name
  * Matches createdBy case-insensitively; if "First Last" is passed, uses the first token.
+ * Extra rule:
+ *   - if the logged-in user has role = 'school_staff', only return trips they created
+ *     (Trip.createdById === user.id)
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -26,12 +44,35 @@ router.get("/", async (req, res, next) => {
         ? String(createdBy).split(" ")[0]
         : createdBy;
 
+    // Build WHERE object once, then reuse for both "include" and fallback branches
+    const where = {};
+
+    if (needle) {
+      where.createdBy = { contains: String(needle), mode: "insensitive" };
+    }
+
+    // 🔐 Enforce per-user visibility for school_staff
+    try {
+      const decoded = getDecodedUser(req);
+      const userId = Number(decoded?.id ?? decoded?.uid);
+      if (userId) {
+        const me = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, role: true },
+        });
+        if ((me?.role || "").toLowerCase() === "school_staff") {
+          // Only trips requested by this user
+          where.createdById = me.id;
+        }
+      }
+    } catch {
+      // don’t fail the request if session lookup has issues; just skip the role filter
+    }
+
     // Prefer full response with relations; if that fails (e.g., schema drift), fall back gracefully.
     try {
       const trips = await prisma.trip.findMany({
-        where: needle
-          ? { createdBy: { contains: String(needle), mode: "insensitive" } }
-          : undefined,
+        where: Object.keys(where).length ? where : undefined,
         orderBy: { id: "desc" },
         include: TRIP_REL_INCLUDE,
       });
@@ -39,9 +80,7 @@ router.get("/", async (req, res, next) => {
     } catch (err) {
       console.warn("GET /api/trips include failed; falling back:", err?.message);
       const trips = await prisma.trip.findMany({
-        where: needle
-          ? { createdBy: { contains: String(needle), mode: "insensitive" } }
-          : undefined,
+        where: Object.keys(where).length ? where : undefined,
         orderBy: { id: "desc" },
       });
       return res.json(trips);
