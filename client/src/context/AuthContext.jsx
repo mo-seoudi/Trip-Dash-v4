@@ -30,18 +30,23 @@ export const AuthProvider = ({ children }) => {
   const loadSession = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getSession(); // expects { user } or 401
+      // getSession should call /api/auth/session with credentials: 'include'
+      const data = await getSession(); // { user } or 401 thrown/caught below
       const user = data?.user ?? null;
       setTokenUser(user);
 
       if (user) {
-        const userProfile = await getUserProfile(user.id);
-        setProfile(userProfile);
+        try {
+          const userProfile = await getUserProfile(user.id);
+          setProfile(userProfile);
+        } catch {
+          setProfile(null);
+        }
       } else {
         setProfile(null);
       }
-    } catch (error) {
-      // swallow 401s; they just mean "not logged in"
+    } catch {
+      // Treat network/401 as "not logged in"
       setTokenUser(null);
       setProfile(null);
     } finally {
@@ -52,13 +57,26 @@ export const AuthProvider = ({ children }) => {
   const refreshSession = useCallback(() => loadSession(), [loadSession]);
 
   const logout = useCallback(async () => {
-    await logoutUser();
-    setTokenUser(null);
-    setProfile(null);
+    try {
+      await logoutUser(); // hits /api/auth/logout
+    } finally {
+      setTokenUser(null);
+      setProfile(null);
+    }
   }, []);
 
+  // Initial load
   useEffect(() => {
     loadSession();
+  }, [loadSession]);
+
+  // Optional: refresh when the tab becomes visible (handles cookie changes)
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadSession();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [loadSession]);
 
   return (
