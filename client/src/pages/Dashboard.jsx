@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx  (adjust path if yours differs)
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
@@ -30,50 +31,33 @@ const Dashboard = () => {
   const [err, setErr] = useState(null);
   const [isEditing] = useState(false);
 
+  // ---- single, canonical endpoint ----
   useEffect(() => {
-    let mounted = true;
-
-    const tryEndpoints = async () => {
-      // Try the same endpoints your All Trips page might be using
-      const endpoints = [
-        "/api/trips",
-      ];
-      for (const path of endpoints) {
-        try {
-          const res = await api.get(path, { withCredentials: true });
-          const data = Array.isArray(res.data) ? res.data : res.data?.items || [];
-          if (data.length || path === endpoints[endpoints.length - 1]) {
-            return data;
-          }
-        } catch (e) {
-          // keep trying the next endpoint
-        }
-      }
-      return [];
-    };
-
+    const ac = new AbortController();
     (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const data = await tryEndpoints();
-        if (!mounted) return;
+        const res = await api.get("/api/trips", {
+          withCredentials: true, // include cookie
+          signal: ac.signal,
+        });
+        const data = Array.isArray(res.data) ? res.data : [];
         setTrips(data);
       } catch (e) {
-        if (!mounted) return;
+        if (ac.signal.aborted) return;
         setErr(e?.response?.data?.message || e.message || "Failed to load trips");
       } finally {
-        if (mounted) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     })();
-
-    return () => { mounted = false; };
+    return () => ac.abort();
   }, []);
 
   if (!profile) return <div className="p-6">Loading user…</div>;
   const { role, name } = profile;
 
-  // Helpers to tolerate different shapes
+  // ---- tolerant helpers for slightly different trip shapes ----
   const getDate = (t) =>
     t?.date || t?.tripDate || t?.startDate || t?.departureTime || t?.createdAt || null;
 
@@ -91,20 +75,31 @@ const Dashboard = () => {
   const { total, upcoming, statusCounts } = useMemo(() => {
     const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, unknown: 0 };
     let upc = 0;
-
     (trips || []).forEach((t) => {
       const d = getDate(t);
       const s = getStatus(t);
       if (d && dayjs(d).isAfter(today.subtract(1, "day"))) upc += 1;
       counts[s] = (counts[s] ?? 0) + 1;
     });
-
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
   }, [trips]);
 
-  const staffCTA = role === "school_staff" ? (
-    <RequestTripButton onSuccess={() => { /* could refetch here if needed */ }} hidden={isEditing} />
-  ) : null;
+  const staffCTA =
+    role === "school_staff" ? (
+      <RequestTripButton
+        onSuccess={async () => {
+          // Optional: light refetch after creating a trip
+          try {
+            setLoading(true);
+            const res = await api.get("/api/trips", { withCredentials: true });
+            setTrips(Array.isArray(res.data) ? res.data : []);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        hidden={isEditing}
+      />
+    ) : null;
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -113,7 +108,8 @@ const Dashboard = () => {
           Welcome{role !== "admin" ? "," : " Admin,"} {name}
         </h2>
         <p className="text-gray-500">
-          Here’s a quick snapshot of your trips{role === "admin" ? " across all organizations" : ""}.
+          Here’s a quick snapshot of your trips
+          {role === "admin" ? " across all organizations" : ""}.
         </p>
       </div>
 
@@ -123,9 +119,7 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {role === "school_staff" && (
-        <div className="mb-6 flex justify-end">{staffCTA}</div>
-      )}
+      {role === "school_staff" && <div className="mb-6 flex justify-end">{staffCTA}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card title="Total trips" value={loading ? "…" : total} />
