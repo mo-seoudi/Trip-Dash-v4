@@ -1,8 +1,8 @@
 // server/src/routes/trips/trips.core.js
 
 import { Router } from "express";
-import { prisma } from "../../lib/prisma.js";
 import jwt from "jsonwebtoken";
+import { prisma } from "../../lib/prisma.js";
 
 const router = Router();
 
@@ -11,16 +11,16 @@ const TRIP_REL_INCLUDE = {
   createdByUser: { select: { id: true, name: true, email: true } },
   parent: { select: { id: true } },
   children: { select: { id: true } },
-  subTripDocs: true, // keep this name to match your schema relation
+  subTripDocs: true,
 };
 
-/** Read JWT from Authorization: Bearer <token> or cookie ('token' or legacy 'session') */
-function getDecodedUser(req) {
+/* ---------- tiny helper: decode JWT from Authorization or cookie ---------- */
+function getDecoded(req) {
   try {
     const bearer = req.headers.authorization || "";
     const token = bearer.startsWith("Bearer ")
       ? bearer.slice(7)
-      : (req.cookies?.token || req.cookies?.session);
+      : req.cookies?.token || req.cookies?.session; // tolerate either name
     if (!token) return null;
     return jwt.verify(token, process.env.JWT_SECRET);
   } catch {
@@ -28,89 +28,57 @@ function getDecodedUser(req) {
   }
 }
 
-// Normalize role for simple checks
-function normRole(r) {
-  return (r || "").toString().trim().toLowerCase();
-}
-
-// Roles that may see more than their own trips
-const PRIVILEGED = new Set([
-  "admin",
-  "bus_company",
-  "transport_officer",
-  "bus_company_officer",
-  "finance",
-]);
-
-/**
- * GET /api/trips?createdBy=Name
- * Matches createdBy case-insensitively; if "First Last" is passed, uses the first token.
- * Enforces: non-privileged users (e.g. school_staff) only see their own trips.
- * Own trips are determined by (createdById = me.id) OR (createdByEmail = me.email) to
- * include older rows that might not have createdById populated.
- */
+/* ---------- GET /api/trips  ---------------------------------------------- *
+ * - school_staff -> ONLY my trips (createdById OR createdByEmail OR createdBy)
+ * - others       -> all trips, optionally filtered by ?createdBy= like before
+ * ------------------------------------------------------------------------- */
 router.get("/", async (req, res, next) => {
   try {
     const { createdBy } = req.query;
 
+    // Keep your existing "search by createdBy (first word)" behavior
     const needle =
       createdBy && String(createdBy).includes(" ")
         ? String(createdBy).split(" ")[0]
         : createdBy;
+    const searchFilter = needle
+      ? { createdBy: { contains: String(needle), mode: "insensitive" } }
+      : undefined;
 
-    // Build WHERE once; reuse in both include/fallback branches
-    const where = {};
-
-    if (needle) {
-      where.createdBy = { contains: String(needle), mode: "insensitive" };
+    // Figure out who is calling
+    const decoded = getDecoded(req);
+    let me = null;
+    if (decoded?.id) {
+      me = await prisma.user.findUnique({
+        where: { id: Number(decoded.id) },
+        select: { id: true, email: true, name: true, role: true },
+      });
     }
 
-    // 🔐 Enforce per-user visibility for non-privileged roles
-    try {
-      const decoded = getDecodedUser(req);
-      const userId = Number(decoded?.id ?? decoded?.uid);
-      if (userId) {
-        // Load current user to know role and email
-        const me = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, role: true, email: true },
-        });
+    // Base where
+    let where = {};
 
-        const role = normRole(me?.role);
-        const isPrivileged = PRIVILEGED.has(role);
-
-        if (!isPrivileged) {
-          // If you're school_staff (or anything not in PRIVILEGED), restrict to *your* trips.
-          // Use OR on createdById / createdByEmail to catch legacy rows.
-          const mine = [];
-          if (me?.id)   mine.push({ createdById: me.id });
-          if (me?.email) mine.push({ createdByEmail: me.email });
-
-          if (mine.length > 0) {
-            // If there was already a needle on createdBy name, AND it with "mine"
-            if (where.createdBy) {
-              where.AND = [{ OR: mine }, { createdBy: where.createdBy }];
-              delete where.createdBy;
-            } else {
-              where.OR = mine;
-            }
-          } else {
-            // No user data? Then safest is: show nothing to non-privileged users
-            where.id = -1; // impossible id
-          }
-        }
-      }
-    } catch {
-      // If decoding fails, we don't add the privileged filter here;
-      // Your auth layer (if any) can decide whether anonymous access is allowed.
-      // If you want to block anonymous entirely, uncomment the next line:
-      // return res.status(401).json({ message: "Not logged in" });
+    // If this is a school_staff, **restrict** to only their trips
+    if (me && String(me.role).toLowerCase() === "school_staff") {
+      const mine = {
+        OR: [
+          { createdById: me.id },
+          me.email ? { createdByEmail: me.email } : undefined,
+          me.name
+            ? { createdBy: { equals: me.name, mode: "insensitive" } }
+            : undefined,
+        ].filter(Boolean),
+      };
+      where = searchFilter ? { AND: [mine, searchFilter] } : mine;
+    } else {
+      // non staff: preserve your existing optional filter
+      if (searchFilter) where = searchFilter;
     }
 
-    // Prefer full response with relations; if that fails (e.g., schema drift), fall back gracefully.
+    // Try with relations first; fall back if schema changed
     try {
       const trips = await prisma.trip.findMany({
-        where: Object.keys(where).length ? where : undefined,
+        where,
         orderBy: { id: "desc" },
         include: TRIP_REL_INCLUDE,
       });
@@ -118,7 +86,7 @@ router.get("/", async (req, res, next) => {
     } catch (err) {
       console.warn("GET /api/trips include failed; falling back:", err?.message);
       const trips = await prisma.trip.findMany({
-        where: Object.keys(where).length ? where : undefined,
+        where,
         orderBy: { id: "desc" },
       });
       return res.json(trips);
@@ -128,10 +96,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/trips
- * Accepts Firestore-like payload; JSON blobs are stored as-is.
- */
+/* ---------- POST /api/trips (unchanged) ---------------------------------- */
 router.post("/", async (req, res, next) => {
   try {
     const {
@@ -152,9 +117,19 @@ router.post("/", async (req, res, next) => {
         departureTime: departureTime ?? null,
         returnDate: returnDate ? new Date(returnDate) : null,
         returnTime: returnTime ?? null,
-        students: typeof students === "number" ? students : students ? Number(students) : null,
+        students:
+          typeof students === "number"
+            ? students
+            : students
+            ? Number(students)
+            : null,
         status: status ?? "Pending",
-        price: typeof price === "number" ? price : price ? Number(price) : 0,
+        price:
+          typeof price === "number"
+            ? price
+            : price
+            ? Number(price)
+            : 0,
         notes: notes ?? null,
         cancelRequest: !!cancelRequest,
         busInfo: busInfo ?? null,      // JSON
@@ -164,7 +139,6 @@ router.post("/", async (req, res, next) => {
       },
     });
 
-    // Return with relations when possible
     try {
       const withRels = await prisma.trip.findUnique({
         where: { id: created.id },
@@ -179,17 +153,15 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-/**
- * PATCH /api/trips/:id
- * Partial updates. Converts date-ish strings to Date.
- */
+/* ---------- PATCH /api/trips/:id (unchanged) ----------------------------- */
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const data = { ...req.body };
 
     if ("date" in data) data.date = data.date ? new Date(data.date) : null;
-    if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
+    if ("returnDate" in data)
+      data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
 
     const updated = await prisma.trip.update({ where: { id }, data });
 
@@ -207,7 +179,7 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
-/** DELETE /api/trips/:id */
+/* ---------- DELETE /api/trips/:id (unchanged) ---------------------------- */
 router.delete("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
