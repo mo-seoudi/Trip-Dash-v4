@@ -2,7 +2,7 @@
 
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import jwt from "jsonwebtoken"; // ← NEW
+import jwt from "jsonwebtoken";
 
 const router = Router();
 
@@ -28,12 +28,26 @@ function getDecodedUser(req) {
   }
 }
 
+// Normalize role for simple checks
+function normRole(r) {
+  return (r || "").toString().trim().toLowerCase();
+}
+
+// Roles that may see more than their own trips
+const PRIVILEGED = new Set([
+  "admin",
+  "bus_company",
+  "transport_officer",
+  "bus_company_officer",
+  "finance",
+]);
+
 /**
  * GET /api/trips?createdBy=Name
  * Matches createdBy case-insensitively; if "First Last" is passed, uses the first token.
- * Extra rule:
- *   - if the logged-in user has role = 'school_staff', only return trips they created
- *     (Trip.createdById === user.id)
+ * Enforces: non-privileged users (e.g. school_staff) only see their own trips.
+ * Own trips are determined by (createdById = me.id) OR (createdByEmail = me.email) to
+ * include older rows that might not have createdById populated.
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -44,29 +58,53 @@ router.get("/", async (req, res, next) => {
         ? String(createdBy).split(" ")[0]
         : createdBy;
 
-    // Build WHERE object once, then reuse for both "include" and fallback branches
+    // Build WHERE once; reuse in both include/fallback branches
     const where = {};
 
     if (needle) {
       where.createdBy = { contains: String(needle), mode: "insensitive" };
     }
 
-    // 🔐 Enforce per-user visibility for school_staff
+    // 🔐 Enforce per-user visibility for non-privileged roles
     try {
       const decoded = getDecodedUser(req);
       const userId = Number(decoded?.id ?? decoded?.uid);
       if (userId) {
+        // Load current user to know role and email
         const me = await prisma.user.findUnique({
           where: { id: userId },
-          select: { id: true, role: true },
+          select: { id: true, role: true, email: true },
         });
-        if ((me?.role || "").toLowerCase() === "school_staff") {
-          // Only trips requested by this user
-          where.createdById = me.id;
+
+        const role = normRole(me?.role);
+        const isPrivileged = PRIVILEGED.has(role);
+
+        if (!isPrivileged) {
+          // If you're school_staff (or anything not in PRIVILEGED), restrict to *your* trips.
+          // Use OR on createdById / createdByEmail to catch legacy rows.
+          const mine = [];
+          if (me?.id)   mine.push({ createdById: me.id });
+          if (me?.email) mine.push({ createdByEmail: me.email });
+
+          if (mine.length > 0) {
+            // If there was already a needle on createdBy name, AND it with "mine"
+            if (where.createdBy) {
+              where.AND = [{ OR: mine }, { createdBy: where.createdBy }];
+              delete where.createdBy;
+            } else {
+              where.OR = mine;
+            }
+          } else {
+            // No user data? Then safest is: show nothing to non-privileged users
+            where.id = -1; // impossible id
+          }
         }
       }
     } catch {
-      // don’t fail the request if session lookup has issues; just skip the role filter
+      // If decoding fails, we don't add the privileged filter here;
+      // Your auth layer (if any) can decide whether anonymous access is allowed.
+      // If you want to block anonymous entirely, uncomment the next line:
+      // return res.status(401).json({ message: "Not logged in" });
     }
 
     // Prefer full response with relations; if that fails (e.g., schema drift), fall back gracefully.
