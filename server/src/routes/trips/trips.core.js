@@ -15,6 +15,9 @@ const TRIP_REL_INCLUDE = {
 };
 
 /** Decode JWT from either Authorization: Bearer <token> or cookie "token" */
+// use the same secret fallback as authRoutes.js
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+
 function getDecodedUser(req) {
   try {
     const bearer = req.headers.authorization || "";
@@ -22,7 +25,8 @@ function getDecodedUser(req) {
       ? bearer.slice(7)
       : req.cookies?.token; // cookie name used across the app
     if (!token) return null;
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded;
   } catch (e) {
     console.warn("[TRIPS] JWT verify failed:", e?.message);
     return null;
