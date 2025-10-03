@@ -1,10 +1,12 @@
 // server/src/routes/trips/trips.core.js
+
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import jwt from "jsonwebtoken";
 
 const router = Router();
 
+/** Relations returned with each trip */
 const TRIP_REL_INCLUDE = {
   createdByUser: { select: { id: true, name: true, email: true } },
   parent: { select: { id: true } },
@@ -12,7 +14,7 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true,
 };
 
-/** Decode JWT from either Authorization: Bearer or cookie "token" */
+/** Decode JWT from either Authorization: Bearer <token> or cookie "token" */
 function getDecodedUser(req) {
   try {
     const bearer = req.headers.authorization || "";
@@ -30,23 +32,20 @@ function getDecodedUser(req) {
 /**
  * GET /api/trips?createdBy=Name
  * - If role === school_staff => show only trips they created
- * - Otherwise keep the existing behavior (optionally narrowed by createdBy search)
+ * - Otherwise keep existing behavior (optionally narrowed by createdBy search)
  */
 router.get("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
-    console.log("[TRIPS] decoded:", decoded);
 
-    let currentUser = null;
-    if (decoded?.id) {
-      currentUser = await prisma.user.findUnique({
-        where: { id: Number(decoded.id) },
-        select: { id: true, email: true, role: true, name: true },
-      });
-    }
-    console.log("[TRIPS] currentUser:", currentUser);
+    const currentUser = decoded?.id
+      ? await prisma.user.findUnique({
+          where: { id: Number(decoded.id) },
+          select: { id: true, email: true, role: true, name: true },
+        })
+      : null;
 
-    // existing optional search by createdBy (first token if "First Last")
+    // Optional search by creator display name; if "First Last" passed, use the first token.
     const { createdBy } = req.query;
     const nameNeedle =
       createdBy && String(createdBy).includes(" ")
@@ -57,11 +56,9 @@ router.get("/", async (req, res, next) => {
       ? { createdBy: { contains: String(nameNeedle), mode: "insensitive" } }
       : undefined;
 
-    // Build WHERE
+    // NEW: restrict school_staff to trips they created (by id OR email)
     let where = baseWhere;
-
     if (currentUser?.role === "school_staff") {
-      // IMPORTANT: Do not fall back to "show everything" when creator fields are missing
       where = {
         AND: [
           baseWhere || {},
@@ -75,7 +72,12 @@ router.get("/", async (req, res, next) => {
       };
     }
 
-    console.log("[TRIPS] where:", JSON.stringify(where));
+    // tiny trace to confirm behavior in Render logs
+    console.log("[TRIPS] list", {
+      role: currentUser?.role || null,
+      userId: currentUser?.id || null,
+      email: currentUser?.email || null,
+    });
 
     try {
       const trips = await prisma.trip.findMany({
@@ -83,12 +85,10 @@ router.get("/", async (req, res, next) => {
         orderBy: { id: "desc" },
         include: TRIP_REL_INCLUDE,
       });
-      console.log("[TRIPS] count:", trips.length);
       return res.json(trips);
     } catch (err) {
       console.warn("[TRIPS] include failed; fallback:", err?.message);
       const trips = await prisma.trip.findMany({ where, orderBy: { id: "desc" } });
-      console.log("[TRIPS] count (fallback):", trips.length);
       return res.json(trips);
     }
   } catch (e) {
@@ -99,12 +99,12 @@ router.get("/", async (req, res, next) => {
 
 /**
  * POST /api/trips
- * Stamps creator fields from JWT if they’re not provided in body.
+ * Stamps creator fields from JWT if not provided in body.
+ * (Keeps your existing Firestore-like payload shape.)
  */
 router.post("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
-    console.log("[TRIPS] POST decoded:", decoded);
 
     const {
       createdById, createdBy, createdByEmail,
@@ -136,12 +136,7 @@ router.post("/", async (req, res, next) => {
     };
 
     if (!data.createdById && !data.createdByEmail) {
-      console.warn("[TRIPS] creating trip WITHOUT creator fields — it won’t show up for school_staff filters.");
-    } else {
-      console.log("[TRIPS] stamping creator:", {
-        createdById: data.createdById,
-        createdByEmail: data.createdByEmail,
-      });
+      console.warn("[TRIPS] creating without creator fields — school_staff filters will not match.");
     }
 
     const created = await prisma.trip.create({ data });
@@ -161,7 +156,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-/** PATCH /api/trips/:id */
+/** PATCH /api/trips/:id (partial update) */
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
