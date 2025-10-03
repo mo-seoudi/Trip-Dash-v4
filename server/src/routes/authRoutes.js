@@ -10,17 +10,19 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-const COOKIE_NAME = "session";
+
+// ✅ Make this "token" to match getDecodedUser() in index.js
+const COOKIE_NAME = "token";
 
 // In production (Render/Vercel over HTTPS) cookies must be Secure + SameSite=None.
 // In local dev (http://localhost) those flags break cookies, so we toggle by NODE_ENV.
 const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
-  secure: isProd,                     // true on Render (HTTPS)
-  sameSite: isProd ? "none" : "lax",  // cross-site in prod; friendlier in dev
+  secure: isProd,                    // true on Render (HTTPS)
+  sameSite: isProd ? "none" : "lax", // cross-site in prod; friendlier in dev
   path: "/",
-  maxAge: 1000 * 60 * 60 * 24 * 7,    // 7 days
+  maxAge: 1000 * 60 * 60 * 24 * 7,   // 7 days
 };
 
 /** REGISTER */
@@ -53,7 +55,7 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-/** LOGIN — blocks if not approved, sets cookie, returns user */
+/** LOGIN — blocks if not approved, sets cookie, returns user + token */
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -64,16 +66,21 @@ router.post("/login", async (req, res, next) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    // Normalized approval check (replaces the old strict !== "approved")
+    // Normalized approval check
     const isApproved = (user.status ?? "").toLowerCase().trim() === "approved";
     if (!isApproved) {
       console.warn("LOGIN BLOCKED (status)", { email: user.email, status: user.status });
       return res.status(403).json({ message: "Account pending approval", status: user.status });
     }
 
-    const token = jwt.sign({ uid: user.id }, JWT_SECRET, { expiresIn: "7d" });
+    // ✅ Sign with { id, email } so /api/me can read decoded.id
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    // Cross-site cookie (Vercel -> Render)
+    // ✅ Cross-site cookie (Vercel -> Render) with the expected name
     res.cookie(COOKIE_NAME, token, cookieOptions);
 
     const safeUser = {
@@ -83,7 +90,9 @@ router.post("/login", async (req, res, next) => {
       role: user.role,
       status: user.status,
     };
-    res.json({ ok: true, user: safeUser });
+
+    // ✅ ALSO return the token so the client can store it (header-based auth)
+    res.json({ ok: true, user: safeUser, token });
   } catch (err) {
     next(err);
   }
@@ -95,9 +104,12 @@ router.get("/session", async (req, res) => {
   if (!token) return res.status(401).json({ user: null });
 
   try {
-    const { uid } = jwt.verify(token, JWT_SECRET);
+    // Support either shape (legacy uid or new id)
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id ?? decoded.uid;
+
     const user = await prisma.user.findUnique({
-      where: { id: uid },
+      where: { id: Number(userId) },
       select: { id: true, email: true, name: true, role: true, status: true },
     });
     if (!user) return res.status(401).json({ user: null });
