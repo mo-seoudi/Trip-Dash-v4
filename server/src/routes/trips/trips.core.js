@@ -85,3 +85,5 @@ router.get("/", async (req, res, next) => {
     next(e);
   }
 });
+export default router;
+
