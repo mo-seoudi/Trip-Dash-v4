@@ -11,39 +11,54 @@ const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
-// ✅ Make this "token" to match getDecodedUser() in index.js
+/**
+ * Cookie name MUST match what index.js -> getDecodedUser() expects (it checks req.cookies.token)
+ */
 const COOKIE_NAME = "token";
 
-// In production (Render/Vercel over HTTPS) cookies must be Secure + SameSite=None.
-// In local dev (http://localhost) those flags break cookies, so we toggle by NODE_ENV.
+/**
+ * Cookies: cross-site in prod (Vercel -> Render) and relaxed in dev (localhost)
+ */
 const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
-  secure: isProd,                    // true on Render (HTTPS)
-  sameSite: isProd ? "none" : "lax", // cross-site in prod; friendlier in dev
+  secure: isProd,                    // must be true over HTTPS
+  sameSite: isProd ? "none" : "lax", // "none" required for cross-site cookies
   path: "/",
   maxAge: 1000 * 60 * 60 * 24 * 7,   // 7 days
 };
 
-/** REGISTER */
+/**
+ * When true, /register will create users with status = 'approved'
+ * Otherwise they are created as 'pending' and an admin must approve.
+ */
+const APPROVE_ON_REGISTER = String(process.env.APPROVE_ON_REGISTER || "").toLowerCase() === "true";
+
+/* --------------------------- REGISTER --------------------------- */
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, name, role } = req.body;
+    let { email, password, name, role } = req.body || {};
     if (!email || !password || !name) {
       return res.status(400).json({ message: "name, email and password are required" });
     }
 
+    // Normalize email to lowercase to avoid duplicates by case
+    email = String(email).trim().toLowerCase();
+
+    // Check if user already exists (case-insensitive)
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) return res.status(409).json({ message: "Email already registered" });
+    if (existing) {
+      return res.status(409).json({ message: "Email already registered" });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
       data: {
         email,
-        name,
+        name: String(name).trim(),
         role: role || "school_staff",
-        status: "pending", // default pending — admin can approve later
+        status: APPROVE_ON_REGISTER ? "approved" : "pending",
         passwordHash,
       },
       select: { id: true, email: true, name: true, role: true, status: true },
@@ -55,10 +70,22 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-/** LOGIN — blocks if not approved, sets cookie, returns user + token */
+/* ----------------------------- LOGIN ---------------------------- */
+/**
+ * - Validates credentials
+ * - Blocks if status is not 'approved'
+ * - Signs JWT as { id, email }
+ * - Sets cross-site cookie (name: "token")
+ * - Also returns { token } so the client can use Authorization header
+ */
 router.post("/login", async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ message: "email and password are required" });
+    }
+
+    email = String(email).trim().toLowerCase();
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
@@ -66,21 +93,16 @@ router.post("/login", async (req, res, next) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    // Normalized approval check
     const isApproved = (user.status ?? "").toLowerCase().trim() === "approved";
     if (!isApproved) {
       console.warn("LOGIN BLOCKED (status)", { email: user.email, status: user.status });
       return res.status(403).json({ message: "Account pending approval", status: user.status });
     }
 
-    // ✅ Sign with { id, email } so /api/me can read decoded.id
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    // ✅ Use { id, email } so index.js and other routes can read decoded.id
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
-    // ✅ Cross-site cookie (Vercel -> Render) with the expected name
+    // ✅ Set cookie for browser
     res.cookie(COOKIE_NAME, token, cookieOptions);
 
     const safeUser = {
@@ -91,27 +113,31 @@ router.post("/login", async (req, res, next) => {
       status: user.status,
     };
 
-    // ✅ ALSO return the token so the client can store it (header-based auth)
+    // ✅ And also return token so the SPA can keep sending Authorization: Bearer <token>
     res.json({ ok: true, user: safeUser, token });
   } catch (err) {
     next(err);
   }
 });
 
-/** SESSION — reads cookie and returns current user */
+/* ---------------------------- SESSION --------------------------- */
+/**
+ * Reads the cookie and returns the current user.
+ * Supports legacy tokens signed with { uid } as well, just in case.
+ */
 router.get("/session", async (req, res) => {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ user: null });
 
   try {
-    // Support either shape (legacy uid or new id)
     const decoded = jwt.verify(token, JWT_SECRET);
-    const userId = decoded.id ?? decoded.uid;
+    const userId = decoded.id ?? decoded.uid; // fallback if you ever had uid-signed tokens
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
       select: { id: true, email: true, name: true, role: true, status: true },
     });
+
     if (!user) return res.status(401).json({ user: null });
     res.json({ user });
   } catch {
@@ -119,7 +145,10 @@ router.get("/session", async (req, res) => {
   }
 });
 
-/** LOGOUT — clear cookie (must match creation flags) */
+/* ---------------------------- LOGOUT ---------------------------- */
+/**
+ * Clears the cookie. Flags must match creation flags.
+ */
 router.post("/logout", (req, res) => {
   res.clearCookie(COOKIE_NAME, {
     path: "/",
