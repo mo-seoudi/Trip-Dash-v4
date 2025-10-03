@@ -25,7 +25,14 @@ const Login = () => {
     setError("");
     setInfo("");
     try {
-      await apiLogin(email, password);
+      // ⬇️ Keep your existing service call
+      const resp = await apiLogin(email, password);
+
+      // ⬇️ NEW: if server returns a token, keep it for header auth
+      if (resp?.data?.token) {
+        localStorage.setItem("token", resp.data.token);
+      }
+
       await refreshSession();
       navigate("/");
     } catch (err) {
