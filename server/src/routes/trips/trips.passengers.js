@@ -1,174 +1,130 @@
 // server/src/routes/trips/trips.passengers.js
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { prisma } from "../../lib/prisma.js";
 
 const router = Router();
 
-function toInt(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+/** Decode JWT from Authorization: Bearer ... or cookie "token" */
+function getDecodedUser(req) {
+  try {
+    const bearer = req.headers.authorization || "";
+    const token = bearer.startsWith("Bearer ")
+      ? bearer.slice(7)
+      : req.cookies?.token;
+    if (!token) return null;
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
 }
 
-// GET /api/trips/:id/passengers
-router.get("/:id/passengers", async (req, res, next) => {
+/** Basic access check: creator of the trip (or admin) */
+async function canAccessTrip(user, tripId) {
+  if (!user?.id) return false;
+  if (user?.role === "admin") return true;
+  const trip = await prisma.trip.findUnique({
+    where: { id: Number(tripId) },
+    select: { id: true, createdById: true, createdByEmail: true },
+  });
+  if (!trip) return false;
+
+  // match by id or email
+  if (trip.createdById && Number(trip.createdById) === Number(user.id)) return true;
+
+  const me = await prisma.user.findUnique({
+    where: { id: Number(user.id) },
+    select: { email: true },
+  });
+  if (me?.email && trip.createdByEmail && me.email === trip.createdByEmail) return true;
+
+  return false;
+}
+
+/** GET /api/trips/:id/passengers */
+router.get("/:id/passengers", async (req, res) => {
   try {
-    const tripId = toInt(req.params.id);
+    const decoded = getDecodedUser(req);
+    const tripId = Number(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    // Optional: ensure trip exists (more helpful 404)
-    const trip = await prisma.trip.findUnique({
-      where: { id: tripId },
-      select: { id: true },
-    });
-    if (!trip) return res.status(404).json({ error: "Trip not found" });
+    const ok = await canAccessTrip(decoded, tripId);
+    if (!ok) return res.status(403).json({ error: "Forbidden" });
 
-    const passengers = await prisma.tripPassenger.findMany({
+    // NOTE: don't select individual fields; just fetch rows.
+    // This avoids runtime issues if your Prisma client is slightly out of date with DB columns.
+    const rows = await prisma.tripPassenger.findMany({
       where: { tripId },
-      // ↓ Quick fix: use a column that exists in every DB
-      orderBy: { id: "asc" },
-      // If you add createdAt later, you can switch to:
-      // orderBy: { createdAt: "asc" },
+      orderBy: { id: "desc" },
     });
 
-    res.json({ passengers });
+    // For UI compatibility: ensure keys exist (fallbacks)
+    const mapped = rows.map((r) => ({
+      id: r.id,
+      tripId: r.tripId,
+      fullName: r.fullName ?? "",
+      guardianName: r.guardianName ?? null,
+      guardianPhone: r.guardianPhone ?? null,
+      pickupPoint: r.pickupPoint ?? null,
+      dropoffPoint: r.dropoffPoint ?? null,
+      notes: r.notes ?? null,
+      checkedIn: !!r.checkedIn,
+      latestPaymentStatus: r.latestPaymentStatus ?? null,
+      createdAt: r.createdAt ?? null,
+    }));
+
+    res.json(mapped);
   } catch (e) {
-    console.error("GET /trips/:id/passengers error:", e);
-    res.status(500).json({ message: "Failed to load passengers" });
+    console.error("[PASSENGERS] GET error:", e);
+    res.status(500).json({ error: "Failed to load passengers" });
   }
 });
 
-// POST /api/trips/:id/passengers  { items: [...], createDirectory?: boolean }
-router.post("/:id/passengers", async (req, res, next) => {
+/** POST /api/trips/:id/passengers
+ *  body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes? }], prepend?: boolean }
+ */
+router.post("/:id/passengers", async (req, res) => {
   try {
-    const tripId = toInt(req.params.id);
+    const decoded = getDecodedUser(req);
+    const tripId = Number(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    const trip = await prisma.trip.findUnique({
-      where: { id: tripId },
-      select: { id: true },
+    const ok = await canAccessTrip(decoded, tripId);
+    if (!ok) return res.status(403).json({ error: "Forbidden" });
+
+    const list = Array.isArray(req.body?.passengers) ? req.body.passengers : [];
+    if (!list.length) return res.status(400).json({ error: "No passengers provided" });
+
+    // basic shape & trim
+    const toCreate = list
+      .map((p) => ({
+        tripId,
+        fullName: String(p.fullName || "").trim(),
+        guardianName: p.guardianName ? String(p.guardianName).trim() : null,
+        guardianPhone: p.guardianPhone ? String(p.guardianPhone).trim() : null,
+        pickupPoint: p.pickupPoint ? String(p.pickupPoint).trim() : null,
+        dropoffPoint: p.dropoffPoint ? String(p.dropoffPoint).trim() : null,
+        notes: p.notes ? String(p.notes).trim() : null,
+        checkedIn: !!p.checkedIn,
+        latestPaymentStatus: p.latestPaymentStatus ?? null,
+      }))
+      .filter((p) => p.fullName);
+
+    if (!toCreate.length) return res.status(400).json({ error: "Invalid passenger names" });
+
+    // createMany (fast) then fetch the created rows
+    await prisma.tripPassenger.createMany({ data: toCreate });
+
+    const created = await prisma.tripPassenger.findMany({
+      where: { tripId },
+      orderBy: { id: "desc" },
+      take: toCreate.length,
     });
-    if (!trip) return res.status(404).json({ error: "Trip not found" });
-
-    let { items = [], createDirectory = true } = req.body;
-    if (!Array.isArray(items)) {
-      return res.status(400).json({ error: "items must be an array" });
-    }
-
-    const normalized = items
-      .map((raw) => {
-        if (typeof raw === "string") {
-          const fullName = raw.trim();
-          return fullName ? { fullName } : null;
-        }
-        const fullName = (raw.fullName || raw.name || "").trim();
-        if (!fullName) return null;
-        return {
-          fullName,
-          grade: raw.grade ?? raw.class ?? null,
-          guardianName: raw.guardianName ?? raw.parentName ?? null,
-          guardianPhone: raw.guardianPhone ?? raw.parentPhone ?? null,
-          pickupPoint: raw.pickupPoint ?? raw.pickup ?? null,
-          dropoffPoint: raw.dropoffPoint ?? raw.dropoff ?? null,
-          seatNumber: raw.seatNumber ?? raw.seat ?? null,
-          notes: raw.notes ?? null,
-        };
-      })
-      .filter(Boolean);
-
-    if (normalized.length === 0) {
-      return res.status(400).json({ error: "No valid passengers to add" });
-    }
-
-    const created = await prisma.$transaction(
-      normalized.map((p) =>
-        prisma.tripPassenger.create({
-          data: {
-            tripId,
-            fullName: p.fullName,
-            grade: p.grade,
-            guardianName: p.guardianName,
-            guardianPhone: p.guardianPhone,
-            pickupPoint: p.pickupPoint,
-            dropoffPoint: p.dropoffPoint,
-            seatNumber: p.seatNumber,
-            notes: p.notes,
-            checkedIn: false,
-            checkedOut: false,
-          },
-        })
-      )
-    );
-
-    if (createDirectory) {
-      for (const p of normalized) {
-        try {
-          await prisma.passenger.upsert({
-            where: { fullName: p.fullName },
-            update: { grade: p.grade ?? undefined },
-            create: { fullName: p.fullName, grade: p.grade ?? null },
-          });
-        } catch (err) {
-          // harmless duplicates, log as warn
-          console.warn("Directory upsert warn:", err?.code || err?.message);
-        }
-      }
-    }
 
     res.status(201).json(created);
   } catch (e) {
-    console.error("POST /trips/:id/passengers error:", e);
-    res.status(500).json({ message: "Failed to add passengers" });
-  }
-});
-
-// PATCH /api/trips/:id/passengers/:rowId
-router.patch("/:id/passengers/:rowId", async (req, res) => {
-  try {
-    const rowId = toInt(req.params.rowId);
-    if (!rowId) return res.status(400).json({ error: "Invalid row id" });
-
-    const updated = await prisma.tripPassenger.update({
-      where: { id: rowId },
-      data: { ...req.body },
-    });
-    res.json(updated);
-  } catch (e) {
-    console.error("PATCH /trips/:id/passengers/:rowId error:", e);
-    res.status(500).json({ message: "Failed to update passenger row" });
-  }
-});
-
-// POST /api/trips/:id/passengers/:rowId/payment
-router.post("/:id/passengers/:rowId/payment", async (req, res) => {
-  try {
-    const rowId = toInt(req.params.rowId);
-    if (!rowId) return res.status(400).json({ error: "Invalid row id" });
-
-    const {
-      amountDue,
-      amountPaid = 0,
-      status = "unpaid",
-      method = null,
-      reference = null,
-      currency = "USD",
-    } = req.body;
-
-    const payment = await prisma.tripPassengerPayment.create({
-      data: {
-        tripPassengerId: rowId,
-        amountDue: Number(amountDue),
-        amountPaid: Number(amountPaid),
-        status,
-        method,
-        reference,
-        currency,
-      },
-    });
-
-    res.status(201).json(payment);
-  } catch (e) {
-    console.error("POST /trips/:id/passengers/:rowId/payment error:", e);
-    res.status(500).json({ message: "Failed to record payment" });
+    console.error("[PASSENGERS] POST error:", e);
+    res.status(500).json({ error: "Failed to add passengers" });
   }
 });
 
