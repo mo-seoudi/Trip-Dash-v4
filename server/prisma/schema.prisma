@@ -75,6 +75,7 @@ model Trip {
   @@map("Trip")
 }
 
+// Roster rows scoped to a single trip
 model TripPassenger {
   id            Int       @id @default(autoincrement())
   tripId        Int
@@ -82,15 +83,12 @@ model TripPassenger {
 
   createdAt     DateTime  @default(now())
   fullName      String
-  grade         String?
   guardianName  String?
   guardianPhone String?
   pickupPoint   String?
   dropoffPoint  String?
-  seatNumber    String?
   notes         String?
   checkedIn     Boolean   @default(false)
-  checkedOut    Boolean   @default(false)
 
   payments      TripPassengerPayment[]
 
@@ -98,6 +96,7 @@ model TripPassenger {
   @@map("TripPassenger")
 }
 
+// Optional payments (keep if you’ll need it)
 model TripPassengerPayment {
   id               Int            @id @default(autoincrement())
   tripPassengerId  Int
@@ -113,15 +112,6 @@ model TripPassengerPayment {
 
   @@index([tripPassengerId])
   @@map("TripPassengerPayment")
-}
-
-model Passenger {
-  id        Int      @id @default(autoincrement())
-  fullName  String   @unique
-  grade     String?
-  createdAt DateTime @default(now())
-
-  @@map("Passenger")
 }
 
 
