@@ -1,8 +1,9 @@
 // server/src/routes/trips/trips.passengers.js
 import { Router } from "express";
 import jwt from "jsonwebtoken";
-import { prisma } from "../../lib/prisma.js";
+import { PrismaClient } from "@prisma/client";
 
+const prisma = new PrismaClient();
 const router = Router();
 
 /** Decode JWT from Authorization: Bearer ... or cookie "token" */
@@ -56,33 +57,29 @@ router.get("/:id/passengers", async (req, res) => {
       orderBy: { id: "desc" },
     });
 
-    // Surface only DB-aligned fields (no phantom columns)
-    const mapped = rows.map((r) => ({
-      id: r.id,
-      tripId: r.tripId,
-      fullName: r.fullName ?? "",
-      guardianName: r.guardianName ?? null,
-      guardianPhone: r.guardianPhone ?? null,
-      pickupPoint: r.pickupPoint ?? null,
-      dropoffPoint: r.dropoffPoint ?? null,
-      notes: r.notes ?? null,
-      checkedIn: !!r.checkedIn,
-      createdAt: r.createdAt ?? null,
-    }));
-
-    res.json(mapped);
+    // Return as a plain array (what the client expects)
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        tripId: r.tripId,
+        fullName: r.fullName ?? "",
+        guardianName: r.guardianName ?? null,
+        guardianPhone: r.guardianPhone ?? null,
+        pickupPoint: r.pickupPoint ?? null,
+        dropoffPoint: r.dropoffPoint ?? null,
+        notes: r.notes ?? null,
+        checkedIn: !!r.checkedIn,
+        createdAt: r.createdAt ?? null,
+      }))
+    );
   } catch (e) {
     console.error("[PASSENGERS] GET error:", e);
     res.status(500).json({ error: "Failed to load passengers" });
   }
 });
 
-/**
- * POST /api/trips/:id/passengers
- * Accepts EITHER:
- *   { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }], prepend?: boolean }
- * OR
- *   [ { fullName, ... }, ... ]
+/** POST /api/trips/:id/passengers
+ * body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
  */
 router.post("/:id/passengers", async (req, res) => {
   try {
@@ -93,10 +90,7 @@ router.post("/:id/passengers", async (req, res) => {
     const ok = await canAccessTrip(decoded, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
-    // Accept both body shapes
-    const body = req.body;
-    const incoming = Array.isArray(body) ? body : body?.passengers;
-    const list = Array.isArray(incoming) ? incoming : [];
+    const list = Array.isArray(req.body?.passengers) ? req.body.passengers : [];
     if (!list.length) return res.status(400).json({ error: "No passengers provided" });
 
     const toCreate = list
@@ -109,6 +103,8 @@ router.post("/:id/passengers", async (req, res) => {
         dropoffPoint: p.dropoffPoint ? String(p.dropoffPoint).trim() : null,
         notes: p.notes ? String(p.notes).trim() : null,
         checkedIn: !!p.checkedIn,
+        // IMPORTANT: do not include non-existent columns here
+        // seatNumber, grade, payments, etc., are handled elsewhere if you add them later
       }))
       .filter((p) => p.fullName);
 
@@ -116,14 +112,26 @@ router.post("/:id/passengers", async (req, res) => {
 
     await prisma.tripPassenger.createMany({ data: toCreate });
 
-    // Return the newest N rows
     const created = await prisma.tripPassenger.findMany({
       where: { tripId },
       orderBy: { id: "desc" },
       take: toCreate.length,
     });
 
-    res.status(201).json(created);
+    res.status(201).json(
+      created.map((r) => ({
+        id: r.id,
+        tripId: r.tripId,
+        fullName: r.fullName ?? "",
+        guardianName: r.guardianName ?? null,
+        guardianPhone: r.guardianPhone ?? null,
+        pickupPoint: r.pickupPoint ?? null,
+        dropoffPoint: r.dropoffPoint ?? null,
+        notes: r.notes ?? null,
+        checkedIn: !!r.checkedIn,
+        createdAt: r.createdAt ?? null,
+      }))
+    );
   } catch (e) {
     console.error("[PASSENGERS] POST error:", e);
     res.status(500).json({ error: "Failed to add passengers" });
