@@ -79,7 +79,7 @@ model Trip {
 model TripPassenger {
   id            Int       @id @default(autoincrement())
   tripId        Int
-  trip          Trip      @relation(fields: [tripId], references: [id])
+  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   createdAt     DateTime  @default(now())
   fullName      String
@@ -100,7 +100,7 @@ model TripPassenger {
 model TripPassengerPayment {
   id               Int            @id @default(autoincrement())
   tripPassengerId  Int
-  passenger        TripPassenger  @relation(fields: [tripPassengerId], references: [id])
+  passenger        TripPassenger  @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
 
   createdAt        DateTime       @default(now())
   amountDue        Float
