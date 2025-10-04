@@ -23,13 +23,13 @@ function getDecodedUser(req) {
 async function canAccessTrip(user, tripId) {
   if (!user?.id) return false;
   if (user?.role === "admin") return true;
+
   const trip = await prisma.trip.findUnique({
     where: { id: Number(tripId) },
     select: { id: true, createdById: true, createdByEmail: true },
   });
   if (!trip) return false;
 
-  // match by id or email
   if (trip.createdById && Number(trip.createdById) === Number(user.id)) return true;
 
   const me = await prisma.user.findUnique({
@@ -51,14 +51,12 @@ router.get("/:id/passengers", async (req, res) => {
     const ok = await canAccessTrip(decoded, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
-    // NOTE: don't select individual fields; just fetch rows.
-    // This avoids runtime issues if your Prisma client is slightly out of date with DB columns.
     const rows = await prisma.tripPassenger.findMany({
       where: { tripId },
       orderBy: { id: "desc" },
     });
 
-    // For UI compatibility: ensure keys exist (fallbacks)
+    // Surface only DB-aligned fields (no phantom columns)
     const mapped = rows.map((r) => ({
       id: r.id,
       tripId: r.tripId,
@@ -69,7 +67,6 @@ router.get("/:id/passengers", async (req, res) => {
       dropoffPoint: r.dropoffPoint ?? null,
       notes: r.notes ?? null,
       checkedIn: !!r.checkedIn,
-      latestPaymentStatus: r.latestPaymentStatus ?? null,
       createdAt: r.createdAt ?? null,
     }));
 
@@ -80,8 +77,12 @@ router.get("/:id/passengers", async (req, res) => {
   }
 });
 
-/** POST /api/trips/:id/passengers
- *  body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes? }], prepend?: boolean }
+/**
+ * POST /api/trips/:id/passengers
+ * Accepts EITHER:
+ *   { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }], prepend?: boolean }
+ * OR
+ *   [ { fullName, ... }, ... ]
  */
 router.post("/:id/passengers", async (req, res) => {
   try {
@@ -92,10 +93,12 @@ router.post("/:id/passengers", async (req, res) => {
     const ok = await canAccessTrip(decoded, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
-    const list = Array.isArray(req.body?.passengers) ? req.body.passengers : [];
+    // Accept both body shapes
+    const body = req.body;
+    const incoming = Array.isArray(body) ? body : body?.passengers;
+    const list = Array.isArray(incoming) ? incoming : [];
     if (!list.length) return res.status(400).json({ error: "No passengers provided" });
 
-    // basic shape & trim
     const toCreate = list
       .map((p) => ({
         tripId,
@@ -106,15 +109,14 @@ router.post("/:id/passengers", async (req, res) => {
         dropoffPoint: p.dropoffPoint ? String(p.dropoffPoint).trim() : null,
         notes: p.notes ? String(p.notes).trim() : null,
         checkedIn: !!p.checkedIn,
-        latestPaymentStatus: p.latestPaymentStatus ?? null,
       }))
       .filter((p) => p.fullName);
 
     if (!toCreate.length) return res.status(400).json({ error: "Invalid passenger names" });
 
-    // createMany (fast) then fetch the created rows
     await prisma.tripPassenger.createMany({ data: toCreate });
 
+    // Return the newest N rows
     const created = await prisma.tripPassenger.findMany({
       where: { tripId },
       orderBy: { id: "desc" },
@@ -129,3 +131,4 @@ router.post("/:id/passengers", async (req, res) => {
 });
 
 export default router;
+
