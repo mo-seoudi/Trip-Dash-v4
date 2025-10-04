@@ -1,11 +1,7 @@
+// client/src/components/trips/PassengersPanel.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
-import {
-  getTripPassengers,
-  addTripPassengers,
-  // Optional: if you later add a PATCH endpoint
-  // updateTripPassenger,
-} from "../../services/tripService";
+import { getTripPassengers, addTripPassengers } from "../../services/tripService";
 
 const Spinner = ({ className = "w-4 h-4" }) => (
   <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" aria-hidden="true">
@@ -15,36 +11,35 @@ const Spinner = ({ className = "w-4 h-4" }) => (
 );
 
 /**
- * Columns shown by default:
- * - Name
- * - Guardian (name & phone)
- * - Checked-in
+ * Pass `readOnly` to control edit capability:
+ * - readOnly = true  -> hide Add row (view-only)
+ * - readOnly = false -> allow adding passengers
  *
- * Expandable "Details" per row:
- * - Pickup, Dropoff, Payment, Notes
+ * DB-aligned fields used here (TripPassenger):
+ * - id, tripId, fullName, guardianName?, guardianPhone?,
+ *   pickupPoint?, dropoffPoint?, notes?, checkedIn (Boolean), createdAt
  */
 export default function PassengersPanel({ trip, readOnly = false }) {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // add form
+  // add form state
   const [adding, setAdding] = useState(false);
-  const [nameInput, setNameInput] = useState("");
   const [showMore, setShowMore] = useState(false);
+  const [fullName, setFullName] = useState("");
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [pickupPoint, setPickupPoint] = useState("");
   const [dropoffPoint, setDropoffPoint] = useState("");
   const [notes, setNotes] = useState("");
-  const [payment, setPayment] = useState(""); // "", "paid", "due", "refunded" etc.
 
-  // UI state for row expansions
+  // UI: expanded detail rows
   const [openRows, setOpenRows] = useState(() => new Set());
 
   const inputRef = useRef(null);
   const tripId = useMemo(() => trip?.id, [trip]);
 
-  // Load roster
+  // load roster
   useEffect(() => {
     if (!tripId) return;
     let mounted = true;
@@ -52,7 +47,7 @@ export default function PassengersPanel({ trip, readOnly = false }) {
       try {
         setLoading(true);
         const rows = await getTripPassengers(tripId);
-        if (mounted) setRoster(rows || []);
+        if (mounted) setRoster(Array.isArray(rows) ? rows : []);
       } catch (err) {
         console.error("load passengers failed:", err);
         toast.error("Could not load passengers.");
@@ -60,44 +55,46 @@ export default function PassengersPanel({ trip, readOnly = false }) {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [tripId]);
 
-  const clearAddForm = () => {
-    setNameInput("");
+  const resetForm = () => {
+    setFullName("");
     setGuardianName("");
     setGuardianPhone("");
     setPickupPoint("");
     setDropoffPoint("");
     setNotes("");
-    setPayment("");
   };
 
   const handleAdd = async () => {
     if (readOnly) return;
-    const fullName = nameInput.trim();
-    if (!fullName) {
+    const name = fullName.trim();
+    if (!name) {
       inputRef.current?.focus();
       return;
     }
 
     const payload = {
-      fullName,
+      fullName: name,
       guardianName: guardianName.trim() || undefined,
       guardianPhone: guardianPhone.trim() || undefined,
       pickupPoint: pickupPoint.trim() || undefined,
       dropoffPoint: dropoffPoint.trim() || undefined,
       notes: notes.trim() || undefined,
-      latestPaymentStatus: payment || undefined,
       checkedIn: false,
     };
 
     try {
       setAdding(true);
+      // IMPORTANT: service wraps as { passengers: [...] }
       const created = await addTripPassengers(tripId, [payload], true);
-      setRoster((prev) => [...created, ...prev]);
-      clearAddForm();
-      toast.success(`Added “${fullName}”`);
+      // Prepend newest created rows
+      setRoster((prev) => [...(Array.isArray(created) ? created : []), ...prev]);
+      toast.success(`Added “${name}”`);
+      resetForm();
       inputRef.current?.focus();
     } catch (err) {
       console.error("add passenger failed:", err);
@@ -109,9 +106,9 @@ export default function PassengersPanel({ trip, readOnly = false }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !adding && !readOnly) {
       e.preventDefault();
-      if (!adding && !readOnly) handleAdd();
+      handleAdd();
     }
   };
 
@@ -124,22 +121,9 @@ export default function PassengersPanel({ trip, readOnly = false }) {
     });
   };
 
-  // If later you add an update endpoint, you can enable this handler
-  // const toggleCheckedIn = async (row) => {
-  //   if (readOnly) return;
-  //   const next = !row.checkedIn;
-  //   try {
-  //     setRoster((prev) => prev.map((r) => (r.id === row.id ? { ...r, checkedIn: next } : r)));
-  //     await updateTripPassenger(row.id, { checkedIn: next });
-  //   } catch (e) {
-  //     // revert if failed
-  //     setRoster((prev) => prev.map((r) => (r.id === row.id ? { ...r, checkedIn: !next } : r)));
-  //     toast.error("Failed to update check-in status.");
-  //   }
-  // };
-
   return (
     <div className="w-full max-w-3xl">
+      {/* Header: leave right padding so it doesn't fight the modal's × */}
       <div className="mb-3 pr-12">
         <h3 className="text-lg font-semibold">Passengers — Trip #{tripId}</h3>
       </div>
@@ -153,109 +137,92 @@ export default function PassengersPanel({ trip, readOnly = false }) {
               type="text"
               placeholder="Add a passenger's name"
               className="flex-1 border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={adding}
+              aria-label="Passenger full name"
             />
-
             <button
               onClick={handleAdd}
-              disabled={adding || !nameInput.trim()}
-              className={`px-4 py-2 rounded text-white flex items-center justify-center gap-2
-                ${adding || !nameInput.trim()
+              disabled={adding || !fullName.trim()}
+              className={`px-4 py-2 rounded text-white flex items-center justify-center gap-2 ${
+                adding || !fullName.trim()
                   ? "bg-blue-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"}`}
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
               {adding ? <Spinner /> : null}
               <span>{adding ? "Adding…" : "Add"}</span>
             </button>
           </div>
 
+          {/* optional fields toggle */}
           <button
             type="button"
             className="text-sm text-blue-600 hover:underline"
-            onClick={() => setShowMore((v) => !v)}
+            onClick={() => setShowMore((s) => !s)}
           >
-            {showMore ? "Hide extra fields" : "More fields (guardian, pickup/dropoff, notes, payment)"}
+            {showMore ? "Hide extra fields" : "More fields (guardian, pickup/dropoff, notes)"}
           </button>
 
           {showMore && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border rounded p-3 bg-gray-50">
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Guardian name (optional)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded px-3 py-2"
-                  value={guardianName}
-                  onChange={(e) => setGuardianName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Guardian phone (optional)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded px-3 py-2"
-                  value={guardianPhone}
-                  onChange={(e) => setGuardianPhone(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Pickup (optional)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded px-3 py-2"
-                  value={pickupPoint}
-                  onChange={(e) => setPickupPoint(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Dropoff (optional)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded px-3 py-2"
-                  value={dropoffPoint}
-                  onChange={(e) => setDropoffPoint(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Payment status (optional)</label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={payment}
-                  onChange={(e) => setPayment(e.target.value)}
-                >
-                  <option value="">—</option>
-                  <option value="paid">Paid</option>
-                  <option value="due">Due</option>
-                  <option value="refunded">Refunded</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs text-gray-600 mb-1">Notes (optional)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded px-3 py-2"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Guardian name"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                value={guardianName}
+                onChange={(e) => setGuardianName(e.target.value)}
+                disabled={adding}
+              />
+              <input
+                type="tel"
+                placeholder="Guardian phone"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                value={guardianPhone}
+                onChange={(e) => setGuardianPhone(e.target.value)}
+                disabled={adding}
+              />
+              <input
+                type="text"
+                placeholder="Pickup point (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                value={pickupPoint}
+                onChange={(e) => setPickupPoint(e.target.value)}
+                disabled={adding}
+              />
+              <input
+                type="text"
+                placeholder="Dropoff point (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                value={dropoffPoint}
+                onChange={(e) => setDropoffPoint(e.target.value)}
+                disabled={adding}
+              />
+              <textarea
+                placeholder="Notes (optional)"
+                className="md:col-span-2 border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={adding}
+              />
             </div>
           )}
         </div>
       )}
 
-      {/* Table head */}
+      {/* Table (DB-aligned, no seat/payment columns) */}
       <div className="border rounded">
         <div className="grid grid-cols-5 gap-2 px-3 py-2 text-sm font-semibold bg-gray-50">
           <div>Name</div>
           <div>Guardian</div>
           <div>Phone</div>
           <div>Checked-in</div>
-          <div className="text-right pr-2">Details</div>
+          <div>Details</div>
         </div>
 
-        {/* Body */}
         {loading ? (
           <div className="flex items-center gap-2 px-3 py-6 text-gray-500">
             <Spinner className="w-5 h-5" />
@@ -268,55 +235,42 @@ export default function PassengersPanel({ trip, readOnly = false }) {
             {roster.map((p) => {
               const isOpen = openRows.has(p.id);
               return (
-                <li key={p.id} className="px-3 py-2">
-                  {/* main row */}
+                <li key={p.id} className="px-3 py-2 text-sm">
+                  {/* collapsed row */}
                   <div className="grid grid-cols-5 gap-2 items-center">
                     <div className="truncate">{p.fullName}</div>
                     <div className="truncate">{p.guardianName || "-"}</div>
                     <div className="truncate">{p.guardianPhone || "-"}</div>
-
-                    <div className="truncate">
-                      {/* If you later wire PATCH, turn this into a checkbox and call update */}
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                          p.checkedIn ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
-                        }`}
-                        title={p.checkedIn ? "Checked in" : "Not checked in"}
-                      >
-                        {p.checkedIn ? "Yes" : "No"}
-                      </span>
-                    </div>
-
-                    <div className="text-right">
-                      <button
-                        className="text-sm text-blue-600 hover:underline"
-                        onClick={() => toggleRow(p.id)}
-                        type="button"
-                      >
-                        {isOpen ? "Hide" : "Show"} details
-                      </button>
-                    </div>
+                    <div>{p.checkedIn ? "Yes" : "No"}</div>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline justify-self-start"
+                      onClick={() => toggleRow(p.id)}
+                    >
+                      {isOpen ? "Hide" : "Show"}
+                    </button>
                   </div>
 
-                  {/* expandable details */}
+                  {/* expanded details */}
                   {isOpen && (
-                    <div className="mt-2 rounded border bg-gray-50 p-3 text-sm grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="mt-2 ml-1 rounded bg-gray-50 p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div>
-                        <div className="text-gray-500 text-xs">Pickup</div>
-                        <div>{p.pickupPoint || "-"}</div>
+                        <div className="text-xs text-gray-500">Pickup</div>
+                        <div className="text-sm">{p.pickupPoint || "-"}</div>
                       </div>
                       <div>
-                        <div className="text-gray-500 text-xs">Dropoff</div>
-                        <div>{p.dropoffPoint || "-"}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-xs">Payment</div>
-                        <div>{p.latestPaymentStatus || "-"}</div>
+                        <div className="text-xs text-gray-500">Dropoff</div>
+                        <div className="text-sm">{p.dropoffPoint || "-"}</div>
                       </div>
                       <div className="md:col-span-2">
-                        <div className="text-gray-500 text-xs">Notes</div>
-                        <div className="whitespace-pre-wrap">{p.notes || "-"}</div>
+                        <div className="text-xs text-gray-500">Notes</div>
+                        <div className="text-sm whitespace-pre-wrap">{p.notes || "-"}</div>
                       </div>
+                      {p.createdAt && (
+                        <div className="md:col-span-2 text-xs text-gray-400">
+                          Added: {new Date(p.createdAt).toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   )}
                 </li>
