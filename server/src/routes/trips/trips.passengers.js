@@ -10,9 +10,7 @@ const router = Router();
 function getDecodedUser(req) {
   try {
     const bearer = req.headers.authorization || "";
-    const token = bearer.startsWith("Bearer ")
-      ? bearer.slice(7)
-      : req.cookies?.token;
+    const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : req.cookies?.token;
     if (!token) return null;
     return jwt.verify(token, process.env.JWT_SECRET);
   } catch {
@@ -57,11 +55,12 @@ router.get("/:id/passengers", async (req, res) => {
       orderBy: { id: "desc" },
     });
 
-    // Return as a plain array (what the client expects)
+    // Return rows directly; UI expects an array
     res.json(
       rows.map((r) => ({
         id: r.id,
         tripId: r.tripId,
+        createdAt: r.createdAt,
         fullName: r.fullName ?? "",
         guardianName: r.guardianName ?? null,
         guardianPhone: r.guardianPhone ?? null,
@@ -69,7 +68,6 @@ router.get("/:id/passengers", async (req, res) => {
         dropoffPoint: r.dropoffPoint ?? null,
         notes: r.notes ?? null,
         checkedIn: !!r.checkedIn,
-        createdAt: r.createdAt ?? null,
       }))
     );
   } catch (e) {
@@ -79,7 +77,7 @@ router.get("/:id/passengers", async (req, res) => {
 });
 
 /** POST /api/trips/:id/passengers
- * body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
+ *  body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
  */
 router.post("/:id/passengers", async (req, res) => {
   try {
@@ -103,8 +101,6 @@ router.post("/:id/passengers", async (req, res) => {
         dropoffPoint: p.dropoffPoint ? String(p.dropoffPoint).trim() : null,
         notes: p.notes ? String(p.notes).trim() : null,
         checkedIn: !!p.checkedIn,
-        // IMPORTANT: do not include non-existent columns here
-        // seatNumber, grade, payments, etc., are handled elsewhere if you add them later
       }))
       .filter((p) => p.fullName);
 
@@ -122,6 +118,7 @@ router.post("/:id/passengers", async (req, res) => {
       created.map((r) => ({
         id: r.id,
         tripId: r.tripId,
+        createdAt: r.createdAt,
         fullName: r.fullName ?? "",
         guardianName: r.guardianName ?? null,
         guardianPhone: r.guardianPhone ?? null,
@@ -129,7 +126,6 @@ router.post("/:id/passengers", async (req, res) => {
         dropoffPoint: r.dropoffPoint ?? null,
         notes: r.notes ?? null,
         checkedIn: !!r.checkedIn,
-        createdAt: r.createdAt ?? null,
       }))
     );
   } catch (e) {
@@ -139,4 +135,5 @@ router.post("/:id/passengers", async (req, res) => {
 });
 
 export default router;
+
 
