@@ -10,22 +10,29 @@ const Spinner = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/**
+ * readOnly = true  -> view-only (no add)
+ * readOnly = false -> can add passengers
+ */
 export default function PassengersPanel({ trip, readOnly = false }) {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
-  const [name, setName] = useState("");
+  // compact row inputs
+  const [fullName, setFullName] = useState("");
   const [showMore, setShowMore] = useState(false);
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [pickupPoint, setPickupPoint] = useState("");
   const [dropoffPoint, setDropoffPoint] = useState("");
   const [notes, setNotes] = useState("");
+  const [checkedIn, setCheckedIn] = useState(false);
 
-  const inputRef = useRef(null);
+  const nameRef = useRef(null);
   const tripId = useMemo(() => trip?.id, [trip]);
 
+  // load current roster
   useEffect(() => {
     if (!tripId) return;
     let mounted = true;
@@ -44,47 +51,51 @@ export default function PassengersPanel({ trip, readOnly = false }) {
     return () => { mounted = false; };
   }, [tripId]);
 
-  const resetForm = () => {
-    setName("");
+  const resetInputs = () => {
+    setFullName("");
     setGuardianName("");
     setGuardianPhone("");
     setPickupPoint("");
     setDropoffPoint("");
     setNotes("");
+    setCheckedIn(false);
+    // keep showMore as-is so the user’s choice persists
   };
 
   const handleAdd = async () => {
     if (readOnly) return;
-    const fullName = name.trim();
-    if (!fullName) {
-      inputRef.current?.focus();
+    const name = fullName.trim();
+    if (!name) {
+      nameRef.current?.focus();
       return;
     }
+
     try {
       setAdding(true);
-      const payload = [{
-        fullName,
+      const payload = {
+        fullName: name,
+        checkedIn,
         guardianName: guardianName.trim() || null,
         guardianPhone: guardianPhone.trim() || null,
         pickupPoint: pickupPoint.trim() || null,
         dropoffPoint: dropoffPoint.trim() || null,
         notes: notes.trim() || null,
-      }];
-      const created = await addTripPassengers(tripId, payload);
+      };
+
+      const created = await addTripPassengers(tripId, [payload], true);
       setRoster((prev) => [...created, ...prev]);
-      resetForm();
-      inputRef.current?.focus();
-      toast.success(`Added “${fullName}”`);
+      toast.success(`Added “${name}”`);
+      resetInputs();
+      nameRef.current?.focus();
     } catch (err) {
       console.error("add passenger failed:", err);
-      const msg = err?.response?.data?.error || err?.message || "Failed to add passengers";
-      toast.error(msg);
+      toast.error("Failed to add passengers.");
     } finally {
       setAdding(false);
     }
   };
 
-  const handleKeyDown = (e) => {
+  const onKeyDown = (e) => {
     if (e.key === "Enter" && !adding && !readOnly) {
       e.preventDefault();
       handleAdd();
@@ -98,23 +109,23 @@ export default function PassengersPanel({ trip, readOnly = false }) {
       </div>
 
       {!readOnly && (
-        <div className="mb-4 space-y-2">
-          <div className="flex items-stretch gap-2">
+        <div className="mb-3 space-y-2">
+          <div className="flex w-full items-stretch gap-2">
             <input
-              ref={inputRef}
+              ref={nameRef}
               type="text"
               placeholder="Full name"
               className="flex-1 border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={handleKeyDown}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              onKeyDown={onKeyDown}
               disabled={adding}
             />
             <button
               onClick={handleAdd}
-              disabled={adding || !name.trim()}
+              disabled={adding || !fullName.trim()}
               className={`px-4 py-2 rounded text-white flex items-center justify-center gap-2
-                ${adding || !name.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+                ${adding || !fullName.trim() ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
             >
               {adding ? <Spinner /> : null}
               <span>{adding ? "Adding…" : "Add"}</span>
@@ -130,43 +141,55 @@ export default function PassengersPanel({ trip, readOnly = false }) {
           </button>
 
           {showMore && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <input
                 type="text"
-                placeholder="Guardian name"
-                className="border border-gray-300 rounded px-3 py-2"
+                placeholder="Guardian name (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                 value={guardianName}
                 onChange={(e) => setGuardianName(e.target.value)}
                 disabled={adding}
               />
               <input
-                type="tel"
-                placeholder="Guardian phone"
-                className="border border-gray-300 rounded px-3 py-2"
+                type="text"
+                placeholder="Guardian phone (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                 value={guardianPhone}
                 onChange={(e) => setGuardianPhone(e.target.value)}
                 disabled={adding}
               />
               <input
                 type="text"
-                placeholder="Pickup point"
-                className="border border-gray-300 rounded px-3 py-2"
+                placeholder="Pickup point (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                 value={pickupPoint}
                 onChange={(e) => setPickupPoint(e.target.value)}
                 disabled={adding}
               />
               <input
                 type="text"
-                placeholder="Dropoff point"
-                className="border border-gray-300 rounded px-3 py-2"
+                placeholder="Dropoff point (optional)"
+                className="border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                 value={dropoffPoint}
                 onChange={(e) => setDropoffPoint(e.target.value)}
                 disabled={adding}
               />
-              <input
-                type="text"
-                placeholder="Notes"
-                className="md:col-span-3 border border-gray-300 rounded px-3 py-2"
+              <div className="md:col-span-2 flex items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={checkedIn}
+                    onChange={(e) => setCheckedIn(e.target.checked)}
+                    disabled={adding}
+                  />
+                  Checked-in on add
+                </label>
+              </div>
+              <textarea
+                placeholder="Notes (optional)"
+                rows={2}
+                className="md:col-span-2 border border-gray-300 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 disabled={adding}
@@ -197,13 +220,17 @@ export default function PassengersPanel({ trip, readOnly = false }) {
             {roster.map((p) => (
               <li key={p.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-sm">
                 <div className="truncate">{p.fullName}</div>
-                <div className="truncate">{p.guardianName || "-"}</div>
-                <div className="truncate">{p.guardianPhone || "-"}</div>
+                <div className="truncate">{p.guardianName ?? "-"}</div>
+                <div className="truncate">{p.guardianPhone ?? "-"}</div>
                 <div>{p.checkedIn ? "Yes" : "No"}</div>
                 <div className="truncate">
-                  {p.pickupPoint || p.dropoffPoint || p.notes
-                    ? [p.pickupPoint, p.dropoffPoint, p.notes].filter(Boolean).join(" • ")
-                    : "-"}
+                  {[
+                    p.pickupPoint ? `Pickup: ${p.pickupPoint}` : null,
+                    p.dropoffPoint ? `Dropoff: ${p.dropoffPoint}` : null,
+                    p.notes ? `Notes: ${p.notes}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" • ") || "-"}
                 </div>
               </li>
             ))}
