@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const router = Router();
 
-/** Decode JWT from Authorization: Bearer ... or cookie "token" */
+/** Extract JWT from Authorization: Bearer ... or cookie "token" */
 function getDecodedUser(req) {
   try {
     const bearer = req.headers.authorization || "";
@@ -18,14 +18,14 @@ function getDecodedUser(req) {
   }
 }
 
-/** Basic access check: creator of the trip (or admin) */
+/** Allow admin or creator of the trip (by id or email snapshot) */
 async function canAccessTrip(user, tripId) {
   if (!user?.id) return false;
-  if (user?.role === "admin") return true;
+  if (user.role === "admin") return true;
 
   const trip = await prisma.trip.findUnique({
     where: { id: Number(tripId) },
-    select: { id: true, createdById: true, createdByEmail: true },
+    select: { createdById: true, createdByEmail: true },
   });
   if (!trip) return false;
 
@@ -35,19 +35,18 @@ async function canAccessTrip(user, tripId) {
     where: { id: Number(user.id) },
     select: { email: true },
   });
-  if (me?.email && trip.createdByEmail && me.email === trip.createdByEmail) return true;
 
-  return false;
+  return !!(me?.email && trip.createdByEmail && me.email === trip.createdByEmail);
 }
 
-/** GET /api/trips/:id/passengers */
+/** GET /api/trips/:id/passengers -> TripPassenger[] */
 router.get("/:id/passengers", async (req, res) => {
   try {
-    const decoded = getDecodedUser(req);
+    const user = getDecodedUser(req);
     const tripId = Number(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    const ok = await canAccessTrip(decoded, tripId);
+    const ok = await canAccessTrip(user, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
     const rows = await prisma.tripPassenger.findMany({
@@ -55,21 +54,7 @@ router.get("/:id/passengers", async (req, res) => {
       orderBy: { id: "desc" },
     });
 
-    // Return rows directly; UI expects an array
-    res.json(
-      rows.map((r) => ({
-        id: r.id,
-        tripId: r.tripId,
-        createdAt: r.createdAt,
-        fullName: r.fullName ?? "",
-        guardianName: r.guardianName ?? null,
-        guardianPhone: r.guardianPhone ?? null,
-        pickupPoint: r.pickupPoint ?? null,
-        dropoffPoint: r.dropoffPoint ?? null,
-        notes: r.notes ?? null,
-        checkedIn: !!r.checkedIn,
-      }))
-    );
+    res.json(rows);
   } catch (e) {
     console.error("[PASSENGERS] GET error:", e);
     res.status(500).json({ error: "Failed to load passengers" });
@@ -77,15 +62,16 @@ router.get("/:id/passengers", async (req, res) => {
 });
 
 /** POST /api/trips/:id/passengers
- *  body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
+ * body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
+ * returns: TripPassenger[] (the newly created rows, newest first)
  */
 router.post("/:id/passengers", async (req, res) => {
   try {
-    const decoded = getDecodedUser(req);
+    const user = getDecodedUser(req);
     const tripId = Number(req.params.id);
     if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
 
-    const ok = await canAccessTrip(decoded, tripId);
+    const ok = await canAccessTrip(user, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
     const list = Array.isArray(req.body?.passengers) ? req.body.passengers : [];
@@ -114,20 +100,7 @@ router.post("/:id/passengers", async (req, res) => {
       take: toCreate.length,
     });
 
-    res.status(201).json(
-      created.map((r) => ({
-        id: r.id,
-        tripId: r.tripId,
-        createdAt: r.createdAt,
-        fullName: r.fullName ?? "",
-        guardianName: r.guardianName ?? null,
-        guardianPhone: r.guardianPhone ?? null,
-        pickupPoint: r.pickupPoint ?? null,
-        dropoffPoint: r.dropoffPoint ?? null,
-        notes: r.notes ?? null,
-        checkedIn: !!r.checkedIn,
-      }))
-    );
+    res.status(201).json(created);
   } catch (e) {
     console.error("[PASSENGERS] POST error:", e);
     res.status(500).json({ error: "Failed to add passengers" });
@@ -135,5 +108,3 @@ router.post("/:id/passengers", async (req, res) => {
 });
 
 export default router;
-
-
