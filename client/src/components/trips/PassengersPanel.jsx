@@ -10,16 +10,11 @@ const Spinner = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
-/**
- * readOnly = true  -> view-only (no add)
- * readOnly = false -> can add passengers
- */
 export default function PassengersPanel({ trip, readOnly = false }) {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
-  // compact row inputs
   const [fullName, setFullName] = useState("");
   const [showMore, setShowMore] = useState(false);
   const [guardianName, setGuardianName] = useState("");
@@ -32,23 +27,22 @@ export default function PassengersPanel({ trip, readOnly = false }) {
   const nameRef = useRef(null);
   const tripId = useMemo(() => trip?.id, [trip]);
 
-  // load current roster
   useEffect(() => {
     if (!tripId) return;
-    let mounted = true;
+    let on = true;
     (async () => {
       try {
         setLoading(true);
         const rows = await getTripPassengers(tripId);
-        if (mounted) setRoster(rows);
-      } catch (err) {
-        console.error("load passengers failed:", err);
+        if (on) setRoster(rows);
+      } catch (e) {
+        console.error(e);
         toast.error("Could not load passengers.");
       } finally {
-        if (mounted) setLoading(false);
+        if (on) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => { on = false; };
   }, [tripId]);
 
   const resetInputs = () => {
@@ -59,7 +53,6 @@ export default function PassengersPanel({ trip, readOnly = false }) {
     setDropoffPoint("");
     setNotes("");
     setCheckedIn(false);
-    // keep showMore as-is so the user’s choice persists
   };
 
   const handleAdd = async () => {
@@ -69,26 +62,25 @@ export default function PassengersPanel({ trip, readOnly = false }) {
       nameRef.current?.focus();
       return;
     }
-
     try {
       setAdding(true);
-      const payload = {
-        fullName: name,
-        checkedIn,
-        guardianName: guardianName.trim() || null,
-        guardianPhone: guardianPhone.trim() || null,
-        pickupPoint: pickupPoint.trim() || null,
-        dropoffPoint: dropoffPoint.trim() || null,
-        notes: notes.trim() || null,
-      };
-
-      const created = await addTripPassengers(tripId, [payload], true);
+      const created = await addTripPassengers(tripId, [
+        {
+          fullName: name,
+          guardianName: guardianName.trim() || null,
+          guardianPhone: guardianPhone.trim() || null,
+          pickupPoint: pickupPoint.trim() || null,
+          dropoffPoint: dropoffPoint.trim() || null,
+          notes: notes.trim() || null,
+          checkedIn,
+        },
+      ]);
       setRoster((prev) => [...created, ...prev]);
       toast.success(`Added “${name}”`);
       resetInputs();
       nameRef.current?.focus();
-    } catch (err) {
-      console.error("add passenger failed:", err);
+    } catch (e) {
+      console.error(e);
       toast.error("Failed to add passengers.");
     } finally {
       setAdding(false);
