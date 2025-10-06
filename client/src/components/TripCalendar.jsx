@@ -9,13 +9,6 @@ import CustomCalendarToolbar from "./CustomCalendarToolbar";
 import ModalWrapper from "./ModalWrapper";
 import TripDetails from "./TripDetails";
 
-// 🔁 bring in the same action plumbing the table uses
-import { useAuth } from "../context/AuthContext";
-import useTripActions from "../hooks/useTripActions";
-import ActionsCell from "./actions/ActionsCell";
-import ConfirmActionPopup from "./ConfirmActionPopup";
-import AssignBusForm from "./AssignBusForm";
-
 const locales = { "en-US": enUS };
 
 const localizer = dateFnsLocalizer({
@@ -30,31 +23,35 @@ const localizer = dateFnsLocalizer({
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  // 👤 same context as table
-  const { profile } = useAuth();
-
-  // ✅ Local copy so calendar can update optimistically (like the table)
+  // Local copy so calendar can update optimistically (like the table)
   const [calendarTrips, setCalendarTrips] = React.useState(trips || []);
   React.useEffect(() => setCalendarTrips(trips || []), [trips]);
 
-  // ✅ Trip selection
+  // Store only the selected ID; derive fresh object from local state
   const [selectedTripId, setSelectedTripId] = React.useState(null);
   const selectedTrip = React.useMemo(
     () => calendarTrips.find((t) => t.id === selectedTripId) || null,
     [calendarTrips, selectedTripId]
   );
 
-  // ✅ Same action hooks as the table (instant updates into local state)
-  const { handleStatusChange, handleSoftDelete } = useTripActions(
-    profile,
-    setCalendarTrips
-  );
+  // Optimistic updater
+  const handleTripUpdated = React.useCallback((updatedTrip) => {
+    if (!updatedTrip || !updatedTrip.id) return;
+    setCalendarTrips((prev) =>
+      prev.map((t) => (t.id === updatedTrip.id ? { ...t, ...updatedTrip } : t))
+    );
+  }, []);
 
-  // ✅ Extra calendar-modal state mirroring the table behaviors
-  const [confirmAction, setConfirmAction] = React.useState(null);
-  const [assignTrip, setAssignTrip] = React.useState(null);
-
-  const closeDetails = () => setSelectedTripId(null);
+  // 🔔 Listen for global updates from elsewhere (e.g., table actions)
+  React.useEffect(() => {
+    const onTripUpdated = (e) => {
+      const updatedTrip = e?.detail;
+      if (!updatedTrip) return;
+      handleTripUpdated(updatedTrip);
+    };
+    window.addEventListener("trip:updated", onTripUpdated);
+    return () => window.removeEventListener("trip:updated", onTripUpdated);
+  }, [handleTripUpdated]);
 
   const calendarEvents = calendarTrips
     .map((trip) => {
@@ -75,7 +72,7 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         start,
         end,
         allDay: false,
-        extendedProps: trip,
+        extendedProps: trip, // consumers of onEventClick can still get the full trip
       };
     })
     .filter(Boolean);
@@ -93,65 +90,16 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         }}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
-          if (onEventClick) onEventClick(trip); // preserve external handler
-          setSelectedTripId(trip?.id);          // open modal with freshest local data
+          if (onEventClick) onEventClick(trip); // preserve existing external handler
+          setSelectedTripId(trip?.id);          // show modal with freshest local data
         }}
       />
 
       {selectedTrip && (
-        <ModalWrapper onClose={closeDetails}>
-          <div className="space-y-4">
-            <TripDetails trip={selectedTrip} />
-
-            {/* 🔁 Replicate the table’s action row so updates are optimistic */}
-            <div className="pt-2 border-t">
-              <ActionsCell
-                trip={selectedTrip}
-                role={profile?.role}
-                onStatusChange={(trip, nextStatus) => {
-                  handleStatusChange(trip, nextStatus);
-                }}
-                onAssignBus={(trip) => setAssignTrip(trip)}
-                onConfirmAction={(trip, label, nextStatus) =>
-                  setConfirmAction({ trip, label, nextStatus })
-                }
-                onView={() => { /* already viewing in modal */ }}
-                onEdit={() => { /* optional: add Edit form if you want parity */ }}
-                onSoftDelete={handleSoftDelete}
-              />
-            </div>
-          </div>
+        <ModalWrapper onClose={() => setSelectedTripId(null)}>
+          {/* If TripDetails triggers updates itself, it can call this prop */}
+          <TripDetails trip={selectedTrip} onTripUpdated={handleTripUpdated} />
         </ModalWrapper>
-      )}
-
-      {/* 📦 Assign Bus modal — same as table */}
-      {assignTrip && (
-        <ModalWrapper onClose={() => setAssignTrip(null)}>
-          <AssignBusForm
-            trip={assignTrip}
-            onClose={() => setAssignTrip(null)}
-            onSubmit={(updatedTrip) => {
-              setCalendarTrips((prev) =>
-                prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t))
-              );
-              setAssignTrip(null);
-              // keep details open; derived from local state so it updates instantly
-            }}
-          />
-        </ModalWrapper>
-      )}
-
-      {/* ✅ Confirm action popup — same as table */}
-      {confirmAction && (
-        <ConfirmActionPopup
-          title={`${confirmAction.label} Trip`}
-          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`}
-          onConfirm={() => {
-            handleStatusChange(confirmAction.trip, confirmAction.nextStatus);
-            setConfirmAction(null);
-          }}
-          onClose={() => setConfirmAction(null)}
-        />
       )}
     </div>
   );
