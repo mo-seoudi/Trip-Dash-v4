@@ -32,7 +32,7 @@ function TripDetails({ trip }) {
             <strong>Destination:</strong> {trip.destination}
           </div>
           <div>
-            <strong>Date:</strong> {formattedDate} at: {departureTime}
+            <strong>Departure:</strong> {formattedDate} at: {departureTime}
           </div>
           <div>
             <strong>Return:</strong> {returnDate} at: {returnTime}
