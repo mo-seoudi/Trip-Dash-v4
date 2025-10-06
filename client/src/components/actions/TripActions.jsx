@@ -1,4 +1,4 @@
-// client/src/components/TripActions.jsx
+// client/src/components/actions/TripActions.jsx
 
 import React from "react";
 import BusCompanyActions from "./actions/BusCompanyActions";
