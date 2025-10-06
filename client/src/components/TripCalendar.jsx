@@ -22,15 +22,57 @@ const localizer = dateFnsLocalizer({
 // robust parser: accepts Date or string or null
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
+// ✅ same color mapping as StatusBadge (to keep visuals consistent)
+const statusDotClass = (status) => {
+  switch (status) {
+    case "Pending":
+      return "bg-yellow-400";
+    case "Accepted":
+      return "bg-blue-500";
+    case "Confirmed":
+      return "bg-green-500";
+    case "Rejected":
+      return "bg-red-500";
+    case "Completed":
+      return "bg-gray-700";
+    // optional fallbacks you might have elsewhere:
+    case "Canceled":
+    case "Cancelled":
+      return "bg-red-500";
+    default:
+      return "bg-gray-500";
+  }
+};
+
+// ✅ custom event content: title on left, colored dot on right
+function CalendarEventContent({ event }) {
+  const trip = event.extendedProps || event;
+  const dot = statusDotClass(trip?.status);
+  return (
+    <div className="flex items-center justify-between w-full">
+      <span className="truncate">{event.title}</span>
+      <span
+        className={`ml-2 inline-block w-2.5 h-2.5 rounded-full ${dot}`}
+        aria-label={trip?.status || "status"}
+        title={trip?.status}
+      />
+    </div>
+  );
+}
+
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  // ✅ Store only the selected ID; always derive the freshest object from props
+  // ✅ Local copy so calendar can update optimistically (like the table)
+  const [calendarTrips, setCalendarTrips] = React.useState(trips || []);
+  React.useEffect(() => setCalendarTrips(trips || []), [trips]);
+
+  // ✅ Store only the selected ID; derive fresh object from local state
   const [selectedTripId, setSelectedTripId] = React.useState(null);
   const selectedTrip = React.useMemo(
-    () => (trips || []).find((t) => t.id === selectedTripId) || null,
-    [trips, selectedTripId]
+    () => calendarTrips.find((t) => t.id === selectedTripId) || null,
+    [calendarTrips, selectedTripId]
   );
 
-  const calendarEvents = (trips || [])
+  const calendarEvents = calendarTrips
     .map((trip) => {
       const base = toDate(trip.date);
       if (!base) return null;
@@ -64,11 +106,12 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         style={{ height: 600 }}
         components={{
           toolbar: CustomCalendarToolbar,
+          event: CalendarEventContent, // 👈 render title + status dot
         }}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
           if (onEventClick) onEventClick(trip); // preserve existing external handler
-          setSelectedTripId(trip?.id);          // show modal with freshest data from props
+          setSelectedTripId(trip?.id); // show modal with freshest local data
         }}
       />
 
