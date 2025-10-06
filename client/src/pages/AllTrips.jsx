@@ -5,31 +5,8 @@ import { getAllTrips, getTripsByUser } from "../services/tripService";
 import TripsLayout from "../layout/TripsLayout";
 import SmartTripTable from "../components/SmartTripTable";
 import TripCalendar from "../components/TripCalendar";
-import TripDetails from "../components/TripDetails";      // ✅ reuse existing component
-import ModalWrapper from "../components/ModalWrapper";    // ✅ existing modal wrapper
 import { useAuth } from "../context/AuthContext";
-import RequestTripButton from "../components/RequestTripButton";
-
-// ✅ NEW: wrapper that adds click→TripDetails to calendar
-const CalendarWithDetails = (props) => {
-  const [selectedTrip, setSelectedTrip] = useState(null);
-
-  return (
-    <>
-      <TripCalendar
-        {...props}
-        // When a calendar event is clicked, TripCalendar should send the trip data here
-        onEventClick={(trip) => setSelectedTrip(trip)}
-      />
-
-      {selectedTrip && (
-        <ModalWrapper onClose={() => setSelectedTrip(null)}>
-          <TripDetails trip={selectedTrip} />
-        </ModalWrapper>
-      )}
-    </>
-  );
-};
+import RequestTripButton from "../components/RequestTripButton"; // NEW
 
 const AllTrips = () => {
   const [trips, setTrips] = useState([]);
@@ -41,6 +18,7 @@ const AllTrips = () => {
 
       let tripsList = [];
 
+      // Same roles as before have global visibility
       if (
         profile.role === "admin" ||
         profile.role === "school_staff" ||
@@ -49,6 +27,7 @@ const AllTrips = () => {
       ) {
         tripsList = await getAllTrips();
       } else {
+        // Fallback: scoped to the user
         tripsList = await getTripsByUser(profile?.name);
       }
 
@@ -68,9 +47,10 @@ const AllTrips = () => {
         title="All Trips"
         trips={trips}
         tableComponent={SmartTripTable}
-        calendarComponent={CalendarWithDetails}  // ✅ just wrap calendar to add click→details
+        calendarComponent={TripCalendar}
       />
 
+      {/* Show the same FAB for school staff on this page too */}
       {profile?.role === "school_staff" && (
         <RequestTripButton onSuccess={fetchTrips} />
       )}
