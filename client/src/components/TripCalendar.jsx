@@ -22,7 +22,7 @@ const localizer = dateFnsLocalizer({
 // robust parser: accepts Date or string or null
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
-// ✅ same color mapping as StatusBadge (to keep visuals consistent)
+// same color mapping as StatusBadge
 const statusDotClass = (status) => {
   switch (status) {
     case "Pending":
@@ -35,7 +35,6 @@ const statusDotClass = (status) => {
       return "bg-red-500";
     case "Completed":
       return "bg-gray-700";
-    // optional fallbacks you might have elsewhere:
     case "Canceled":
     case "Cancelled":
       return "bg-red-500";
@@ -44,7 +43,7 @@ const statusDotClass = (status) => {
   }
 };
 
-// ✅ custom event content: title on left, colored dot on right
+// custom event content: title left, status dot right
 function CalendarEventContent({ event }) {
   const trip = event.extendedProps || event;
   const dot = statusDotClass(trip?.status);
@@ -61,16 +60,30 @@ function CalendarEventContent({ event }) {
 }
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  // ✅ Local copy so calendar can update optimistically (like the table)
+  // Local copy so calendar can update optimistically (like the table)
   const [calendarTrips, setCalendarTrips] = React.useState(trips || []);
   React.useEffect(() => setCalendarTrips(trips || []), [trips]);
 
-  // ✅ Store only the selected ID; derive fresh object from local state
+  // Store only the selected ID; derive fresh object from local state
   const [selectedTripId, setSelectedTripId] = React.useState(null);
   const selectedTrip = React.useMemo(
     () => calendarTrips.find((t) => t.id === selectedTripId) || null,
     [calendarTrips, selectedTripId]
   );
+
+  // Light-blue chip styling for all events
+  const eventStyleGetter = React.useCallback(() => {
+    return {
+      style: {
+        backgroundColor: "#EAF2FF",         // light blue (close to Tailwind blue-50)
+        border: "1px solid #CFE0FF",        // soft border
+        color: "#0F172A",                   // slate-900 for good contrast
+        borderRadius: "8px",
+        padding: "2px 6px",
+        boxShadow: "none",
+      },
+    };
+  }, []);
 
   const calendarEvents = calendarTrips
     .map((trip) => {
@@ -91,7 +104,7 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         start,
         end,
         allDay: false,
-        extendedProps: trip, // consumers of onEventClick can still get the full trip
+        extendedProps: trip,
       };
     })
     .filter(Boolean);
@@ -106,12 +119,13 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         style={{ height: 600 }}
         components={{
           toolbar: CustomCalendarToolbar,
-          event: CalendarEventContent, // 👈 render title + status dot
+          event: CalendarEventContent,     // title + status dot
         }}
+        eventPropGetter={eventStyleGetter} // 👈 light-blue event chip
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
-          if (onEventClick) onEventClick(trip); // preserve existing external handler
-          setSelectedTripId(trip?.id); // show modal with freshest local data
+          if (onEventClick) onEventClick(trip);
+          setSelectedTripId(trip?.id);
         }}
       />
 
