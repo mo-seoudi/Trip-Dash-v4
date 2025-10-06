@@ -9,10 +9,6 @@ import CustomCalendarToolbar from "./CustomCalendarToolbar";
 import ModalWrapper from "./ModalWrapper";
 import TripDetails from "./TripDetails";
 
-// ✅ bring in auth + trip service to silently revalidate on mount
-import { useAuth } from "../context/AuthContext";
-import { getAllTrips, getTripsByUser } from "../services/tripService";
-
 const locales = { "en-US": enUS };
 
 const localizer = dateFnsLocalizer({
@@ -27,9 +23,7 @@ const localizer = dateFnsLocalizer({
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  const { profile } = useAuth();
-
-  // Local copy so we can update optimistically/silently
+  // Local copy so calendar can update optimistically (like the table)
   const [calendarTrips, setCalendarTrips] = React.useState(trips || []);
   React.useEffect(() => setCalendarTrips(trips || []), [trips]);
 
@@ -40,38 +34,24 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
     [calendarTrips, selectedTripId]
   );
 
-  // 🔇 Silent refresh on mount (and when profile becomes available)
+  // Optimistic updater
+  const handleTripUpdated = React.useCallback((updatedTrip) => {
+    if (!updatedTrip || !updatedTrip.id) return;
+    setCalendarTrips((prev) =>
+      prev.map((t) => (t.id === updatedTrip.id ? { ...t, ...updatedTrip } : t))
+    );
+  }, []);
+
+  // 🔔 Listen for global updates from elsewhere (e.g., table actions)
   React.useEffect(() => {
-    let isActive = true;
-    const silentlyRefresh = async () => {
-      try {
-        if (!profile) return; // wait until auth is ready
-        let latest = [];
-        if (
-          profile.role === "admin" ||
-          profile.role === "school_staff" ||
-          profile.role === "bus_company" ||
-          profile.role === "finance"
-        ) {
-          latest = await getAllTrips();
-        } else {
-          latest = await getTripsByUser(profile?.name);
-        }
-        if (!isActive) return;
-
-        // Optional: merge by id to avoid jarring reorder; here we just replace.
-        setCalendarTrips(latest || []);
-      } catch (e) {
-        // silent fail (no UI flash) — just log for dev
-        console.error("TripCalendar silent refresh failed:", e);
-      }
+    const onTripUpdated = (e) => {
+      const updatedTrip = e?.detail;
+      if (!updatedTrip) return;
+      handleTripUpdated(updatedTrip);
     };
-
-    silentlyRefresh();
-    return () => {
-      isActive = false;
-    };
-  }, [profile]); // runs when Calendar mounts and when profile becomes available
+    window.addEventListener("trip:updated", onTripUpdated);
+    return () => window.removeEventListener("trip:updated", onTripUpdated);
+  }, [handleTripUpdated]);
 
   const calendarEvents = calendarTrips
     .map((trip) => {
@@ -92,8 +72,7 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         start,
         end,
         allDay: false,
-        // keep passing the full trip for consumers of onEventClick
-        extendedProps: trip,
+        extendedProps: trip, // consumers of onEventClick can still get the full trip
       };
     })
     .filter(Boolean);
@@ -111,14 +90,15 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         }}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
-          if (onEventClick) onEventClick(trip); // preserve external handler
-          setSelectedTripId(trip?.id);          // open modal with freshest local data
+          if (onEventClick) onEventClick(trip); // preserve existing external handler
+          setSelectedTripId(trip?.id);          // show modal with freshest local data
         }}
       />
 
       {selectedTrip && (
         <ModalWrapper onClose={() => setSelectedTripId(null)}>
-          <TripDetails trip={selectedTrip} />
+          {/* If TripDetails triggers updates itself, it can call this prop */}
+          <TripDetails trip={selectedTrip} onTripUpdated={handleTripUpdated} />
         </ModalWrapper>
       )}
     </div>
