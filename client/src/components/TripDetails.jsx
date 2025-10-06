@@ -78,7 +78,7 @@ function TripDetails({ trip }) {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><strong>Type:</strong> {bus.busType}</div>
                   <div><strong>Seats:</strong> {bus.busSeats}</div>
-                  <div><strong>Price:</strong> {bus.tripPrice || "-"}</div>
+                  <div><strong>Price:</strong> {bus.tripPrice ? `AED ${bus.tripPrice}` : "-"}</div>
                   <div><strong>Driver Name:</strong> {bus.driverName || "-"}</div>
                   <div><strong>Driver Phone:</strong> {bus.driverPhone || "-"}</div>
                   <div><strong>Status:</strong> {bus.status || "-"}</div>
