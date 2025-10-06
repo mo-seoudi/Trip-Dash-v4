@@ -12,6 +12,17 @@ const AllTrips = () => {
   const [trips, setTrips] = useState([]);
   const { profile } = useAuth();
 
+  // 🔔 NEW: listen for child updates and patch parent trips immutably
+  useEffect(() => {
+    const onTripUpdated = (e) => {
+      const updated = e?.detail;
+      if (!updated || !updated.id) return;
+      setTrips((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
+    };
+    window.addEventListener("trip:updated", onTripUpdated);
+    return () => window.removeEventListener("trip:updated", onTripUpdated);
+  }, []);
+
   const fetchTrips = useCallback(async () => {
     try {
       if (!profile) return;
