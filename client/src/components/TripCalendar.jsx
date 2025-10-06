@@ -75,8 +75,8 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
   const eventStyleGetter = React.useCallback(() => {
     return {
       style: {
-        backgroundColor: "#EAF2FF",         // light blue (close to Tailwind blue-50)
-        border: "1px solid #CFE0FF",        // soft border
+        backgroundColor: "#CFE0FF",         
+        border: "1px solid #9DBBFF",        // soft border
         color: "#0F172A",                   // slate-900 for good contrast
         borderRadius: "8px",
         padding: "2px 6px",
