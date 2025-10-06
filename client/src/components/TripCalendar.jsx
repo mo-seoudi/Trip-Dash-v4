@@ -23,16 +23,26 @@ const localizer = dateFnsLocalizer({
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  // ✅ store just the selected trip ID, not the whole object
-  const [selectedTripId, setSelectedTripId] = React.useState(null);
+  // ✅ Local copy so calendar can update optimistically (like the table)
+  const [calendarTrips, setCalendarTrips] = React.useState(trips || []);
+  React.useEffect(() => setCalendarTrips(trips || []), [trips]);
 
-  // always derive the freshest trip object from props
+  // ✅ Store only the selected ID; derive fresh object from local state
+  const [selectedTripId, setSelectedTripId] = React.useState(null);
   const selectedTrip = React.useMemo(
-    () => trips.find((t) => t.id === selectedTripId) || null,
-    [trips, selectedTripId]
+    () => calendarTrips.find((t) => t.id === selectedTripId) || null,
+    [calendarTrips, selectedTripId]
   );
 
-  const calendarEvents = trips
+  // ✅ Optimistic updater (can be called by children if they perform actions)
+  const handleTripUpdated = React.useCallback((updatedTrip) => {
+    if (!updatedTrip || !updatedTrip.id) return;
+    setCalendarTrips((prev) =>
+      prev.map((t) => (t.id === updatedTrip.id ? { ...t, ...updatedTrip } : t))
+    );
+  }, []);
+
+  const calendarEvents = calendarTrips
     .map((trip) => {
       const base = toDate(trip.date);
       if (!base) return null;
@@ -51,9 +61,7 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         start,
         end,
         allDay: false,
-        // keep passing the full trip for consumers of onEventClick,
-        // but we won't store it locally to avoid staleness.
-        extendedProps: trip,
+        extendedProps: trip, // consumers of onEventClick can still get the full trip
       };
     })
     .filter(Boolean);
@@ -71,15 +79,15 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         }}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
-          if (onEventClick) onEventClick(trip); // preserve external handlers
-          // ✅ set only the id to always re-derive the newest version
-          setSelectedTripId(trip?.id);
+          if (onEventClick) onEventClick(trip); // preserve existing external handler
+          setSelectedTripId(trip?.id);          // show modal with freshest local data
         }}
       />
 
       {selectedTrip && (
         <ModalWrapper onClose={() => setSelectedTripId(null)}>
-          <TripDetails trip={selectedTrip} />
+          {/* Pass handleTripUpdated so actions inside details can update instantly */}
+          <TripDetails trip={selectedTrip} onTripUpdated={handleTripUpdated} />
         </ModalWrapper>
       )}
     </div>
