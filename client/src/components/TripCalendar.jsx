@@ -43,12 +43,24 @@ const statusDotClass = (status) => {
   }
 };
 
-// custom event content: title left, status dot right
+// custom event content: title left, status dot right, with smaller table-like font
 function CalendarEventContent({ event }) {
   const trip = event.extendedProps || event;
   const dot = statusDotClass(trip?.status);
+
   return (
-    <div className="flex items-center justify-between w-full">
+    <div
+      className="flex items-center justify-between w-full truncate leading-5"
+      style={{
+        // match table feel: small, medium weight, tight tracking
+        fontSize: 12, // ~text-xs
+        fontWeight: 500,
+        letterSpacing: "-0.01em",
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+        color: "#0F172A", // slate-900
+      }}
+    >
       <span className="truncate">{event.title}</span>
       <span
         className={`ml-2 inline-block w-2.5 h-2.5 rounded-full ${dot}`}
@@ -71,16 +83,22 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
     [calendarTrips, selectedTripId]
   );
 
-  // Light-blue chip styling for all events
+  // Outlook-like darker blue chip for events
   const eventStyleGetter = React.useCallback(() => {
     return {
       style: {
-        backgroundColor: "#CFE0FF",         
-        border: "1px solid #9DBBFF",        // soft border
-        color: "#0F172A",                   // slate-900 for good contrast
+        backgroundColor: "#CFE0FF",       // darker pastel blue
+        border: "1px solid #9DBBFF",
+        color: "#0F172A",
         borderRadius: "8px",
         padding: "2px 6px",
         boxShadow: "none",
+        // ensure our small font also applies if RBC wraps the event container
+        fontSize: 12,
+        fontWeight: 500,
+        letterSpacing: "-0.01em",
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
       },
     };
   }, []);
@@ -119,9 +137,9 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         style={{ height: 600 }}
         components={{
           toolbar: CustomCalendarToolbar,
-          event: CalendarEventContent,     // title + status dot
+          event: CalendarEventContent,     // title + status dot + smaller font
         }}
-        eventPropGetter={eventStyleGetter} // 👈 light-blue event chip
+        eventPropGetter={eventStyleGetter}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
           if (onEventClick) onEventClick(trip);
