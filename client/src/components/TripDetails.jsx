@@ -10,6 +10,7 @@ import EditTripForm from "./EditTripForm";
 import PassengersPanel from "./trips/PassengersPanel";
 import useTripActions from "../hooks/useTripActions";
 import { RxPerson } from "react-icons/rx";
+import ModalWrapper from "./ModalWrapper";             // ✅ use same modal wrapper as table
 
 function TripDetails({ trip }) {
   if (!trip) return null;
@@ -35,7 +36,9 @@ function TripDetails({ trip }) {
     setCurrentTrip((prev) => ({ ...prev, ...updated }));
     // broadcast so AllTrips patches parent `trips` (keeps table & calendar in sync)
     try {
-      window.dispatchEvent(new CustomEvent("trip:updated", { detail: { ...currentTrip, ...updated } }));
+      window.dispatchEvent(
+        new CustomEvent("trip:updated", { detail: { ...currentTrip, ...updated } })
+      );
     } catch {}
   };
 
@@ -99,16 +102,16 @@ function TripDetails({ trip }) {
         </div>
       </div>
 
-      {/* Compact action strip (identical look to table) */}
+      {/* Compact action strip (identical look to table; View hidden) */}
       <div className="pt-1">
         <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
           <ActionsCell
             trip={currentTrip}
             role={profile?.role}
-            hideView                 // 👈 NEW: hide the View button in the modal
+            hideView                 // 👈 hide the View button in the modal
             onStatusChange={(tripArg, nextStatus) => {
-              patchTrip({ status: nextStatus });     // optimistic local update
-              handleStatusChange(tripArg, nextStatus); // server call via shared hook
+              patchTrip({ status: nextStatus });          // optimistic local update
+              handleStatusChange(tripArg, nextStatus);     // server call via shared hook
             }}
             onAssignBus={(t) => setAssignTrip(t)}
             onConfirmAction={(t, label, nextStatus) =>
@@ -118,7 +121,7 @@ function TripDetails({ trip }) {
             onSoftDelete={handleSoftDelete}
           />
 
-          {/* Passengers — same as SmartTripTable styling/logic */}
+          {/* Passengers — same button logic & styling as SmartTripTable */}
           {canSeePassengersButton && (
             <button
               onClick={() => setShowPassengersTrip(currentTrip)}
@@ -213,17 +216,14 @@ function TripDetails({ trip }) {
         </div>
       )}
 
-      {/* Passengers modal */}
+      {/* ✅ Passengers modal (now uses the SAME ModalWrapper as the table) */}
       {showPassengersTrip && (
-        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full">
-            <PassengersPanel
-              trip={showPassengersTrip}
-              onClose={() => setShowPassengersTrip(null)}
-              readOnly={isPassengersReadOnly(profile?.role)}
-            />
-          </div>
-        </div>
+        <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
+          <PassengersPanel
+            trip={showPassengersTrip}
+            readOnly={isPassengersReadOnly(profile?.role)}
+          />
+        </ModalWrapper>
       )}
     </div>
   );
