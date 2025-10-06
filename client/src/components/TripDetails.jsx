@@ -1,11 +1,56 @@
 // client/src/components/TripDetails.jsx
 import React from "react";
-import StatusBadge from "./StatusBadge"; // ✅ import your shared badge
+import StatusBadge from "./StatusBadge";
+import TripActions from "./TripActions";
+import { useAuth } from "../context/AuthContext";
+import { getAllTrips, getTripsByUser } from "../services/tripService";
 
 function TripDetails({ trip }) {
   if (!trip) return null;
 
-  const buses = Array.isArray(trip.buses) ? trip.buses : [];
+  const { profile } = useAuth();
+
+  // Keep a local copy so the modal reflects updates immediately after actions
+  const [currentTrip, setCurrentTrip] = React.useState(trip);
+  React.useEffect(() => {
+    // If the parent passes a newer trip, sync it in
+    setCurrentTrip(trip);
+  }, [trip]);
+
+  // Called by BusCompanyActions / StaffActions after they finish an update
+  const refreshCallback = React.useCallback(async () => {
+    try {
+      // Re-fetch the latest trips for the signed-in role
+      let latest = [];
+      if (
+        profile?.role === "admin" ||
+        profile?.role === "school_staff" ||
+        profile?.role === "bus_company" ||
+        profile?.role === "finance"
+      ) {
+        latest = await getAllTrips();
+      } else {
+        latest = await getTripsByUser(profile?.name);
+      }
+
+      // Find the updated trip and update local state
+      const updated = latest.find((t) => t.id === currentTrip.id);
+      if (updated) {
+        setCurrentTrip(updated);
+        // Broadcast so AllTrips can patch its parent `trips` (keeps table/calendar in sync)
+        try {
+          window.dispatchEvent(new CustomEvent("trip:updated", { detail: updated }));
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.error("TripDetails refresh failed:", e);
+      // Even if refresh fails, the actions components already called the API.
+      // Parent may also refetch separately; we leave UI as-is to avoid flicker.
+    }
+  }, [currentTrip.id, profile]);
+
+  // Helpers
+  const buses = Array.isArray(currentTrip.buses) ? currentTrip.buses : [];
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
@@ -16,10 +61,10 @@ function TripDetails({ trip }) {
     return `${day}-${month}-${year}`;
   };
 
-  const formattedDate = formatDate(trip.date);
-  const returnDate = formatDate(trip.returnDate);
-  const departureTime = trip.departureTime || "-";
-  const returnTime = trip.returnTime || "-";
+  const formattedDate = formatDate(currentTrip.date);
+  const returnDate = formatDate(currentTrip.returnDate);
+  const departureTime = currentTrip.departureTime || "-";
+  const returnTime = currentTrip.returnTime || "-";
 
   return (
     <div className="space-y-6">
@@ -29,10 +74,10 @@ function TripDetails({ trip }) {
         <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded border">
           <div>
             <strong>Trip Type:</strong>{" "}
-            {trip.tripType === "Other" ? trip.customType : trip.tripType}
+            {currentTrip.tripType === "Other" ? currentTrip.customType : currentTrip.tripType}
           </div>
           <div>
-            <strong>Destination:</strong> {trip.destination}
+            <strong>Destination:</strong> {currentTrip.destination}
           </div>
           <div>
             <strong>Departure:</strong> {formattedDate} at: {departureTime}
@@ -41,23 +86,38 @@ function TripDetails({ trip }) {
             <strong>Return:</strong> {returnDate} at: {returnTime}
           </div>
           <div>
-            <strong>Students:</strong> {trip.students}
+            <strong>Students:</strong> {currentTrip.students}
           </div>
           <div className="flex items-center">
-            <strong className="mr-1">Status:</strong> <StatusBadge status={trip.status} />
+            <strong className="mr-1">Status:</strong>{" "}
+            <StatusBadge status={currentTrip.status} />
           </div>
-          {trip.notes && (
+          {currentTrip.notes && (
             <div className="col-span-2">
-              <strong>Notes:</strong> {trip.notes}
+              <strong>Notes:</strong> {currentTrip.notes}
             </div>
           )}
-          {trip.requester && (
+          {currentTrip.requester && (
             <div className="col-span-2">
-              <strong>Requested by:</strong> {trip.requester}
+              <strong>Requested by:</strong> {currentTrip.requester}
             </div>
           )}
         </div>
       </div>
+
+      {/* Actions (Bus Company & Staff) — no View button here */}
+      {(profile?.role === "bus_company" || profile?.role === "school_staff") && (
+        <div className="bg-white border rounded p-4 shadow-sm">
+          <h3 className="text-lg font-semibold mb-3">Actions</h3>
+          {/* TripActions internally chooses BusCompanyActions or StaffActions.
+              Both already call `refreshCallback` when done. */}
+          <TripActions
+            trip={currentTrip}
+            profile={profile}
+            refreshCallback={refreshCallback}
+          />
+        </div>
+      )}
 
       <hr className="my-2 border-gray-300" />
 
@@ -70,7 +130,7 @@ function TripDetails({ trip }) {
               const busStatus =
                 bus?.status && String(bus.status).trim()
                   ? bus.status
-                  : trip.status;
+                  : currentTrip.status;
 
               return (
                 <div key={index} className="bg-white border rounded p-4 shadow-sm">
@@ -86,7 +146,7 @@ function TripDetails({ trip }) {
                     <div><strong>Driver Phone:</strong> {bus.driverPhone || "-"}</div>
                     <div className="flex items-center">
                       <strong className="mr-1">Status:</strong>{" "}
-                      <StatusBadge status={busStatus} /> {/* ✅ reused badge */}
+                      <StatusBadge status={busStatus} />
                     </div>
                   </div>
                 </div>
