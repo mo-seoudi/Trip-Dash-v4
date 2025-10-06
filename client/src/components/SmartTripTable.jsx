@@ -152,6 +152,12 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                         onStatusChange={(trip, status) => {
                           // Parent-trip status updates only.
                           handleStatusChange(trip, status);
+                          // 🔔 broadcast optimistic update upstream so AllTrips can patch `trips`
+                          try {
+                            window.dispatchEvent(
+                              new CustomEvent("trip:updated", { detail: { ...trip, status } })
+                            );
+                          } catch (_) {}
                           closeRow();
                         }}
                         onAssignBus={(trip) => setAssignTrip(trip)}
@@ -209,6 +215,12 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
               setTripData((prev) =>
                 prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t))
               );
+              // 🔔 broadcast to parent
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("trip:updated", { detail: updatedTrip })
+                );
+              } catch (_) {}
               setAssignTrip(null);
               closeRow();
             }}
@@ -222,6 +234,14 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
           description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`}
           onConfirm={() => {
             handleStatusChange(confirmAction.trip, confirmAction.nextStatus);
+            // 🔔 broadcast optimistic update
+            try {
+              window.dispatchEvent(
+                new CustomEvent("trip:updated", {
+                  detail: { ...confirmAction.trip, status: confirmAction.nextStatus },
+                })
+              );
+            } catch (_) {}
             setConfirmAction(null);
             closeRow();
           }}
@@ -262,4 +282,3 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
 };
 
 export default SmartTripTable;
-
