@@ -6,8 +6,8 @@ import { format, parse, startOfWeek, getDay } from "date-fns";
 import enUS from "date-fns/locale/en-US";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import CustomCalendarToolbar from "./CustomCalendarToolbar";
-import ModalWrapper from "./ModalWrapper";       // ✅ NEW
-import TripDetails from "./TripDetails";         // ✅ NEW
+import ModalWrapper from "./ModalWrapper";
+import TripDetails from "./TripDetails";
 
 const locales = { "en-US": enUS };
 
@@ -23,7 +23,14 @@ const localizer = dateFnsLocalizer({
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
-  const [selectedTrip, setSelectedTrip] = React.useState(null); // ✅ NEW
+  // ✅ store just the selected trip ID, not the whole object
+  const [selectedTripId, setSelectedTripId] = React.useState(null);
+
+  // always derive the freshest trip object from props
+  const selectedTrip = React.useMemo(
+    () => trips.find((t) => t.id === selectedTripId) || null,
+    [trips, selectedTripId]
+  );
 
   const calendarEvents = trips
     .map((trip) => {
@@ -44,6 +51,8 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         start,
         end,
         allDay: false,
+        // keep passing the full trip for consumers of onEventClick,
+        // but we won't store it locally to avoid staleness.
         extendedProps: trip,
       };
     })
@@ -62,14 +71,14 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
         }}
         onSelectEvent={(event) => {
           const trip = event?.extendedProps || event;
-          if (onEventClick) onEventClick(trip);     // preserve existing behavior
-          setSelectedTrip(trip);                    // ✅ open modal with TripDetails
+          if (onEventClick) onEventClick(trip); // preserve external handlers
+          // ✅ set only the id to always re-derive the newest version
+          setSelectedTripId(trip?.id);
         }}
       />
 
-      {/* ✅ TripDetails modal */}
       {selectedTrip && (
-        <ModalWrapper onClose={() => setSelectedTrip(null)}>
+        <ModalWrapper onClose={() => setSelectedTripId(null)}>
           <TripDetails trip={selectedTrip} />
         </ModalWrapper>
       )}
