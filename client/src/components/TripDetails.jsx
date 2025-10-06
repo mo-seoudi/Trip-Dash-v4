@@ -2,44 +2,48 @@
 import React from "react";
 import StatusBadge from "./StatusBadge";
 import { useAuth } from "../context/AuthContext";
-import TripActions from "./actions/TripActions"; // ✅ use role-specific actions w/o "View"
-import { getAllTrips, getTripsByUser } from "../services/tripService";
+
+import ActionsCell from "./actions/ActionsCell";       // reuse the table's action bar
+import ConfirmActionPopup from "./ConfirmActionPopup";
+import AssignBusForm from "./AssignBusForm";
+import EditTripForm from "./EditTripForm";
+import PassengersPanel from "./trips/PassengersPanel";
+import useTripActions from "../hooks/useTripActions";
+import { RxPerson } from "react-icons/rx";
 
 function TripDetails({ trip }) {
   if (!trip) return null;
 
   const { profile } = useAuth();
 
-  // keep a local copy so the modal reflects updates as actions complete
+  // keep a local copy for instant updates inside the modal
   const [currentTrip, setCurrentTrip] = React.useState(trip);
   React.useEffect(() => setCurrentTrip(trip), [trip]);
 
-  // this is called by BusCompanyActions / StaffActions after they finish an update
-  const refreshCallback = React.useCallback(async () => {
+  // useTripActions expects a setter; we give it a small sink
+  const [, setSink] = React.useState([]);
+  const { handleStatusChange, handleSoftDelete } = useTripActions(profile, setSink);
+
+  // same auxiliary modals as the table
+  const [confirmAction, setConfirmAction] = React.useState(null);
+  const [assignTrip, setAssignTrip] = React.useState(null);
+  const [editTrip, setEditTrip] = React.useState(null);
+  const [showPassengersTrip, setShowPassengersTrip] = React.useState(null);
+
+  const patchTrip = (updated) => {
+    if (!updated) return;
+    setCurrentTrip((prev) => ({ ...prev, ...updated }));
+    // broadcast so AllTrips patches parent `trips` (keeps table & calendar in sync)
     try {
-      let latest = [];
-      if (
-        profile?.role === "admin" ||
-        profile?.role === "school_staff" ||
-        profile?.role === "bus_company" ||
-        profile?.role === "finance"
-      ) {
-        latest = await getAllTrips();
-      } else {
-        latest = await getTripsByUser(profile?.name);
-      }
-      const updated = latest.find((t) => t.id === currentTrip.id);
-      if (updated) {
-        setCurrentTrip(updated);
-        // broadcast so AllTrips patches parent `trips` (keeps table/calendar in sync)
-        try {
-          window.dispatchEvent(new CustomEvent("trip:updated", { detail: updated }));
-        } catch (_) {}
-      }
-    } catch (e) {
-      console.error("TripDetails refresh failed:", e);
-    }
-  }, [currentTrip.id, profile]);
+      window.dispatchEvent(new CustomEvent("trip:updated", { detail: { ...currentTrip, ...updated } }));
+    } catch {}
+  };
+
+  const canSeePassengersButton =
+    (profile?.role === "school_staff" || profile?.role === "admin") &&
+    ["Accepted", "Confirmed", "Completed"].includes(currentTrip?.status);
+
+  const isPassengersReadOnly = (role) => role !== "school_staff"; // admin=view-only
 
   const buses = Array.isArray(currentTrip.buses) ? currentTrip.buses : [];
 
@@ -80,8 +84,7 @@ function TripDetails({ trip }) {
             <strong>Students:</strong> {currentTrip.students}
           </div>
           <div className="flex items-center">
-            <strong className="mr-1">Status:</strong>{" "}
-            <StatusBadge status={currentTrip.status} />
+            <strong className="mr-1">Status:</strong> <StatusBadge status={currentTrip.status} />
           </div>
           {currentTrip.notes && (
             <div className="col-span-2">
@@ -96,13 +99,37 @@ function TripDetails({ trip }) {
         </div>
       </div>
 
-      {/* Compact action strip (no "Actions" title, no View; staff gets Passengers) */}
+      {/* Compact action strip (identical look to table) */}
       <div className="pt-1">
-        <TripActions
-          trip={currentTrip}
-          profile={profile}
-          refreshCallback={refreshCallback}
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+          <ActionsCell
+            trip={currentTrip}
+            role={profile?.role}
+            hideView                 // 👈 NEW: hide the View button in the modal
+            onStatusChange={(tripArg, nextStatus) => {
+              patchTrip({ status: nextStatus });     // optimistic local update
+              handleStatusChange(tripArg, nextStatus); // server call via shared hook
+            }}
+            onAssignBus={(t) => setAssignTrip(t)}
+            onConfirmAction={(t, label, nextStatus) =>
+              setConfirmAction({ trip: t, label, nextStatus })
+            }
+            onEdit={(t) => setEditTrip(t)}
+            onSoftDelete={handleSoftDelete}
+          />
+
+          {/* Passengers — same as SmartTripTable styling/logic */}
+          {canSeePassengersButton && (
+            <button
+              onClick={() => setShowPassengersTrip(currentTrip)}
+              className="flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 text-gray-700 hover:text-gray-900"
+              title={profile?.role === "admin" ? "View Passengers" : "Manage Passengers"}
+            >
+              <RxPerson className="mr-1" />
+              Passengers
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Assigned Buses */}
@@ -141,6 +168,62 @@ function TripDetails({ trip }) {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modals (same behavior as table) */}
+      {assignTrip && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <AssignBusForm
+            trip={assignTrip}
+            onClose={() => setAssignTrip(null)}
+            onSubmit={(updatedTrip) => {
+              setAssignTrip(null);
+              patchTrip(updatedTrip);
+            }}
+          />
+        </div>
+      )}
+
+      {confirmAction && (
+        <ConfirmActionPopup
+          title={`${confirmAction.label} Trip`}
+          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`}
+          onConfirm={() => {
+            patchTrip({ status: confirmAction.nextStatus });
+            handleStatusChange(confirmAction.trip, confirmAction.nextStatus);
+            setConfirmAction(null);
+          }}
+          onClose={() => setConfirmAction(null)}
+        />
+      )}
+
+      {editTrip && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <EditTripForm
+            trip={editTrip}
+            onClose={() => setEditTrip(null)}
+            onUpdated={(maybeUpdated) => {
+              setEditTrip(null);
+              if (maybeUpdated) patchTrip(maybeUpdated);
+            }}
+            isRequestMode={
+              (profile?.role === "school_staff" && editTrip?.status === "Confirmed") || false
+            }
+          />
+        </div>
+      )}
+
+      {/* Passengers modal */}
+      {showPassengersTrip && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full">
+            <PassengersPanel
+              trip={showPassengersTrip}
+              onClose={() => setShowPassengersTrip(null)}
+              readOnly={isPassengersReadOnly(profile?.role)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
