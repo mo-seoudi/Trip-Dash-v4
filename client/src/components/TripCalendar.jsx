@@ -6,6 +6,8 @@ import { format, parse, startOfWeek, getDay } from "date-fns";
 import enUS from "date-fns/locale/en-US";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import CustomCalendarToolbar from "./CustomCalendarToolbar";
+import ModalWrapper from "./ModalWrapper";       // ✅ NEW
+import TripDetails from "./TripDetails";         // ✅ NEW
 
 const locales = { "en-US": enUS };
 
@@ -21,6 +23,8 @@ const localizer = dateFnsLocalizer({
 const toDate = (d) => (d instanceof Date ? d : d ? new Date(d) : null);
 
 const TripCalendar = ({ trips = [], onEventClick }) => {
+  const [selectedTrip, setSelectedTrip] = React.useState(null); // ✅ NEW
+
   const calendarEvents = trips
     .map((trip) => {
       const base = toDate(trip.date);
@@ -57,9 +61,18 @@ const TripCalendar = ({ trips = [], onEventClick }) => {
           toolbar: CustomCalendarToolbar,
         }}
         onSelectEvent={(event) => {
-          if (onEventClick) onEventClick(event.extendedProps);
+          const trip = event?.extendedProps || event;
+          if (onEventClick) onEventClick(trip);     // preserve existing behavior
+          setSelectedTrip(trip);                    // ✅ open modal with TripDetails
         }}
       />
+
+      {/* ✅ TripDetails modal */}
+      {selectedTrip && (
+        <ModalWrapper onClose={() => setSelectedTrip(null)}>
+          <TripDetails trip={selectedTrip} />
+        </ModalWrapper>
+      )}
     </div>
   );
 };
