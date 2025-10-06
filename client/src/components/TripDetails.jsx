@@ -1,9 +1,10 @@
+// client/src/components/TripDetails.jsx
 import React from "react";
+import StatusBadge from "./StatusBadge"; // ✅ import your shared badge
 
 function TripDetails({ trip }) {
   if (!trip) return null;
 
-  // Only use assigned buses from the parent trip
   const buses = Array.isArray(trip.buses) ? trip.buses : [];
 
   const formatDate = (dateStr) => {
@@ -22,7 +23,7 @@ function TripDetails({ trip }) {
 
   return (
     <div className="space-y-6">
-      {/* Parent Trip Info */}
+      {/* Trip Summary */}
       <div>
         <h2 className="text-xl font-bold mb-2">Trip Summary</h2>
         <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded border">
@@ -42,17 +43,8 @@ function TripDetails({ trip }) {
           <div>
             <strong>Students:</strong> {trip.students}
           </div>
-          <div>
-            <strong>Status:</strong>{" "}
-            <span
-              className={`inline-block px-2 py-0.5 rounded text-xs font-medium
-                ${trip.status === "Confirmed" ? "bg-green-100 text-green-800" :
-                  trip.status === "Pending"   ? "bg-yellow-100 text-yellow-800" :
-                  trip.status === "Completed" ? "bg-gray-200 text-gray-800" :
-                  "bg-gray-100 text-gray-700"}`}
-            >
-              {trip.status}
-            </span>
+          <div className="flex items-center">
+            <strong className="mr-1">Status:</strong> <StatusBadge status={trip.status} />
           </div>
           {trip.notes && (
             <div className="col-span-2">
@@ -74,27 +66,32 @@ function TripDetails({ trip }) {
         <div>
           <h3 className="text-lg font-semibold mb-2">Assigned Buses</h3>
           <div className="space-y-3">
-            {buses.map((bus, index) => (
-              <div key={index} className="bg-white border rounded p-4 shadow-sm">
-                <p className="font-medium mb-1">Bus #{index + 1}</p>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><strong>Type:</strong> {bus.busType}</div>
-                  <div><strong>Seats:</strong> {bus.busSeats}</div>
-                  <div>
-                    <strong>Price:</strong>{" "}
-                    {bus.tripPrice ? `AED ${bus.tripPrice}` : "-"}
-                  </div>
-                  <div><strong>Driver Name:</strong> {bus.driverName || "-"}</div>
-                  <div><strong>Driver Phone:</strong> {bus.driverPhone || "-"}</div>
-                  <div>
-                    <strong>Status:</strong>{" "}
-                    {bus?.status && String(bus.status).trim()
-                      ? bus.status
-                      : (trip.status || "-")}
+            {buses.map((bus, index) => {
+              const busStatus =
+                bus?.status && String(bus.status).trim()
+                  ? bus.status
+                  : trip.status;
+
+              return (
+                <div key={index} className="bg-white border rounded p-4 shadow-sm">
+                  <p className="font-medium mb-1">Bus #{index + 1}</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><strong>Type:</strong> {bus.busType}</div>
+                    <div><strong>Seats:</strong> {bus.busSeats}</div>
+                    <div>
+                      <strong>Price:</strong>{" "}
+                      {bus.tripPrice ? `AED ${bus.tripPrice}` : "-"}
+                    </div>
+                    <div><strong>Driver Name:</strong> {bus.driverName || "-"}</div>
+                    <div><strong>Driver Phone:</strong> {bus.driverPhone || "-"}</div>
+                    <div className="flex items-center">
+                      <strong className="mr-1">Status:</strong>{" "}
+                      <StatusBadge status={busStatus} /> {/* ✅ reused badge */}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
