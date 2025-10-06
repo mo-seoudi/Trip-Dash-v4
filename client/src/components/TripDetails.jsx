@@ -1,7 +1,7 @@
 // client/src/components/TripDetails.jsx
 import React from "react";
 import StatusBadge from "./StatusBadge";
-import TripActions from "./TripActions";
+import TripActions from "./actions/TripActions";
 import { useAuth } from "../context/AuthContext";
 import { getAllTrips, getTripsByUser } from "../services/tripService";
 
