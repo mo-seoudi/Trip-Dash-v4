@@ -12,6 +12,51 @@ import useTripActions from "../hooks/useTripActions";
 import { RxPerson } from "react-icons/rx";
 import ModalWrapper from "./ModalWrapper";             // use same modal wrapper as table
 
+// tiny in-file popover for showing/copying the email
+function EmailPopover({ email = "-", onClose }) {
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const onClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(email || "");
+    } catch {}
+    onClose();
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute z-[200] mt-1 w-64 rounded border bg-white shadow p-3 text-sm"
+      role="dialog"
+      aria-label="Requester email"
+    >
+      <div className="font-mono break-all">{email || "-"}</div>
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={copy}
+          className="text-blue-600 hover:underline"
+        >
+          Copy
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TripDetails({ trip }) {
   if (!trip) return null;
 
@@ -25,11 +70,12 @@ function TripDetails({ trip }) {
   const [, setSink] = React.useState([]);
   const { handleStatusChange, handleSoftDelete } = useTripActions(profile, setSink);
 
-  // same auxiliary modals as the table
+  // auxiliary modals / UI states
   const [confirmAction, setConfirmAction] = React.useState(null);
   const [assignTrip, setAssignTrip] = React.useState(null);
   const [editTrip, setEditTrip] = React.useState(null);
   const [showPassengersTrip, setShowPassengersTrip] = React.useState(null);
+  const [showRequesterEmail, setShowRequesterEmail] = React.useState(false);
 
   const patchTrip = (updated) => {
     if (!updated) return;
@@ -59,7 +105,7 @@ function TripDetails({ trip }) {
     return `${day}-${month}-${year}`;
   };
 
-  // 🔎 Robust requester extractor — supports multiple possible shapes
+  // Robust requester extractor — supports multiple possible shapes
   const extractRequester = (t) => {
     const name =
       t?.requester ||
@@ -121,22 +167,33 @@ function TripDetails({ trip }) {
             </div>
           )}
 
-          {/* ✅ Requested by (name + email) */}
+          {/* Requested by (name-only popover for email) */}
           {(requesterName || requesterEmail) && (
             <div className="col-span-2">
               <strong>Requested by:</strong>{" "}
-              <span>{requesterName || "-"}</span>
-              {requesterEmail && (
-                <>
-                  {" "}
-                  —{" "}
-                  <a
-                    href={`mailto:${requesterEmail}`}
+              {requesterName ? (
+                <span className="relative inline-block">
+                  <button
+                    type="button"
                     className="text-blue-600 hover:underline"
+                    onClick={() => setShowRequesterEmail((s) => !s)}
+                    aria-expanded={showRequesterEmail}
+                    aria-controls="requester-email-popover"
+                    title="Show email"
                   >
-                    {requesterEmail}
-                  </a>
-                </>
+                    {requesterName}
+                  </button>
+                  {showRequesterEmail && (
+                    <div id="requester-email-popover">
+                      <EmailPopover
+                        email={requesterEmail}
+                        onClose={() => setShowRequesterEmail(false)}
+                      />
+                    </div>
+                  )}
+                </span>
+              ) : (
+                <span>-</span>
               )}
             </div>
           )}
