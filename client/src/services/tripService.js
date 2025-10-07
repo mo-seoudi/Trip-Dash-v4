@@ -10,7 +10,6 @@ const toYMD = (d) => {
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   }
-  // If we got an ISO like 2025-10-28T00:00:00.000Z → trim to 2025-10-28
   if (typeof d === "string" && d.includes("T")) return d.slice(0, 10);
   return d;
 };
@@ -33,7 +32,6 @@ const serializeUpdates = (updates = {}) => {
   const payload = { ...updates };
   if (payload.date !== undefined) payload.date = toYMD(payload.date);
   if (payload.returnDate !== undefined) payload.returnDate = toYMD(payload.returnDate);
-  // (times can stay as-is; API only complained about date shape)
   return payload;
 };
 
@@ -124,13 +122,12 @@ export const addTripPassengerPayment = async (tripId, passengerRowId, payload) =
  * Requests (staff → bus company)
  * ================================ */
 
-/** Request to cancel a trip (school staff flow). Falls back to flag if endpoint missing. */
+/** Request to cancel a trip (school staff flow). */
 export const requestTripCancel = async (tripId, reason) => {
   try {
     const { data } = await api.post(`/trips/${tripId}/request-cancel`, { reason });
     return normalizeTrip(data);
   } catch {
-    // fallback: store flags on the trip itself
     const { data } = await api.patch(`/trips/${tripId}`, {
       cancelRequested: true,
       cancelReason: reason || null,
@@ -139,12 +136,11 @@ export const requestTripCancel = async (tripId, reason) => {
   }
 };
 
-/** Request to edit a trip (school staff flow). Falls back to flag if endpoint missing. */
+/** Request to edit a trip (school staff flow). */
 export const requestTripEdit = async (tripId, draft) => {
-  // ensure any date fields inside the draft are serialized too
   const safeDraft = serializeUpdates(draft || {});
   try {
-    const { data } = await api.post(`/trips/${tripId}/request-edit`, { draft: safeDraft });
+    const { data } = await api.post(`/trips/${tripId}/request-edit`, { patch: safeDraft });
     return normalizeTrip(data);
   } catch {
     const { data } = await api.patch(`/trips/${tripId}`, {
@@ -153,4 +149,16 @@ export const requestTripEdit = async (tripId, draft) => {
     });
     return normalizeTrip(data);
   }
+};
+
+/** Bus company/admin: respond to a cancel request */
+export const respondCancelRequest = async (tripId, approve) => {
+  const { data } = await api.patch(`/trips/${tripId}/respond-cancel`, { approve });
+  return normalizeTrip(data);
+};
+
+/** Bus company/admin: apply a requested edit */
+export const applyEditRequest = async (tripId, patch) => {
+  const { data } = await api.patch(`/trips/${tripId}/apply-edit`, { patch: serializeUpdates(patch) });
+  return normalizeTrip(data);
 };
