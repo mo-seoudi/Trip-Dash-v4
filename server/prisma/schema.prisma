@@ -12,13 +12,13 @@ datasource db {
 
 // USERS
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String?
-  role         String   @default("school_staff") // e.g. "admin", "finance", ...
-  status       String   @default("pending")      // "approved" | "pending" | "blocked"
-  createdAt    DateTime @default(now())
+  id               Int          @id @default(autoincrement())
+  name             String
+  email            String       @unique
+  passwordHash     String?
+  role             String       @default("school_staff") // e.g. "admin", "finance", ...
+  status           String       @default("pending")      // "approved" | "pending" | "blocked"
+  createdAt        DateTime     @default(now())
   createdBookings  BusBooking[] @relation("BookingCreator")
 
   // Trips created by this user
@@ -50,12 +50,27 @@ model Trip {
   status        String?
   price         Float?
   notes         String?
-  cancelRequest Boolean? @default(false)
+
+  // ── NEW: Requests & approvals (non-breaking additions) ─────────────────────
+  /// legacy flag kept for backward compatibility with existing UI
+  cancelRequest       Boolean?  @default(false)
+
+  /// school_staff can request cancellation; bus_company/admin can handle it
+  cancelRequested     Boolean   @default(false)
+  cancelReason        String?
+  cancelRequestedAt   DateTime?
+  cancelHandledAt     DateTime?
+
+  /// school_staff can request edits (when e.g. status is Confirmed)
+  editRequested       Boolean   @default(false)
+  editRequestPayload  Json?
+  editRequestedAt     DateTime?
+  editHandledAt       DateTime?
 
   // flexible JSON
-  busInfo   Json?
+  busInfo    Json?
   driverInfo Json?
-  buses     Json?
+  buses      Json?
 
   // self-relation
   parentId Int?
@@ -64,14 +79,16 @@ model Trip {
 
   // back-relation to SubTrip
   subTripDocs SubTrip[] @relation("TripToSubTrip")
-  
+
   // NEW: back-relation to TripPassenger rows
-  tripPassengers  TripPassenger[]
+  tripPassengers TripPassenger[]
 
   @@index([createdAt])
   @@index([status])
   @@index([createdBy])
   @@index([destination])
+  @@index([cancelRequested]) // NEW: fast filters in dashboards/inboxes
+  @@index([editRequested])   // NEW: fast filters in dashboards/inboxes
   @@map("Trip")
 }
 
@@ -113,7 +130,6 @@ model TripPassengerPayment {
   @@index([tripPassengerId])
   @@map("TripPassengerPayment")
 }
-
 
 // SUBTRIPS
 model SubTrip {
