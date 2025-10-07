@@ -1,170 +1,163 @@
 // server/src/routes/trips/trips.core.js
-import { Router } from "express";
-import { prisma } from "../../lib/prisma.js";
-import jwt from "jsonwebtoken";
+import { PrismaClient, Prisma } from "@prisma/client";
+const prisma = globalThis.__prisma || new PrismaClient();
+globalThis.__prisma = prisma;
 
-const router = Router();
+// If your project already has an auth guard, replace this with it.
+async function canAccessTrip(user, tripId) {
+  if (!user) return false;
+  if (["admin", "bus_company"].includes(user.role)) return true;
+  const trip = await prisma.trip.findUnique({
+    where: { id: Number(tripId) },
+    select: { createdById: true },
+  });
+  return !!trip && trip.createdById === user.id;
+}
 
-const TRIP_REL_INCLUDE = {
-  createdByUser: { select: { id: true, name: true, email: true } },
-  parent: { select: { id: true } },
-  children: { select: { id: true } },
-  subTripDocs: true,
+const tripInclude = { createdByUser: true };
+
+const coerceDate = (v) => {
+  if (!v) return v;
+  // accept "YYYY-MM-DD" or ISO string or Date
+  if (v instanceof Date) return v;
+  const str = String(v);
+  try { return new Date(str); } catch { return null; }
 };
 
-// ✅ helper to decode your JWT (from cookie or Authorization) – requires env secret
-function getDecodedUser(req) {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    // Developer/config error – surface it clearly
-    throw new Error("JWT_SECRET is required but missing. Set it in your environment.");
-  }
+export async function requestCancelTrip(req, res) {
   try {
-    const bearer = req.headers.authorization || "";
-    const token = bearer.startsWith("Bearer ")
-      ? bearer.slice(7)
-      : req.cookies?.token; // your cookie name
-    if (!token) return null;
-    return jwt.verify(token, secret);
-  } catch {
-    return null;
+    const user = req.user;
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid trip id" });
+
+    const ok = await canAccessTrip(user, id);
+    if (!ok) return res.status(403).json({ error: "Forbidden" });
+
+    const reason = (req.body?.reason ?? "").toString().trim() || null;
+
+    const row = await prisma.trip.update({
+      where: { id },
+      data: {
+        cancelRequested: true,
+        cancelReason: reason,
+        cancelRequestedAt: new Date(),
+      },
+      include: tripInclude,
+    });
+
+    return res.json(row);
+  } catch (e) {
+    console.error("[TRIPS] request-cancel error:", e);
+    return res.status(500).json({ error: "Failed to request cancellation" });
   }
 }
 
-/**
- * GET /api/trips?createdBy=Name
- * - If role === school_staff => show only trips they created
- * - Otherwise keep the existing behavior (optionally narrowed by createdBy search)
- */
-router.get("/", async (req, res, next) => {
+export async function requestEditTrip(req, res) {
   try {
-    const decoded = getDecodedUser(req);
-
-    let currentUser = null;
-    if (decoded?.id) {
-      currentUser = await prisma.user.findUnique({
-        where: { id: Number(decoded.id) },
-        select: { id: true, email: true, role: true, name: true },
-      });
-    }
-
-    const { createdBy } = req.query;
-    const nameNeedle =
-      createdBy && String(createdBy).includes(" ")
-        ? String(createdBy).split(" ")[0]
-        : createdBy;
-
-    const baseWhere = nameNeedle
-      ? { createdBy: { contains: String(nameNeedle), mode: "insensitive" } }
-      : undefined;
-
-    let where = baseWhere;
-
-    if (currentUser?.role === "school_staff") {
-      where = {
-        AND: [
-          baseWhere || {},
-          {
-            OR: [
-              { createdById: currentUser.id },
-              { createdByEmail: currentUser.email },
-            ],
-          },
-        ],
-      };
-    }
-
-    try {
-      const trips = await prisma.trip.findMany({
-        where,
-        orderBy: { id: "desc" },
-        include: TRIP_REL_INCLUDE,
-      });
-      return res.json(trips);
-    } catch {
-      const trips = await prisma.trip.findMany({ where, orderBy: { id: "desc" } });
-      return res.json(trips);
-    }
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.post("/", async (req, res, next) => {
-  try {
-    const decoded = getDecodedUser(req);
-
-    const {
-      createdById, createdBy, createdByEmail,
-      tripType, destination, date, departureTime,
-      returnDate, returnTime, students, status, price,
-      notes, cancelRequest, busInfo, driverInfo, buses, parentId,
-    } = req.body;
-
-    const data = {
-      createdById: createdById ?? (decoded?.id ? Number(decoded.id) : null),
-      createdBy: createdBy ?? null,
-      createdByEmail: createdByEmail ?? decoded?.email ?? null,
-      tripType: tripType ?? null,
-      destination: destination ?? null,
-      date: date ? new Date(date) : null,
-      departureTime: departureTime ?? null,
-      returnDate: returnDate ? new Date(returnDate) : null,
-      returnTime: returnTime ?? null,
-      students: typeof students === "number" ? students : students ? Number(students) : null,
-      status: status ?? "Pending",
-      price: typeof price === "number" ? price : price ? Number(price) : 0,
-      notes: notes ?? null,
-      cancelRequest: !!cancelRequest,
-      busInfo: busInfo ?? null,
-      driverInfo: driverInfo ?? null,
-      buses: buses ?? null,
-      parentId: parentId ?? null,
-    };
-
-    const created = await prisma.trip.create({ data });
-
-    try {
-      const withRels = await prisma.trip.findUnique({
-        where: { id: created.id },
-        include: TRIP_REL_INCLUDE,
-      });
-      return res.status(201).json(withRels ?? created);
-    } catch {
-      return res.status(201).json(created);
-    }
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.patch("/:id", async (req, res, next) => {
-  try {
+    const user = req.user;
     const id = Number(req.params.id);
-    const data = { ...req.body };
-    if ("date" in data) data.date = data.date ? new Date(data.date) : null;
-    if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
+    if (!id) return res.status(400).json({ error: "Invalid trip id" });
 
-    const updated = await prisma.trip.update({ where: { id }, data });
-    try {
-      const withRels = await prisma.trip.findUnique({ where: { id }, include: TRIP_REL_INCLUDE });
-      return res.json(withRels ?? updated);
-    } catch {
-      return res.json(updated);
-    }
+    const ok = await canAccessTrip(user, id);
+    if (!ok) return res.status(403).json({ error: "Forbidden" });
+
+    const payload = req.body?.patch ?? req.body?.draft ?? {};
+
+    // optional: sanitize/whitelist here if you prefer
+    const row = await prisma.trip.update({
+      where: { id },
+      data: {
+        editRequested: true,
+        editRequestPayload: payload,
+        editRequestedAt: new Date(),
+      },
+      include: tripInclude,
+    });
+
+    return res.json(row);
   } catch (e) {
-    next(e);
+    console.error("[TRIPS] request-edit error:", e);
+    return res.status(500).json({ error: "Failed to request edit" });
   }
-});
+}
 
-router.delete("/:id", async (req, res, next) => {
+export async function respondCancelTrip(req, res) {
   try {
+    const user = req.user;
+    if (!["bus_company", "admin"].includes(user?.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     const id = Number(req.params.id);
-    await prisma.trip.delete({ where: { id } });
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
+    if (!id) return res.status(400).json({ error: "Invalid trip id" });
 
-export default router;
+    const approve = !!req.body?.approve;
+
+    const data = approve
+      ? { status: "Canceled", cancelRequested: false, cancelHandledAt: new Date() }
+      : { cancelRequested: false, cancelHandledAt: new Date() };
+
+    const row = await prisma.trip.update({
+      where: { id },
+      data,
+      include: tripInclude,
+    });
+
+    return res.json(row);
+  } catch (e) {
+    console.error("[TRIPS] respond-cancel error:", e);
+    return res.status(500).json({ error: "Failed to respond cancel request" });
+  }
+}
+
+export async function applyEditTrip(req, res) {
+  try {
+    const user = req.user;
+    if (!["bus_company", "admin"].includes(user?.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid trip id" });
+
+    // Prefer explicit patch; fall back to stored payload
+    const trip = await prisma.trip.findUnique({ where: { id } });
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+    const patch = req.body?.patch ?? trip.editRequestPayload ?? {};
+
+    const allowed = [
+      "tripType",
+      "customType",
+      "destination",
+      "date",
+      "returnDate",
+      "departureTime",
+      "returnTime",
+      "students",
+      "notes",
+      "boosterSeats",
+    ];
+
+    const data = {};
+    for (const k of allowed) {
+      if (patch[k] !== undefined) {
+        data[k] = (k === "date" || k === "returnDate") ? coerceDate(patch[k]) : patch[k];
+      }
+    }
+
+    const row = await prisma.trip.update({
+      where: { id },
+      data: {
+        ...data,
+        editRequested: false,
+        editRequestPayload: Prisma.JsonNull,
+        editHandledAt: new Date(),
+      },
+      include: tripInclude,
+    });
+
+    return res.json(row);
+  } catch (e) {
+    console.error("[TRIPS] apply-edit error:", e);
+    return res.status(500).json({ error: "Failed to apply edit" });
+  }
+}
