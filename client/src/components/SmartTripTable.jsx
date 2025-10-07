@@ -111,9 +111,19 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 <td className="px-4 py-2">
                   {trip.tripType === "Other" ? trip.customType : trip.tripType}
                 </td>
+
+                {/* ✅ Destination is now a clickable link that opens TripDetails */}
                 <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">
-                  {trip.destination}
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailsTrip(trip)}
+                    className="text-blue-600 hover:underline font-medium"
+                    title="View trip details"
+                  >
+                    {trip.destination}
+                  </button>
                 </td>
+
                 <td className="px-4 py-2">{trip.students}</td>
                 <td className="px-4 py-2">
                   {trip.date
