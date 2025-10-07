@@ -5,7 +5,9 @@ import { useAuth } from "../context/AuthContext";
 import api from "../services/apiClient";
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
-import StatusBadge from "../components/StatusBadge"; // ✅ use the same badge as the rest of the app
+import StatusBadge from "../components/StatusBadge";
+import ModalWrapper from "../components/ModalWrapper";      // ✅ NEW
+import TripDetails from "../components/TripDetails";         // ✅ NEW
 
 // Small UI helpers
 const Card = ({ title, value, sub }) => (
@@ -25,12 +27,17 @@ const Section = ({ title, children }) => (
   </div>
 );
 
+const MAX_UPCOMING = 10; // ✅ cap the agenda list
+
 const Dashboard = () => {
   const { profile } = useAuth();
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [isEditing] = useState(false);
+
+  // For TripDetails modal
+  const [selectedTrip, setSelectedTrip] = useState(null);   // ✅ NEW
 
   // ---- single, canonical endpoint ----
   useEffect(() => {
@@ -40,7 +47,7 @@ const Dashboard = () => {
         setLoading(true);
         setErr(null);
         const res = await api.get("/api/trips", {
-          withCredentials: true, // include cookie
+          withCredentials: true,
           signal: ac.signal,
         });
         const data = Array.isArray(res.data) ? res.data : [];
@@ -90,10 +97,10 @@ const Dashboard = () => {
     const rows = (trips || [])
       .filter((t) => {
         const d = getDate(t);
-        return d && dayjs(d).isSame(today, "day") || (d && dayjs(d).isAfter(today));
+        return (d && dayjs(d).isSame(today, "day")) || (d && dayjs(d).isAfter(today));
       })
       .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
-      .slice(0, 8);
+      .slice(0, MAX_UPCOMING);                       // ✅ limit to 10
     return rows;
   }, [trips, today]);
 
@@ -101,8 +108,7 @@ const Dashboard = () => {
     const d = getDate(t);
     if (!d) return "-";
     const dj = dayjs(d);
-    const time =
-      t?.departureTime || t?.time || (dj.isValid() ? dj.format("h:mm A") : "");
+    const time = t?.departureTime || t?.time || (dj.isValid() ? dj.format("h:mm A") : "");
     const dateTxt = dj.isValid() ? dj.format("ddd, MMM D") : "-";
     return time ? `${dateTxt} • ${time}` : dateTxt;
   };
@@ -172,7 +178,7 @@ const Dashboard = () => {
 
       {/* ✅ New: Upcoming Agenda */}
       <div className="mt-6">
-        <Section title="Next Upcoming Trips">
+        <Section title={`Upcoming Trips (next ${MAX_UPCOMING})`}>
           {loading ? (
             <div className="text-gray-500 text-sm">Loading upcoming trips…</div>
           ) : upcomingTrips.length === 0 ? (
@@ -192,10 +198,17 @@ const Dashboard = () => {
                 <tbody>
                   {upcomingTrips.map((t) => (
                     <tr key={t.id} className="border-b last:border-0">
-                      <td className="py-2 pr-4 whitespace-nowrap">
-                        {formatWhen(t)}
+                      <td className="py-2 pr-4 whitespace-nowrap">{formatWhen(t)}</td>
+                      <td className="py-2 pr-4">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTrip(t)}              // ✅ open modal
+                          className="text-blue-600 hover:underline font-medium"
+                          title="View trip details"
+                        >
+                          {t.destination || t.tripType || "—"}
+                        </button>
                       </td>
-                      <td className="py-2 pr-4">{t.destination || t.tripType || "—"}</td>
                       <td className="py-2 pr-4">{t.students ?? "—"}</td>
                       <td className="py-2 pr-4">
                         <StatusBadge status={t.status} />
@@ -214,6 +227,13 @@ const Dashboard = () => {
         <div className="mt-6 rounded-lg bg-red-50 text-red-700 p-3 border border-red-100">
           {err}
         </div>
+      )}
+
+      {/* ✅ TripDetails modal (reused app-wide) */}
+      {selectedTrip && (
+        <ModalWrapper onClose={() => setSelectedTrip(null)}>
+          <TripDetails trip={selectedTrip} />
+        </ModalWrapper>
       )}
     </div>
   );
