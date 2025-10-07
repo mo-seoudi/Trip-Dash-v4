@@ -6,8 +6,8 @@ import api from "../services/apiClient";
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
 import StatusBadge from "../components/StatusBadge";
-import ModalWrapper from "../components/ModalWrapper";      // ✅ NEW
-import TripDetails from "../components/TripDetails";         // ✅ NEW
+import ModalWrapper from "../components/ModalWrapper";
+import TripDetails from "../components/TripDetails";
 
 // Small UI helpers
 const Card = ({ title, value, sub }) => (
@@ -27,7 +27,7 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const MAX_UPCOMING = 10; // ✅ cap the agenda list
+const MAX_UPCOMING = 10;
 
 const Dashboard = () => {
   const { profile } = useAuth();
@@ -36,8 +36,8 @@ const Dashboard = () => {
   const [err, setErr] = useState(null);
   const [isEditing] = useState(false);
 
-  // For TripDetails modal
-  const [selectedTrip, setSelectedTrip] = useState(null);   // ✅ NEW
+  // TripDetails modal
+  const [selectedTrip, setSelectedTrip] = useState(null);
 
   // ---- single, canonical endpoint ----
   useEffect(() => {
@@ -75,13 +75,19 @@ const Dashboard = () => {
     if (["approved", "confirmed", "accepted"].includes(raw)) return "approved";
     if (["completed", "done", "finished"].includes(raw)) return "completed";
     if (["cancelled", "canceled"].includes(raw)) return "cancelled";
+    if (["rejected"].includes(raw)) return "rejected";
     return "unknown";
+  };
+
+  const isCancelledOrRejected = (t) => {
+    const s = (t?.status || t?.tripStatus || t?.state || "").toString().toLowerCase();
+    return s.includes("cancel") || s.includes("reject");
   };
 
   const today = dayjs().startOf("day");
 
   const { total, upcoming, statusCounts } = useMemo(() => {
-    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, unknown: 0 };
+    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, rejected: 0, unknown: 0 };
     let upc = 0;
     (trips || []).forEach((t) => {
       const d = getDate(t);
@@ -92,16 +98,17 @@ const Dashboard = () => {
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
   }, [trips]);
 
-  // 👉 Agenda list: next upcoming trips (from today), sorted by date/time
+  // 👉 Agenda list: exclude Rejected/Canceled + only today or later
   const upcomingTrips = useMemo(() => {
-    const rows = (trips || [])
+    return (trips || [])
       .filter((t) => {
         const d = getDate(t);
-        return (d && dayjs(d).isSame(today, "day")) || (d && dayjs(d).isAfter(today));
+        if (!d) return false;
+        const isFutureOrToday = dayjs(d).isSame(today, "day") || dayjs(d).isAfter(today);
+        return isFutureOrToday && !isCancelledOrRejected(t);
       })
       .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
-      .slice(0, MAX_UPCOMING);                       // ✅ limit to 10
-    return rows;
+      .slice(0, MAX_UPCOMING);
   }, [trips, today]);
 
   const formatWhen = (t) => {
@@ -129,7 +136,6 @@ const Dashboard = () => {
       if (s === "confirmed") return "Monitor completion";
     }
     if (s === "completed") return "No action";
-    if (s === "cancelled" || s === "canceled") return "No action";
     return "—";
   };
 
@@ -176,9 +182,9 @@ const Dashboard = () => {
         <Card title="Cancelled" value={loading ? "…" : statusCounts.cancelled || 0} />
       </div>
 
-      {/* ✅ New: Upcoming Agenda */}
+      {/* ✅ Upcoming Agenda — excludes Rejected & Cancelled */}
       <div className="mt-6">
-        <Section title={`Upcoming Trips (next ${MAX_UPCOMING})`}>
+        <Section title="Upcoming Trips">
           {loading ? (
             <div className="text-gray-500 text-sm">Loading upcoming trips…</div>
           ) : upcomingTrips.length === 0 ? (
@@ -202,7 +208,7 @@ const Dashboard = () => {
                       <td className="py-2 pr-4">
                         <button
                           type="button"
-                          onClick={() => setSelectedTrip(t)}              // ✅ open modal
+                          onClick={() => setSelectedTrip(t)}
                           className="text-blue-600 hover:underline font-medium"
                           title="View trip details"
                         >
@@ -229,7 +235,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* ✅ TripDetails modal (reused app-wide) */}
       {selectedTrip && (
         <ModalWrapper onClose={() => setSelectedTrip(null)}>
           <TripDetails trip={selectedTrip} />
