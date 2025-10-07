@@ -10,7 +10,7 @@ import EditTripForm from "./EditTripForm";
 import PassengersPanel from "./trips/PassengersPanel";
 import useTripActions from "../hooks/useTripActions";
 import { RxPerson } from "react-icons/rx";
-import ModalWrapper from "./ModalWrapper";             // ✅ use same modal wrapper as table
+import ModalWrapper from "./ModalWrapper";             // use same modal wrapper as table
 
 function TripDetails({ trip }) {
   if (!trip) return null;
@@ -59,6 +59,30 @@ function TripDetails({ trip }) {
     return `${day}-${month}-${year}`;
   };
 
+  // 🔎 Robust requester extractor — supports multiple possible shapes
+  const extractRequester = (t) => {
+    const name =
+      t?.requester ||
+      t?.requestedBy ||
+      t?.requesterName ||
+      t?.createdBy?.name ||
+      t?.createdByName ||
+      t?.ownerName ||
+      null;
+
+    const email =
+      t?.requesterEmail ||
+      t?.requestedByEmail ||
+      t?.createdBy?.email ||
+      t?.ownerEmail ||
+      t?.requester?.email ||
+      null;
+
+    return { name, email };
+  };
+
+  const { name: requesterName, email: requesterEmail } = extractRequester(currentTrip);
+
   const formattedDate = formatDate(currentTrip.date);
   const returnDate = formatDate(currentTrip.returnDate);
   const departureTime = currentTrip.departureTime || "-";
@@ -89,14 +113,31 @@ function TripDetails({ trip }) {
           <div className="flex items-center">
             <strong className="mr-1">Status:</strong> <StatusBadge status={currentTrip.status} />
           </div>
+
+          {/* Notes */}
           {currentTrip.notes && (
             <div className="col-span-2">
               <strong>Notes:</strong> {currentTrip.notes}
             </div>
           )}
-          {currentTrip.requester && (
+
+          {/* ✅ Requested by (name + email) */}
+          {(requesterName || requesterEmail) && (
             <div className="col-span-2">
-              <strong>Requested by:</strong> {currentTrip.requester}
+              <strong>Requested by:</strong>{" "}
+              <span>{requesterName || "-"}</span>
+              {requesterEmail && (
+                <>
+                  {" "}
+                  —{" "}
+                  <a
+                    href={`mailto:${requesterEmail}`}
+                    className="text-blue-600 hover:underline"
+                  >
+                    {requesterEmail}
+                  </a>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -108,7 +149,7 @@ function TripDetails({ trip }) {
           <ActionsCell
             trip={currentTrip}
             role={profile?.role}
-            hideView                 // 👈 hide the View button in the modal
+            hideView                 // hide the View button in the modal
             onStatusChange={(tripArg, nextStatus) => {
               patchTrip({ status: nextStatus });          // optimistic local update
               handleStatusChange(tripArg, nextStatus);     // server call via shared hook
@@ -216,7 +257,7 @@ function TripDetails({ trip }) {
         </div>
       )}
 
-      {/* ✅ Passengers modal (now uses the SAME ModalWrapper as the table) */}
+      {/* Passengers modal (uses the SAME ModalWrapper as the table) */}
       {showPassengersTrip && (
         <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
           <PassengersPanel
