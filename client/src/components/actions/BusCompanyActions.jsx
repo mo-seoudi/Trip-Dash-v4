@@ -1,9 +1,9 @@
-// src/components/actions/BusCompanyActions.jsx
 import React, { useState } from "react";
 import ConfirmActionPopup from "../ConfirmActionPopup";
 import { updateTrip } from "../../services/tripService";
 import AssignBusForm from "../AssignBusForm";
 import EditBusForm from "../EditBusForm";
+import EditTripForm from "../EditTripForm"; // to view/adjust edit draft before applying
 
 const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showConfirmReject, setShowConfirmReject] = useState(false);
@@ -13,11 +13,23 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
   const [showEditInfo, setShowEditInfo] = useState(false);
   const [loadingAcceptId, setLoadingAcceptId] = useState(null);
 
-  const handleUpdateStatus = async (status) => {
+  // For handling "View Draft" of edit requests (pre-fill form with draft)
+  const [showEditDraft, setShowEditDraft] = useState(false);
+
+  const safeRefresh = () => {
+    try {
+      refreshCallback?.();
+      // also broadcast to any listeners (SmartTripTable / Calendar)
+      window.dispatchEvent(new CustomEvent("trip:updated", { detail: trip }));
+    } catch {}
+  };
+
+  const handleUpdateStatus = async (status, extraPatch = null) => {
     try {
       if (status === "Accepted") setLoadingAcceptId(trip.id);
-      await updateTrip(trip.id, { status });
-      refreshCallback?.();
+      const patch = extraPatch ? { status, ...extraPatch } : { status };
+      await updateTrip(trip.id, patch);
+      safeRefresh();
     } catch (error) {
       console.error(`Failed to update status to ${status}:`, error);
     } finally {
@@ -25,10 +37,103 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
     }
   };
 
+  const clearCancelRequest = async () => {
+    try {
+      await updateTrip(trip.id, { cancelRequested: false, cancelReason: null });
+      safeRefresh();
+    } catch (e) {
+      console.error("Failed clearing cancel request:", e);
+    }
+  };
+
+  const approveCancelRequest = async () => {
+    await handleUpdateStatus("Canceled", { cancelRequested: false, cancelReason: null });
+  };
+
+  const applyEditDraft = async () => {
+    const draft = trip?.editDraft || {};
+    try {
+      await updateTrip(trip.id, { ...draft, editRequested: false, editDraft: null });
+      safeRefresh();
+    } catch (e) {
+      console.error("Failed applying edit draft:", e);
+    }
+  };
+
+  const declineEditRequest = async () => {
+    try {
+      await updateTrip(trip.id, { editRequested: false, editDraft: null });
+      safeRefresh();
+    } catch (e) {
+      console.error("Failed declining edit request:", e);
+    }
+  };
+
+  // Trip flags
+  const hasCancelRequest = !!trip?.cancelRequested;
+  const hasEditRequest = !!trip?.editRequested;
+
+  // Draft to show (when opening EditTripForm from a request)
+  const draftTrip = hasEditRequest
+    ? { ...trip, ...(trip.editDraft || {}) }
+    : trip;
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        {trip.status === "Pending" && (
+        {/* ---- Request banners converted to actions ---- */}
+        {hasCancelRequest && (
+          <>
+            <button
+              type="button"
+              onClick={approveCancelRequest}
+              className="text-red-600 underline hover:text-red-800 transition-colors px-1"
+              title="Approve the cancel request"
+            >
+              Approve Cancel
+            </button>
+            <button
+              type="button"
+              onClick={clearCancelRequest}
+              className="text-gray-600 underline hover:text-gray-800 transition-colors px-1"
+              title="Decline the cancel request"
+            >
+              Decline
+            </button>
+          </>
+        )}
+
+        {hasEditRequest && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowEditDraft(true)}
+              className="text-blue-600 underline hover:text-blue-800 transition-colors px-1"
+              title="Open the draft in edit form"
+            >
+              View Draft
+            </button>
+            <button
+              type="button"
+              onClick={applyEditDraft}
+              className="text-green-600 underline hover:text-green-800 transition-colors px-1"
+              title="Apply the requested edits"
+            >
+              Apply Edit
+            </button>
+            <button
+              type="button"
+              onClick={declineEditRequest}
+              className="text-gray-600 underline hover:text-gray-800 transition-colors px-1"
+              title="Decline the requested edits"
+            >
+              Decline
+            </button>
+          </>
+        )}
+
+        {/* ---- Normal lifecycle actions (your original) ---- */}
+        {trip.status === "Pending" && !hasCancelRequest && !hasEditRequest && (
           <>
             <button
               type="button"
@@ -57,7 +162,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
           </>
         )}
 
-        {trip.status === "Accepted" && (
+        {trip.status === "Accepted" && !hasCancelRequest && (
           <button
             type="button"
             onClick={() => setShowAssign(true)}
@@ -67,7 +172,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
           </button>
         )}
 
-        {trip.status === "Confirmed" && (
+        {trip.status === "Confirmed" && !hasCancelRequest && (
           <>
             <button
               type="button"
@@ -86,7 +191,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
           </>
         )}
 
-        {(trip.status === "Accepted" || trip.status === "Confirmed") && (
+        {(trip.status === "Accepted" || trip.status === "Confirmed") && !hasCancelRequest && (
           <button
             type="button"
             onClick={() => setShowConfirmCancel(true)}
@@ -116,7 +221,7 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
           title="Cancel Trip"
           description="Are you sure you want to cancel this trip? This action cannot be undone."
           onConfirm={() => {
-            handleUpdateStatus("Canceled")
+            handleUpdateStatus("Canceled");
             setShowConfirmCancel(false);
           }}
           onClose={() => setShowConfirmCancel(false)}
@@ -145,6 +250,10 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
               setShowAssign(false);
               refreshCallback?.();
             }}
+            onSubmit={() => {
+              setShowAssign(false);
+              refreshCallback?.();
+            }}
           />
         </div>
       )}
@@ -158,6 +267,28 @@ const BusCompanyActions = ({ trip, refreshCallback }) => {
               setShowEditInfo(false);
               refreshCallback?.();
             }}
+          />
+        </div>
+      )}
+
+      {/* View Draft (bus-company can adjust then save; clears request flags on success) */}
+      {showEditDraft && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <EditTripForm
+            trip={draftTrip}
+            onClose={() => setShowEditDraft(false)}
+            onUpdated={async (payload) => {
+              // If the edit form saved, also clear the request flags
+              try {
+                await updateTrip(trip.id, { editRequested: false, editDraft: null, ...(payload || {}) });
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setShowEditDraft(false);
+                refreshCallback?.();
+              }
+            }}
+            isRequestMode={false} // bus company applies directly
           />
         </div>
       )}
