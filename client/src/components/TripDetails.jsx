@@ -1,4 +1,3 @@
-// client/src/components/TripDetails.jsx
 import React from "react";
 import StatusBadge from "./StatusBadge";
 import { useAuth } from "../context/AuthContext";
@@ -105,25 +104,42 @@ function TripDetails({ trip }) {
     return `${day}-${month}-${year}`;
   };
 
-  // Robust requester extractor — supports multiple possible shapes
+  // Broad, tolerant requester extractor
   const extractRequester = (t) => {
-    const name =
-      t?.requester ||
-      t?.requestedBy ||
+    const nameFromStrings =
       t?.requesterName ||
-      t?.createdBy?.name ||
+      t?.requestedByName ||
       t?.createdByName ||
       t?.ownerName ||
+      t?.requester ||           // sometimes name is stored directly in "requester"
+      t?.requestedBy ||
+      t?.createdBy ||
+      t?.owner ||
       null;
 
-    const email =
+    const nameFromObjects =
+      t?.requester?.name ||
+      t?.requestedBy?.name ||
+      t?.createdBy?.name ||
+      t?.owner?.name ||
+      null;
+
+    const emailFromStrings =
       t?.requesterEmail ||
       t?.requestedByEmail ||
-      t?.createdBy?.email ||
+      t?.createdByEmail ||
       t?.ownerEmail ||
-      t?.requester?.email ||
       null;
 
+    const emailFromObjects =
+      t?.requester?.email ||
+      t?.requestedBy?.email ||
+      t?.createdBy?.email ||
+      t?.owner?.email ||
+      null;
+
+    const name = nameFromStrings || nameFromObjects || null;
+    const email = emailFromStrings || emailFromObjects || null;
     return { name, email };
   };
 
@@ -171,8 +187,8 @@ function TripDetails({ trip }) {
           {(requesterName || requesterEmail) && (
             <div className="col-span-2">
               <strong>Requested by:</strong>{" "}
-              {requesterName ? (
-                <span className="relative inline-block">
+              <span className="relative inline-block">
+                {requesterName ? (
                   <button
                     type="button"
                     className="text-blue-600 hover:underline"
@@ -183,18 +199,28 @@ function TripDetails({ trip }) {
                   >
                     {requesterName}
                   </button>
-                  {showRequesterEmail && (
-                    <div id="requester-email-popover">
-                      <EmailPopover
-                        email={requesterEmail}
-                        onClose={() => setShowRequesterEmail(false)}
-                      />
-                    </div>
-                  )}
-                </span>
-              ) : (
-                <span>-</span>
-              )}
+                ) : (
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline"
+                    onClick={() => setShowRequesterEmail((s) => !s)}
+                    aria-expanded={showRequesterEmail}
+                    aria-controls="requester-email-popover"
+                    title="Show email"
+                  >
+                    View email
+                  </button>
+                )}
+
+                {showRequesterEmail && (
+                  <div id="requester-email-popover">
+                    <EmailPopover
+                      email={requesterEmail}
+                      onClose={() => setShowRequesterEmail(false)}
+                    />
+                  </div>
+                )}
+              </span>
             </div>
           )}
         </div>
