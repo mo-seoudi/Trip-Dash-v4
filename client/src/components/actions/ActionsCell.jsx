@@ -6,47 +6,46 @@ import { useAuth } from "../../context/AuthContext";
 
 const ActionsCell = ({
   trip,
-  // callbacks
   onStatusChange,
   onView,
   onAssignBus,
   onConfirmAction,
   onEdit,
   onSoftDelete,
-  // new controls
-  role: roleProp,         // optional override for role (defaults to Auth role)
-  hideView = false,       // NEW: hide the "View" button (use in TripDetails modal)
+  hideView = false, // keep support so TripDetails can hide View
 }) => {
   const { profile } = useAuth();
-  const role = roleProp ?? profile?.role;
-
+  const role = profile?.role;
   const currentLifecycle = tripLifecycle[trip.status] || {};
   const statusActions = currentLifecycle.actions || [];
   const allActions = [...universalActions, ...statusActions];
   const permissions = tripPermissions[role] || {};
 
   const isAllowed = (action) => {
-    // Suppress "View" when requested (e.g., inside the details modal)
-    if (hideView && action.label === "View") return false;
-
-    if (!action.roles?.includes?.(role)) return false;
+    if (!action.roles.includes(role)) return false;
 
     switch (action.label) {
       case "Accept":
       case "Reject":
-        return !!permissions.canAcceptReject;
+        return permissions.canAcceptReject;
       case "Assign Bus":
-        return !!permissions.canAssignBus;
+        return permissions.canAssignBus;
       case "Complete":
-        return !!permissions.canCompleteTrip;
+        return permissions.canCompleteTrip;
       case "Cancel":
-        return !!permissions.canCancelTrip;
+        // allowed generally for admin; for staff we rely on lifecycle (Pending only)
+        return permissions.canCancelTrip;
       case "Delete":
-        return !!permissions.canDeleteIfCancelled;
+        return permissions.canDeleteIfCancelled;
       case "View":
-        return !!permissions.canViewAll;
+        return permissions.canViewAll && !hideView;
       case "Edit":
-        return Array.isArray(permissions.canEditWhen) && permissions.canEditWhen.includes(trip.status);
+        return (permissions.canEditWhen || []).includes(trip.status);
+      case "Request Cancel":
+        return permissions.canRequestCancellation;
+      case "Approve Cancel":
+      case "Decline Request":
+        return permissions.canResolveCancelRequests;
       default:
         return false;
     }
@@ -55,40 +54,47 @@ const ActionsCell = ({
   const handleClick = (action) => {
     switch (action.trigger) {
       case "assignBusForm":
-        return onAssignBus?.(trip);
+        return onAssignBus(trip);
       case "softDeleteTrip":
-        return onSoftDelete?.(trip);
+        return onSoftDelete(trip);
       case "viewTripDetails":
-        return onView?.(trip);
+        return onView(trip);
       case "editTrip":
-        return onEdit?.(trip);
-      default:
-        if (action.nextStatus && ["Reject", "Cancel", "Complete"].includes(action.label)) {
-          return onConfirmAction?.(trip, action.label, action.nextStatus);
+        return onEdit(trip);
+      default: {
+        if (
+          action.nextStatus &&
+          // run through confirm modal for these
+          ["Reject", "Cancel", "Complete", "Approve Cancel", "Decline Request"].includes(
+            action.label
+          )
+        ) {
+          return onConfirmAction(trip, action.label, action.nextStatus);
         }
         if (action.nextStatus) {
-          return onStatusChange?.(trip, action.nextStatus);
+          return onStatusChange(trip, action.nextStatus);
         }
+      }
     }
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {allActions.filter(isAllowed).map((action, idx) => (
-        <button
-          key={`${action.label}-${idx}`}
-          type="button"
-          onClick={() => handleClick(action)}
-          className={`flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 ${
-            action.color || "text-gray-700 hover:text-gray-900"
-          }`}
-        >
-          {action.icon && <action.icon className="mr-1" />}
-          {action.label}
-        </button>
-      ))}
+    <div className="flex flex-wrap gap-2">
+      {allActions
+        .filter(isAllowed)
+        .map((action, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleClick(action)}
+            className={`flex items-center px-2 py-1 rounded text-sm font-semibold transition-colors duration-200 ${action.color || "text-gray-700 border border-gray-300 hover:text-gray-900 hover:border-gray-400"}`}
+          >
+            {action.icon && <action.icon className="mr-1" />}
+            {action.label}
+          </button>
+        ))}
     </div>
   );
 };
 
 export default ActionsCell;
+
