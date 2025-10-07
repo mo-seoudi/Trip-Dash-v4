@@ -1,10 +1,11 @@
-// src/pages/Dashboard.jsx  (adjust path if yours differs)
+// src/pages/Dashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/apiClient";
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
+import StatusBadge from "../components/StatusBadge"; // ✅ use the same badge as the rest of the app
 
 // Small UI helpers
 const Card = ({ title, value, sub }) => (
@@ -84,11 +85,52 @@ const Dashboard = () => {
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
   }, [trips]);
 
+  // 👉 Agenda list: next upcoming trips (from today), sorted by date/time
+  const upcomingTrips = useMemo(() => {
+    const rows = (trips || [])
+      .filter((t) => {
+        const d = getDate(t);
+        return d && dayjs(d).isSame(today, "day") || (d && dayjs(d).isAfter(today));
+      })
+      .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
+      .slice(0, 8);
+    return rows;
+  }, [trips, today]);
+
+  const formatWhen = (t) => {
+    const d = getDate(t);
+    if (!d) return "-";
+    const dj = dayjs(d);
+    const time =
+      t?.departureTime || t?.time || (dj.isValid() ? dj.format("h:mm A") : "");
+    const dateTxt = dj.isValid() ? dj.format("ddd, MMM D") : "-";
+    return time ? `${dateTxt} • ${time}` : dateTxt;
+  };
+
+  const actionNeeded = (t) => {
+    const s = (t?.status || "").toString().toLowerCase();
+    if (role === "bus_company") {
+      if (s === "pending") return "Review & Accept/Reject";
+      if (s === "accepted") return "Assign bus";
+      if (s === "confirmed") return "Complete after trip";
+    } else if (role === "school_staff") {
+      if (s === "pending") return "Awaiting bus company (you can Cancel)";
+      if (s === "accepted") return "Add passengers";
+      if (s === "confirmed") return "Manage passengers";
+    } else if (role === "admin") {
+      if (s === "pending") return "Monitor pending";
+      if (s === "accepted") return "Monitor assignment";
+      if (s === "confirmed") return "Monitor completion";
+    }
+    if (s === "completed") return "No action";
+    if (s === "cancelled" || s === "canceled") return "No action";
+    return "—";
+  };
+
   const staffCTA =
     role === "school_staff" ? (
       <RequestTripButton
         onSuccess={async () => {
-          // Optional: light refetch after creating a trip
           try {
             setLoading(true);
             const res = await api.get("/api/trips", { withCredentials: true });
@@ -126,6 +168,46 @@ const Dashboard = () => {
         <Card title="Upcoming (from today)" value={loading ? "…" : upcoming} />
         <Card title="Pending requests" value={loading ? "…" : statusCounts.pending || 0} />
         <Card title="Cancelled" value={loading ? "…" : statusCounts.cancelled || 0} />
+      </div>
+
+      {/* ✅ New: Upcoming Agenda */}
+      <div className="mt-6">
+        <Section title="Next Upcoming Trips">
+          {loading ? (
+            <div className="text-gray-500 text-sm">Loading upcoming trips…</div>
+          ) : upcomingTrips.length === 0 ? (
+            <div className="text-gray-500 text-sm">No upcoming trips found.</div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b">
+                    <th className="py-2 pr-4">When</th>
+                    <th className="py-2 pr-4">Destination</th>
+                    <th className="py-2 pr-4">Students</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2">Action needed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingTrips.map((t) => (
+                    <tr key={t.id} className="border-b last:border-0">
+                      <td className="py-2 pr-4 whitespace-nowrap">
+                        {formatWhen(t)}
+                      </td>
+                      <td className="py-2 pr-4">{t.destination || t.tripType || "—"}</td>
+                      <td className="py-2 pr-4">{t.students ?? "—"}</td>
+                      <td className="py-2 pr-4">
+                        <StatusBadge status={t.status} />
+                      </td>
+                      <td className="py-2 text-gray-700">{actionNeeded(t)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
       </div>
 
       {err && (
