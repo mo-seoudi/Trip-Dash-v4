@@ -116,7 +116,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">
                   <button
                     type="button"
-                    className="text-blue-600 hover:text-blue-800 underline underline-offset-2"
+                    className="text-gray-900 hover:text-blue-700"
                     onClick={() => setShowDetailsTrip(trip)}
                     title="View trip details"
                   >
