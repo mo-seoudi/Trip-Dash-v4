@@ -9,7 +9,7 @@ import EditTripForm from "./EditTripForm";
 import PassengersPanel from "./trips/PassengersPanel";
 import useTripActions from "../hooks/useTripActions";
 import { RxPerson } from "react-icons/rx";
-import ModalWrapper from "./ModalWrapper";             // use same modal wrapper as table
+import ModalWrapper from "./ModalWrapper";             // same modal wrapper as table
 
 // tiny in-file popover for showing/copying the email
 function EmailPopover({ email = "-", onClose }) {
@@ -79,7 +79,7 @@ function TripDetails({ trip }) {
   const patchTrip = (updated) => {
     if (!updated) return;
     setCurrentTrip((prev) => ({ ...prev, ...updated }));
-    // broadcast so AllTrips patches parent `trips` (keeps table & calendar in sync)
+    // broadcast so AllTrips/Calendar patch parent `trips`
     try {
       window.dispatchEvent(
         new CustomEvent("trip:updated", { detail: { ...currentTrip, ...updated } })
@@ -95,51 +95,36 @@ function TripDetails({ trip }) {
 
   const buses = Array.isArray(currentTrip.buses) ? currentTrip.buses : [];
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "-";
-    const d = new Date(dateStr);
+  const formatDate = (dateStrOrObj) => {
+    if (!dateStrOrObj) return "-";
+    const d = dateStrOrObj instanceof Date ? dateStrOrObj : new Date(dateStrOrObj);
+    if (isNaN(d.getTime())) return "-";
     const day = String(d.getDate()).padStart(2, "0");
     const month = d.toLocaleString("default", { month: "short" });
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
   };
 
-  // Broad, tolerant requester extractor
+  // Robust requester extractor — supports multiple possible shapes
   const extractRequester = (t) => {
-    const nameFromStrings =
-      t?.requesterName ||
-      t?.requestedByName ||
-      t?.createdByName ||
-      t?.ownerName ||
-      t?.requester ||           // sometimes name is stored directly in "requester"
+    const name =
+      t?.requester ||
       t?.requestedBy ||
-      t?.createdBy ||
-      t?.owner ||
-      null;
-
-    const nameFromObjects =
-      t?.requester?.name ||
-      t?.requestedBy?.name ||
+      t?.requesterName ||
+      t?.createdByName ||
       t?.createdBy?.name ||
-      t?.owner?.name ||
+      t?.ownerName ||
       null;
 
-    const emailFromStrings =
+    const email =
       t?.requesterEmail ||
       t?.requestedByEmail ||
       t?.createdByEmail ||
-      t?.ownerEmail ||
-      null;
-
-    const emailFromObjects =
-      t?.requester?.email ||
-      t?.requestedBy?.email ||
       t?.createdBy?.email ||
-      t?.owner?.email ||
+      t?.ownerEmail ||
+      t?.requester?.email ||
       null;
 
-    const name = nameFromStrings || nameFromObjects || null;
-    const email = emailFromStrings || emailFromObjects || null;
     return { name, email };
   };
 
@@ -149,6 +134,9 @@ function TripDetails({ trip }) {
   const returnDate = formatDate(currentTrip.returnDate);
   const departureTime = currentTrip.departureTime || "-";
   const returnTime = currentTrip.returnTime || "-";
+
+  const hasCancelRequest = !!currentTrip?.cancelRequested;
+  const hasEditRequest = !!currentTrip?.editRequested;
 
   return (
     <div className="space-y-4">
@@ -176,6 +164,22 @@ function TripDetails({ trip }) {
             <strong className="mr-1">Status:</strong> <StatusBadge status={currentTrip.status} />
           </div>
 
+          {/* Optional flags – visible to both sides so it's clear */}
+          {(hasCancelRequest || hasEditRequest) && (
+            <div className="col-span-2 flex gap-2">
+              {hasCancelRequest && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                  Cancel requested
+                </span>
+              )}
+              {hasEditRequest && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+                  Edit requested
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Notes */}
           {currentTrip.notes && (
             <div className="col-span-2">
@@ -183,12 +187,12 @@ function TripDetails({ trip }) {
             </div>
           )}
 
-          {/* Requested by (name-only popover for email) */}
+          {/* Requested by (name-only; click to reveal email) */}
           {(requesterName || requesterEmail) && (
             <div className="col-span-2">
               <strong>Requested by:</strong>{" "}
-              <span className="relative inline-block">
-                {requesterName ? (
+              {requesterName ? (
+                <span className="relative inline-block">
                   <button
                     type="button"
                     className="text-blue-600 hover:underline"
@@ -199,28 +203,18 @@ function TripDetails({ trip }) {
                   >
                     {requesterName}
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline"
-                    onClick={() => setShowRequesterEmail((s) => !s)}
-                    aria-expanded={showRequesterEmail}
-                    aria-controls="requester-email-popover"
-                    title="Show email"
-                  >
-                    View email
-                  </button>
-                )}
-
-                {showRequesterEmail && (
-                  <div id="requester-email-popover">
-                    <EmailPopover
-                      email={requesterEmail}
-                      onClose={() => setShowRequesterEmail(false)}
-                    />
-                  </div>
-                )}
-              </span>
+                  {showRequesterEmail && (
+                    <div id="requester-email-popover">
+                      <EmailPopover
+                        email={requesterEmail}
+                        onClose={() => setShowRequesterEmail(false)}
+                      />
+                    </div>
+                  )}
+                </span>
+              ) : (
+                <span>-</span>
+              )}
             </div>
           )}
         </div>
@@ -333,6 +327,7 @@ function TripDetails({ trip }) {
               setEditTrip(null);
               if (maybeUpdated) patchTrip(maybeUpdated);
             }}
+            // Staff editing Confirmed ⇒ request mode
             isRequestMode={
               (profile?.role === "school_staff" && editTrip?.status === "Confirmed") || false
             }
@@ -340,7 +335,7 @@ function TripDetails({ trip }) {
         </div>
       )}
 
-      {/* Passengers modal (uses the SAME ModalWrapper as the table) */}
+      {/* Passengers modal (same wrapper as table) */}
       {showPassengersTrip && (
         <ModalWrapper onClose={() => setShowPassengersTrip(null)}>
           <PassengersPanel
