@@ -1,87 +1,146 @@
 // tripLifecycleLogic.js
-import { FaCheckCircle, FaTimesCircle, FaPlusCircle, FaEye, FaTrash, FaEdit } from "react-icons/fa";
+import {
+  RxEyeOpen,
+  RxPencil2,
+  RxCheckCircled,
+  RxCrossCircled,
+  RxTrash,
+  RxCalendarPlus,
+  RxClipboardCheck,
+  RxSlash,
+} from "react-icons/rx";
 
+// Keep your usual pill look via ActionsCell; we just define buttons here.
 export const universalActions = [
   {
     label: "View",
-    icon: FaEye,
-    roles: ["school_staff", "bus_company", "admin"],
+    roles: ["admin", "bus_company", "school_staff", "finance"],
+    icon: RxEyeOpen,
     trigger: "viewTripDetails",
-    color: "text-blue-500 hover:text-blue-700",
+    color:
+      "text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400",
   },
   {
     label: "Edit",
-    icon: FaEdit,
-    roles: ["school_staff", "bus_company"],
+    roles: ["admin", "school_staff"], // actual availability is further filtered by canEditWhen
+    icon: RxPencil2,
     trigger: "editTrip",
-    color: "text-yellow-600 hover:text-yellow-800",
-  }
+    color:
+      "text-blue-700 hover:text-blue-900 border border-blue-300 hover:border-blue-400",
+  },
 ];
+
+const Accept = {
+  label: "Accept",
+  roles: ["bus_company", "admin"],
+  icon: RxCheckCircled,
+  nextStatus: "Accepted",
+  color: "text-green-700 hover:text-green-900 border border-green-300",
+};
+
+const Reject = {
+  label: "Reject",
+  roles: ["bus_company", "admin"],
+  icon: RxCrossCircled,
+  nextStatus: "Rejected",
+  color: "text-red-700 hover:text-red-900 border border-red-300",
+};
+
+const AssignBus = {
+  label: "Assign Bus",
+  roles: ["bus_company", "admin"],
+  icon: RxCalendarPlus,
+  trigger: "assignBusForm",
+  color: "text-blue-700 hover:text-blue-900 border border-blue-300",
+};
+
+const Complete = {
+  label: "Complete",
+  roles: ["bus_company", "admin"],
+  icon: RxClipboardCheck,
+  nextStatus: "Completed",
+  color: "text-green-700 hover:text-green-900 border border-green-300",
+};
+
+const CancelImmediate = {
+  // used when Pending for staff / or admin as final cancel anywhere
+  label: "Cancel",
+  roles: ["school_staff", "admin"],
+  icon: RxCrossCircled,
+  nextStatus: "Canceled",
+  color: "text-red-700 hover:text-red-900 border border-red-300",
+};
+
+// NEW – staff request, company/admin resolve:
+const RequestCancel = {
+  label: "Request Cancel",
+  roles: ["school_staff"],
+  icon: RxSlash,
+  nextStatus: "Cancel Requested",
+  color: "text-red-700 hover:text-red-900 border border-red-300",
+};
+const ApproveCancel = {
+  label: "Approve Cancel",
+  roles: ["bus_company", "admin"],
+  icon: RxCheckCircled,
+  nextStatus: "Canceled",
+  color: "text-red-700 hover:text-red-900 border border-red-300",
+};
+const DeclineCancel = {
+  label: "Decline Request",
+  roles: ["bus_company", "admin"],
+  icon: RxCrossCircled,
+  // When declining we roll back to a working state. If you prefer “Accepted”, change nextStatus.
+  nextStatus: "Confirmed",
+  color:
+    "text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400",
+};
+
+const DeleteIfCancelled = {
+  label: "Delete",
+  roles: ["admin"],
+  icon: RxTrash,
+  trigger: "softDeleteTrip",
+  color:
+    "text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400",
+};
 
 export const tripLifecycle = {
   Pending: {
     actions: [
-      {
-        label: "Accept",
-        icon: FaCheckCircle,
-        nextStatus: "Accepted",
-        roles: ["bus_company"],
-        color: "text-green-600 hover:text-green-800",
-      },
-      {
-        label: "Reject",
-        icon: FaTimesCircle,
-        nextStatus: "Rejected",
-        roles: ["bus_company"],
-        color: "text-red-600 hover:text-red-800",
-      },
+      Accept,
+      Reject,
+      CancelImmediate, // staff can cancel their own pending request
     ],
   },
+
   Accepted: {
     actions: [
-      {
-        label: "Assign Bus",
-        icon: FaPlusCircle,
-        trigger: "assignBusForm",
-        roles: ["bus_company"],
-        color: "text-blue-600 hover:text-blue-800",
-      },
+      AssignBus,
+      // staff can still request to cancel
+      RequestCancel,
+      // admins still retain the power to direct-cancel
+      { ...CancelImmediate, roles: ["admin"] },
     ],
   },
+
   Confirmed: {
     actions: [
-      {
-        label: "Complete",
-        icon: FaCheckCircle,
-        nextStatus: "Completed",
-        roles: ["bus_company"],
-        color: "text-green-600 hover:text-green-800",
-      },
+      Complete,
+      RequestCancel,
+      { ...CancelImmediate, roles: ["admin"] },
     ],
   },
-  Rejected: {
-    actions: [
-      {
-        label: "Cancel",
-        icon: FaTimesCircle,
-        nextStatus: "Cancelled",
-        roles: ["bus_company"],
-        color: "text-gray-600 hover:text-gray-800",
-      },
-    ],
+
+  "Cancel Requested": {
+    actions: [ApproveCancel, DeclineCancel],
   },
-  Cancelled: {
-    actions: [
-      {
-        label: "Delete",
-        icon: FaTrash,
-        trigger: "softDeleteTrip",
-        roles: ["bus_company"],
-        color: "text-red-600 hover:text-red-800",
-      },
-    ],
-  },
-  Completed: {
-    actions: [],
+
+  Rejected: { actions: [] },
+
+  Completed: { actions: [] },
+
+  Canceled: {
+    actions: [DeleteIfCancelled],
   },
 };
