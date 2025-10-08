@@ -218,7 +218,8 @@ function TripDetails({ trip }) {
       <div>
         <h2 className="text-xl font-bold mb-2">Trip Summary</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded border">
+        {/* ↓↓↓ ONLY CHANGE: make all <strong> inside this card less bold */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded border [&_strong]:font-medium">
           {/* Row 1: Trip Type | Requested by (not optional) */}
           <div>
             <strong>Trip Type:</strong>{" "}
