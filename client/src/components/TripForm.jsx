@@ -6,6 +6,7 @@ import "react-toastify/dist/ReactToastify.css";
 
 const TripForm = ({ onSuccess, onClose }) => {
   const { profile } = useAuth();
+
   const [formData, setFormData] = useState({
     tripType: "Academic Trip",
     customType: "",
@@ -15,7 +16,7 @@ const TripForm = ({ onSuccess, onClose }) => {
     departureMinute: "00",
     departureAmPm: "AM",
     returnDate: "",
-    returnHour: "08",
+    returnHour: "10",
     returnMinute: "00",
     returnAmPm: "AM",
     students: "",
@@ -24,17 +25,39 @@ const TripForm = ({ onSuccess, onClose }) => {
     boosterSeatCount: "",
   });
 
-  const [submitting, setSubmitting] = useState(false);
   const [timeError, setTimeError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
+  // If returnDate empty, default to the same as departure date
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
-      returnHour: prev.departureHour,
-      returnMinute: prev.departureMinute,
-      returnAmPm: prev.departureAmPm,
+      returnDate: prev.returnDate || prev.date,
     }));
-  }, [formData.departureHour, formData.departureMinute, formData.departureAmPm]);
+  }, [formData.date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close on ESC (optional; leave if parent wraps in a modal with its own ESC)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.key === "Escape" || e.key === "Esc") && !e.isComposing) {
+        onClose?.();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const hourOptions = Array.from({ length: 12 }, (_, i) =>
+    (i + 1).toString().padStart(2, "0")
+  );
+  const minuteOptions = ["00", "15", "30", "45"];
+  const tripTypeOptions = [
+    "Academic Trip",
+    "Boarding House Trip",
+    "Day Trip",
+    "Sports Trip",
+    "Other",
+  ];
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -45,9 +68,16 @@ const TripForm = ({ onSuccess, onClose }) => {
   };
 
   const validateTimes = () => {
-    const depDate = new Date(`${formData.date} ${formData.departureHour}:${formData.departureMinute} ${formData.departureAmPm}`);
-    const retDate = new Date(`${formData.returnDate || formData.date} ${formData.returnHour}:${formData.returnMinute} ${formData.returnAmPm}`);
-    if (retDate <= depDate) {
+    if (!formData.date || !formData.returnDate) return true;
+    const dep = new Date(
+      `${formData.date} ${formData.departureHour}:${formData.departureMinute} ${formData.departureAmPm}`
+    );
+    const ret = new Date(
+      `${formData.returnDate} ${formData.returnHour}:${formData.returnMinute} ${formData.returnAmPm}`
+    );
+    if (!(dep instanceof Date) || isNaN(dep)) return true;
+    if (!(ret instanceof Date) || isNaN(ret)) return true;
+    if (ret <= dep) {
       setTimeError("Return time must be later than departure time.");
       return false;
     }
@@ -55,18 +85,41 @@ const TripForm = ({ onSuccess, onClose }) => {
     return true;
   };
 
+  // Compose Notes to include Booster Seats, as requested
+  const buildNotes = (notesText, boosterRequested, boosterCountRaw) => {
+    const count = Number(boosterCountRaw) || 0;
+    const boosterPart = boosterRequested
+      ? count > 0
+        ? `Booster seats: ${count}`
+        : `Booster seats requested`
+      : "";
+    return [boosterPart, (notesText || "").trim()].filter(Boolean).join(" - ");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!validateTimes()) return;
 
-    setSubmitting(true);
+    if (!profile?.name || !profile?.email) {
+      toast.error("Missing user profile.");
+      return;
+    }
 
+    // If requesting boosters but no count entered, you may enforce a value:
+    // if (formData.boosterSeatsRequested && !Number(formData.boosterSeatCount)) {
+    //   toast.error("Please enter the number of booster seats.");
+    //   return;
+    // }
+
+    setSubmitting(true);
     try {
       const departureTime = `${formData.departureHour}:${formData.departureMinute} ${formData.departureAmPm}`;
       const returnTime = `${formData.returnHour}:${formData.returnMinute} ${formData.returnAmPm}`;
 
       const payload = {
-        tripType: formData.tripType === "Other" ? formData.customType : formData.tripType,
+        tripType:
+          formData.tripType === "Other" ? formData.customType : formData.tripType,
         customType: formData.customType,
         destination: formData.destination,
         date: formData.date,
@@ -74,9 +127,15 @@ const TripForm = ({ onSuccess, onClose }) => {
         returnDate: formData.returnDate || formData.date,
         returnTime,
         students: Number(formData.students),
-        notes: formData.notes,
+        notes: buildNotes(
+          formData.notes,
+          formData.boosterSeatsRequested,
+          formData.boosterSeatCount
+        ),
         boosterSeatsRequested: formData.boosterSeatsRequested,
-        boosterSeatCount: formData.boosterSeatsRequested ? Number(formData.boosterSeatCount) : 0,
+        boosterSeatCount: formData.boosterSeatsRequested
+          ? Number(formData.boosterSeatCount)
+          : 0,
         createdBy: profile.name,
         createdByEmail: profile.email,
         status: "Pending",
@@ -89,10 +148,11 @@ const TripForm = ({ onSuccess, onClose }) => {
       };
 
       await createTrip(payload);
-      toast.success("Trip submitted successfully!");
+      toast.success("Trip request submitted!");
+      onSuccess?.();
+      onClose?.();
 
-      if (onSuccess) onSuccess();
-
+      // reset
       setFormData({
         tripType: "Academic Trip",
         customType: "",
@@ -102,7 +162,7 @@ const TripForm = ({ onSuccess, onClose }) => {
         departureMinute: "00",
         departureAmPm: "AM",
         returnDate: "",
-        returnHour: "08",
+        returnHour: "10",
         returnMinute: "00",
         returnAmPm: "AM",
         students: "",
@@ -118,18 +178,23 @@ const TripForm = ({ onSuccess, onClose }) => {
     }
   };
 
-  const hourOptions = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, "0"));
-  const minuteOptions = ["00", "15", "30", "45"];
-  const tripTypeOptions = ["Academic Trip", "Boarding House Trip", "Day Trip", "Sports Trip", "Other"];
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4">
-      <h3 className="text-xl font-semibold">Request a New Trip</h3>
-
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Trip Type */}
       <div>
         <label className="block text-sm font-medium">Trip Type *</label>
-        <select name="tripType" value={formData.tripType} onChange={handleChange} className="w-full p-2 border rounded" required>
-          {tripTypeOptions.map((type) => <option key={type}>{type}</option>)}
+        <select
+          name="tripType"
+          value={formData.tripType}
+          onChange={handleChange}
+          className="w-full p-2 border rounded"
+          required
+        >
+          {tripTypeOptions.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
         </select>
         {formData.tripType === "Other" && (
           <input
@@ -144,26 +209,61 @@ const TripForm = ({ onSuccess, onClose }) => {
         )}
       </div>
 
+      {/* Destination */}
       <div>
         <label className="block text-sm font-medium">Destination *</label>
-        <input type="text" name="destination" value={formData.destination} onChange={handleChange} required className="w-full p-2 border rounded" />
+        <input
+          type="text"
+          name="destination"
+          value={formData.destination}
+          onChange={handleChange}
+          required
+          className="w-full p-2 border rounded"
+        />
       </div>
 
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Departure Date *</label>
-          <input type="date" name="date" value={formData.date} onChange={handleChange} required className="w-full p-2 border rounded h-10" />
+      {/* Departure */}
+      <div className="flex flex-wrap gap-2">
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium">Departure Date *</label>
+          <input
+            type="date"
+            name="date"
+            value={formData.date}
+            onChange={handleChange}
+            required
+            className="w-full p-2 border rounded h-10"
+          />
         </div>
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1 whitespace-nowrap">Departure Time *</label>
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium">Departure Time *</label>
           <div className="flex gap-1">
-            <select name="departureHour" value={formData.departureHour} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
-              {hourOptions.map((h) => <option key={h}>{h}</option>)}
+            <select
+              name="departureHour"
+              value={formData.departureHour}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
+              {hourOptions.map((h) => (
+                <option key={h}>{h}</option>
+              ))}
             </select>
-            <select name="departureMinute" value={formData.departureMinute} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
-              {minuteOptions.map((m) => <option key={m}>{m}</option>)}
+            <select
+              name="departureMinute"
+              value={formData.departureMinute}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
+              {minuteOptions.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
             </select>
-            <select name="departureAmPm" value={formData.departureAmPm} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
+            <select
+              name="departureAmPm"
+              value={formData.departureAmPm}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
               <option>AM</option>
               <option>PM</option>
             </select>
@@ -171,21 +271,48 @@ const TripForm = ({ onSuccess, onClose }) => {
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Return Date *</label>
-          <input type="date" name="returnDate" value={formData.returnDate || formData.date} onChange={handleChange} required className="w-full p-2 border rounded h-10" />
+      {/* Return */}
+      <div className="flex flex-wrap gap-2">
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium">Return Date *</label>
+          <input
+            type="date"
+            name="returnDate"
+            value={formData.returnDate}
+            onChange={handleChange}
+            required
+            className="w-full p-2 border rounded h-10"
+          />
         </div>
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1 whitespace-nowrap">Return Time *</label>
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium">Return Time *</label>
           <div className="flex gap-1">
-            <select name="returnHour" value={formData.returnHour} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
-              {hourOptions.map((h) => <option key={h}>{h}</option>)}
+            <select
+              name="returnHour"
+              value={formData.returnHour}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
+              {hourOptions.map((h) => (
+                <option key={h}>{h}</option>
+              ))}
             </select>
-            <select name="returnMinute" value={formData.returnMinute} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
-              {minuteOptions.map((m) => <option key={m}>{m}</option>)}
+            <select
+              name="returnMinute"
+              value={formData.returnMinute}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
+              {minuteOptions.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
             </select>
-            <select name="returnAmPm" value={formData.returnAmPm} onChange={handleChange} className="w-1/3 p-2 border rounded text-center h-10">
+            <select
+              name="returnAmPm"
+              value={formData.returnAmPm}
+              onChange={handleChange}
+              className="w-1/3 p-2 border rounded h-10 text-center"
+            >
               <option>AM</option>
               <option>PM</option>
             </select>
@@ -194,6 +321,7 @@ const TripForm = ({ onSuccess, onClose }) => {
         </div>
       </div>
 
+      {/* Students */}
       <div>
         <label className="block text-sm font-medium">Number of Students *</label>
         <input
@@ -207,17 +335,19 @@ const TripForm = ({ onSuccess, onClose }) => {
         />
       </div>
 
-      <div className="flex items-center space-x-2 cursor-default">
+      {/* Booster seats */}
+      <div className="flex items-center space-x-2">
         <input
           type="checkbox"
+          id="boosterCheckbox"
           name="boosterSeatsRequested"
           checked={formData.boosterSeatsRequested}
           onChange={handleChange}
-          className="cursor-default"
         />
-        <span className="text-sm cursor-default">Request Booster Seats</span>
+        <label htmlFor="boosterCheckbox" className="text-sm">
+          Request Booster Seats
+        </label>
       </div>
-
       {formData.boosterSeatsRequested && (
         <input
           type="number"
@@ -230,20 +360,27 @@ const TripForm = ({ onSuccess, onClose }) => {
         />
       )}
 
+      {/* Notes */}
       <div>
         <label className="block text-sm font-medium">Additional Notes</label>
-        <textarea name="notes" value={formData.notes} onChange={handleChange} className="w-full p-2 border rounded" />
+        <textarea
+          name="notes"
+          placeholder="Additional notes (optional)"
+          value={formData.notes}
+          onChange={handleChange}
+          className="w-full p-2 border rounded"
+        />
       </div>
 
+      {/* Actions */}
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={submitting}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex-1"
         >
-          {submitting ? "Submitting..." : "Submit Trip"}
+          Submit Request
         </button>
-
         <button
           type="button"
           onClick={onClose}
