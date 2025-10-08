@@ -38,7 +38,7 @@ const Dashboard = () => {
       try {
         setLoading(true);
         setErr(null);
-        const res = await api.get("/api/trips", {
+        const res = await api.get("/trips", {
           withCredentials: true, // include cookie
           signal: ac.signal,
         });
@@ -91,7 +91,7 @@ const Dashboard = () => {
           // Optional: light refetch after creating a trip
           try {
             setLoading(true);
-            const res = await api.get("/api/trips", { withCredentials: true });
+            const res = await api.get("/trips", { withCredentials: true });
             setTrips(Array.isArray(res.data) ? res.data : []);
           } finally {
             setLoading(false);
