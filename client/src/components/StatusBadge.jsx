@@ -6,7 +6,7 @@ const StatusBadge = ({ status }) => {
   else if (status === "Accepted") colorClass = "bg-blue-500";
   else if (status === "Confirmed") colorClass = "bg-green-500";
   else if (status === "Rejected") colorClass = "bg-red-500";
-  else if (status === "Completed") colorClass = "bg-gray-700";
+  else if (status === "Completed") colorClass = "bg-green-900";
 
   return (
     <span className="flex items-center">
