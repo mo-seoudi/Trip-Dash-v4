@@ -1,3 +1,4 @@
+// client/src/components/TripDetails.jsx
 import React, { useState } from "react";
 import dayjs from "dayjs";
 import StatusBadge from "./StatusBadge";
@@ -7,13 +8,12 @@ import StatusBadge from "./StatusBadge";
  *  - Trip Type (full width)
  *  - Origin | Destination
  *  - Departure | Return
- *  - Students | Staff
- *  - Passengers (Total) [optional, full width]
- *  - Requested by [optional, full width]
- *  - Status [full width, LAST]
- *  - Notes [full width; shows DB-saved Notes which now include Booster seats]
+ *  - [ONE ROW] Students | Staff | Passengers (Total)
+ *  - Booster Seats (only if requested and > 0)
+ *  - Notes (if any)
+ *  - Status (ALWAYS last)
  *
- * Label & value are left-aligned together:  "Trip Type: Sports Trip"
+ * Label & value are left-aligned together: "Trip Type: Sports Trip"
  */
 export default function TripDetails({ trip }) {
   if (!trip) return null;
@@ -65,7 +65,23 @@ export default function TripDetails({ trip }) {
     (hasStudentsNum ? studentsNum : 0) + (Number.isFinite(staffNum) ? staffNum : 0);
   const showTotalPassengers = Number.isFinite(totalPassengers) && totalPassengers > 0;
 
-  // Notes now include Booster seats prefix already (saved in DB via forms)
+  // Booster: render its own field only if requested AND count > 0
+  const boosterRequested = !!pick(
+    trip.boosterSeatsRequested,
+    trip.boosterSeatRequested,
+    trip.requestBoosterSeats,
+    false
+  );
+  const boosterCountRaw = pick(
+    trip.boosterSeatCount,
+    trip.boosterSeatsCount,
+    trip.boosterCount,
+    0
+  );
+  const boosterCount = Number(boosterCountRaw) || 0;
+  const showBoosterRow = boosterRequested && boosterCount > 0;
+
+  // Notes (DB-saved; may already include booster info from forms)
   const notes = trip.notes || null;
 
   // Email popover
@@ -111,22 +127,7 @@ export default function TripDetails({ trip }) {
               {formattedReturnDate} <span className="text-gray-500">at</span> {returnTime}
             </SummaryItem>
 
-            {/* Students | Staff */}
-            <SummaryItem label="Students">{students}</SummaryItem>
-            <SummaryItem label="Staff">
-              {staffNum != null && !Number.isNaN(staffNum) ? staffNum : (
-                <span className="text-gray-400">not set</span>
-              )}
-            </SummaryItem>
-
-            {/* Passengers (Total) — optional */}
-            {showTotalPassengers && (
-              <SummaryItem label="Passengers (Total)" className="sm:col-span-2">
-                {totalPassengers}
-              </SummaryItem>
-            )}
-
-            {/* Requested by — optional */}
+            {/* Requested by — optional (kept) */}
             {(requesterName || requesterEmail) && (
               <div className="sm:col-span-2">
                 <div className="flex items-baseline relative">
@@ -161,6 +162,38 @@ export default function TripDetails({ trip }) {
               </div>
             )}
 
+            {/* ONE ROW: Students | Staff | Passengers (Total) */}
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <SummaryItem label="Students">{students}</SummaryItem>
+              <SummaryItem label="Staff">
+                {staffNum != null && !Number.isNaN(staffNum) ? (
+                  staffNum
+                ) : (
+                  <span className="text-gray-400">not set</span>
+                )}
+              </SummaryItem>
+              {showTotalPassengers && (
+                <SummaryItem label="Passengers (Total)">{totalPassengers}</SummaryItem>
+              )}
+            </div>
+
+            {/* Booster Seats (only if requested and > 0) */}
+            {showBoosterRow && (
+              <SummaryItem label="Booster Seats" className="sm:col-span-2">
+                {boosterCount}
+              </SummaryItem>
+            )}
+
+            {/* Notes (if any) */}
+            {notes && (
+              <div className="sm:col-span-2">
+                <div className="flex items-baseline">
+                  <span className="text-sm text-gray-600 whitespace-nowrap">Notes:</span>
+                  <span className="ml-2 text-gray-900">{notes}</span>
+                </div>
+              </div>
+            )}
+
             {/* Status LAST */}
             <div className="sm:col-span-2">
               <div className="flex items-baseline">
@@ -170,16 +203,6 @@ export default function TripDetails({ trip }) {
                 </span>
               </div>
             </div>
-
-            {/* Notes (DB-saved, includes Booster seats if set) */}
-            {notes && (
-              <div className="sm:col-span-2">
-                <div className="flex items-baseline">
-                  <span className="text-sm text-gray-600 whitespace-nowrap">Notes:</span>
-                  <span className="ml-2 text-gray-900">{notes}</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -195,7 +218,7 @@ export default function TripDetails({ trip }) {
               const type = pick(bus.type, bus.busType, "—");
               const driverName = pick(bus.driverName, bus.driver?.name);
               const driverPhone = pick(bus.driverPhone, bus.driver?.phone);
-              
+
               return (
                 <div key={bus.id || i} className="border rounded-lg p-4 bg-white">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -204,7 +227,6 @@ export default function TripDetails({ trip }) {
                       <span className="ml-2 font-medium">{type} (#{i + 1})</span>
                     </div>
 
-                    
                     <div className="flex items-baseline">
                       <span className="text-sm text-gray-600 whitespace-nowrap">Seats:</span>
                       <span className="ml-2 font-medium">{seats ?? "—"}</span>
