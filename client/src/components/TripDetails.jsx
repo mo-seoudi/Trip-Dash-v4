@@ -46,7 +46,7 @@ function EmailPopover({ email = "-", onClose }) {
         <button
           type="button"
           onClick={onCopy}
-          className="px-2 py-1 rounded border hover:bg-gray-50 transition"
+          className="px-2 py-1 rounded border hover:bg-gray-50 active:bg-gray-100 active:scale-95 transition"
         >
           Copy
         </button>
