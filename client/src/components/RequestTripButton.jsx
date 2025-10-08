@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import TripForm from "./TripForm";
+import ModalWrapper from "./ModalWrapper";
 
 export default function RequestTripButton({ onSuccess, hidden = false }) {
   const [open, setOpen] = useState(false);
@@ -23,26 +24,17 @@ export default function RequestTripButton({ onSuccess, hidden = false }) {
         </button>
       )}
 
-      {/* Modal */}
+      {/* Modal (now using ModalWrapper so ESC works) */}
       {open && (
-        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-40 p-4">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-xl relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setOpen(false)}
-              className="absolute top-2 right-2 text-gray-600 hover:text-red-500 text-2xl font-bold"
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <TripForm
-              onSuccess={() => {
-                setOpen(false);
-                onSuccess && onSuccess();
-              }}
-              onClose={() => setOpen(false)}
-            />
-          </div>
-        </div>
+        <ModalWrapper onClose={() => setOpen(false)}>
+          <TripForm
+            onSuccess={() => {
+              setOpen(false);
+              onSuccess && onSuccess();
+            }}
+            onClose={() => setOpen(false)}
+          />
+        </ModalWrapper>
       )}
     </>
   );
