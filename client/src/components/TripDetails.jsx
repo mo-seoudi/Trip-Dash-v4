@@ -1,19 +1,71 @@
 // client/src/components/TripDetails.jsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import dayjs from "dayjs";
 import StatusBadge from "./StatusBadge";
 
+/** Lightweight popover for showing/copying the email */
+function EmailPopover({ email = "-", onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target)) onClose?.();
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [onClose]);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(email || "");
+      // Optional: toast or subtle feedback—omitted to keep this self-contained
+    } catch {}
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute z-20 mt-2 right-0 w-64 rounded-xl border bg-white p-3 text-sm shadow-xl"
+      role="dialog"
+      aria-label="Requester email"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-medium">Email</span>
+        <button
+          className="text-gray-400 hover:text-gray-600"
+          onClick={onClose}
+          aria-label="Close"
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+      <div className="mt-2 text-gray-700 break-all">{email || "—"}</div>
+      <div className="mt-3 flex gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onCopy}
+          className="px-2 py-1 rounded border hover:bg-gray-50 transition"
+        >
+          Copy
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Symmetric layout:
- *  - Trip Type (full width)
- *  - Origin | Destination
- *  - Departure | Return
- *  - [ONE ROW] Students | Staff | Passengers (Total)
- *  - Booster Seats (only if requested and > 0)
- *  - Notes (if any)
- *  - Status (ALWAYS last)
+ *  - Row 1: Trip Type | Requested by  (requested-by is mandatory)
+ *  - Row 2: Origin | Destination
+ *  - Row 3: Departure | Return
+ *  - Row 4: [left] Students & Staff together   |  [right] Passengers (Total)
+ *  - Row 5: Booster Seats (only if requested and > 0)
+ *  - Row 6: Notes (if any)
+ *  - Row 7: Status (ALWAYS last)
  *
- * Label & value are left-aligned together: "Trip Type: Sports Trip"
+ * Label & value are left-aligned together:  "Trip Type: Sports Trip"
  */
 export default function TripDetails({ trip }) {
   if (!trip) return null;
@@ -40,13 +92,28 @@ export default function TripDetails({ trip }) {
   const requesterName = pick(
     trip.requesterName,
     trip.requestedByName,
+    trip.createdByName,
+    trip.ownerName,
     trip.requester,
-    trip.requestedBy?.name
+    trip.requestedBy,
+    trip.createdBy,
+    trip.owner,
+    trip.requester?.name,
+    trip.requestedBy?.name,
+    trip.createdBy?.name,
+    trip.owner?.name,
+    "—"
   );
   const requesterEmail = pick(
     trip.requesterEmail,
     trip.requestedByEmail,
-    trip.requestedBy?.email
+    trip.createdByEmail,
+    trip.ownerEmail,
+    trip.requester?.email,
+    trip.requestedBy?.email,
+    trip.createdBy?.email,
+    trip.owner?.email,
+    ""
   );
 
   const fmtDate = (d) => {
@@ -58,14 +125,16 @@ export default function TripDetails({ trip }) {
   const formattedDate = fmtDate(rawDate);
   const formattedReturnDate = fmtDate(rawReturnDate);
 
-  // Passengers (Total) shown only when it makes sense
+  // Passengers (Total)
   const studentsNum = Number(students);
   const hasStudentsNum = !Number.isNaN(studentsNum);
   const totalPassengers =
     (hasStudentsNum ? studentsNum : 0) + (Number.isFinite(staffNum) ? staffNum : 0);
-  const showTotalPassengers = Number.isFinite(totalPassengers) && totalPassengers > 0;
+  // We show the right-side cell regardless for alignment; use "—" when not computable.
+  const passengersText =
+    Number.isFinite(totalPassengers) && totalPassengers > 0 ? totalPassengers : "—";
 
-  // Booster: render its own field only if requested AND count > 0
+  // Booster (only show if requested AND > 0)
   const boosterRequested = !!pick(
     trip.boosterSeatsRequested,
     trip.boosterSeatRequested,
@@ -85,7 +154,7 @@ export default function TripDetails({ trip }) {
   const notes = trip.notes || null;
 
   // Email popover
-  const [showEmail, setShowEmail] = useState(false);
+  const [showRequesterEmail, setShowRequesterEmail] = useState(false);
 
   // Summary row with left-aligned "Label: Value"
   const SummaryItem = ({ label, children, className = "" }) => (
@@ -95,7 +164,7 @@ export default function TripDetails({ trip }) {
     </div>
   );
 
-  // Optional Assigned Buses
+  // Optional Assigned Buses (kept as in your file)
   const buses = Array.isArray(trip.assignedBuses)
     ? trip.assignedBuses
     : Array.isArray(trip.buses)
@@ -110,16 +179,40 @@ export default function TripDetails({ trip }) {
 
         <div className="bg-gray-50 p-4 rounded border">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Trip Type (full width) */}
-            <SummaryItem label="Trip Type" className="sm:col-span-2">
+            {/* Row 1: Trip Type | Requested by (not optional) */}
+            <SummaryItem label="Trip Type">
               {trip.tripType === "Other" ? pick(trip.customType, "Other") : pick(trip.tripType, "—")}
             </SummaryItem>
 
-            {/* Origin | Destination */}
+            <div className="flex items-baseline relative">
+              <span className="text-sm text-gray-600 whitespace-nowrap">Requested by:</span>
+              <span className="ml-2">
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline font-medium"
+                  onClick={() => setShowRequesterEmail((s) => !s)}
+                  aria-expanded={showRequesterEmail}
+                  aria-controls="requester-email-popover"
+                  title="Show email"
+                >
+                  {requesterName}
+                </button>
+              </span>
+              {showRequesterEmail && (
+                <div id="requester-email-popover" className="absolute right-0 top-6">
+                  <EmailPopover
+                    email={requesterEmail}
+                    onClose={() => setShowRequesterEmail(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Origin | Destination */}
             <SummaryItem label="Origin">{origin}</SummaryItem>
             <SummaryItem label="Destination">{destination}</SummaryItem>
 
-            {/* Departure | Return */}
+            {/* Row 3: Departure | Return */}
             <SummaryItem label="Departure">
               {formattedDate} <span className="text-gray-500">at</span> {departureTime}
             </SummaryItem>
@@ -127,55 +220,19 @@ export default function TripDetails({ trip }) {
               {formattedReturnDate} <span className="text-gray-500">at</span> {returnTime}
             </SummaryItem>
 
-            {/* Requested by — optional (kept) */}
-            {(requesterName || requesterEmail) && (
-              <div className="sm:col-span-2">
-                <div className="flex items-baseline relative">
-                  <span className="text-sm text-gray-600 whitespace-nowrap">Requested by:</span>
-                  <span className="ml-2">
-                    <button
-                      type="button"
-                      className="text-blue-600 hover:underline font-medium"
-                      onClick={() => setShowEmail((s) => !s)}
-                      aria-expanded={showEmail}
-                      title="Show email"
-                    >
-                      {requesterName || "View email"}
-                    </button>
-                  </span>
-                  {showEmail && requesterEmail && (
-                    <div className="absolute right-0 top-6 mt-2 w-60 rounded-xl border bg-white p-3 text-sm shadow-xl">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Email</span>
-                        <button
-                          className="text-gray-400 hover:text-gray-600"
-                          onClick={() => setShowEmail(false)}
-                          aria-label="Close"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="mt-2 text-gray-700 break-all">{requesterEmail}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Row 4: [left] Students & Staff together | [right] Passengers (Total) */}
+            <div className="flex items-baseline">
+              <span className="text-sm text-gray-600 whitespace-nowrap">Students:</span>
+              <span className="font-medium text-gray-900 ml-2">{students}</span>
 
-            {/* ONE ROW: Students | Staff | Passengers (Total) */}
-            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <SummaryItem label="Students">{students}</SummaryItem>
-              <SummaryItem label="Staff">
-                {staffNum != null && !Number.isNaN(staffNum) ? (
-                  staffNum
-                ) : (
+              <span className="text-sm text-gray-600 whitespace-nowrap ml-4">Staff:</span>
+              <span className="font-medium text-gray-900 ml-2">
+                {staffNum != null && !Number.isNaN(staffNum) ? staffNum : (
                   <span className="text-gray-400">not set</span>
                 )}
-              </SummaryItem>
-              {showTotalPassengers && (
-                <SummaryItem label="Passengers (Total)">{totalPassengers}</SummaryItem>
-              )}
+              </span>
             </div>
+            <SummaryItem label="Passengers (Total)">{passengersText}</SummaryItem>
 
             {/* Booster Seats (only if requested and > 0) */}
             {showBoosterRow && (
@@ -207,7 +264,7 @@ export default function TripDetails({ trip }) {
         </div>
       </div>
 
-      {/* Assigned Buses (optional) */}
+      {/* Assigned Buses (optional — left as in your working file) */}
       {buses.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-2">Assigned Buses</h3>
