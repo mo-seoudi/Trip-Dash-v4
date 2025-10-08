@@ -1,16 +1,34 @@
 // client/src/components/RequestTripButton.jsx
-
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import TripForm from "./TripForm";
 
 export default function RequestTripButton({ onSuccess, hidden = false }) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef(null);
+
+  // Keep Esc-to-close + background scroll lock
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // focus dialog for a11y
+    setTimeout(() => dialogRef.current?.focus(), 0);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
 
   if (hidden) return null;
 
   return (
     <>
-      {/* Floating Action Button */}
       {!open && (
         <button
           type="button"
@@ -23,10 +41,19 @@ export default function RequestTripButton({ onSuccess, hidden = false }) {
         </button>
       )}
 
-      {/* Modal */}
       {open && (
-        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-40 p-4">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-xl relative max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex justify-center items-center p-4"
+          // ⛔ No click-outside handler — users must use the close button or Esc
+        >
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="request-trip-title"
+            tabIndex={-1}
+            className="bg-white p-6 rounded-lg shadow-xl w-full max-w-xl relative max-h-[90vh] overflow-y-auto outline-none"
+          >
             <button
               onClick={() => setOpen(false)}
               className="absolute top-2 right-2 text-gray-600 hover:text-red-500 text-2xl font-bold"
@@ -34,10 +61,15 @@ export default function RequestTripButton({ onSuccess, hidden = false }) {
             >
               ×
             </button>
+
+            <h2 id="request-trip-title" className="sr-only">
+              Request New Trip
+            </h2>
+
             <TripForm
-              onSuccess={() => {
+              onSuccess={async () => {
                 setOpen(false);
-                onSuccess && onSuccess();
+                if (onSuccess) await onSuccess();
               }}
               onClose={() => setOpen(false)}
             />
