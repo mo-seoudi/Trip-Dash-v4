@@ -39,18 +39,74 @@ const Dashboard = () => {
   // TripDetails modal
   const [selectedTrip, setSelectedTrip] = useState(null);
 
-  // ---- single, canonical endpoint ----
+  // ---- normalization helpers (non-destructive) ----
+  const normalizeStatus = (rawStatus) => {
+    const raw = (rawStatus || "").toString().toLowerCase();
+    if (["pending", "requested", "awaiting_approval"].includes(raw)) return "pending";
+    if (["approved", "confirmed", "accepted"].includes(raw)) return "approved";
+    if (["completed", "done", "finished"].includes(raw)) return "completed";
+    if (["cancelled", "canceled"].includes(raw)) return "cancelled";
+    if (["rejected"].includes(raw)) return "rejected";
+    return "unknown";
+  };
+
+  const normalizeTrip = (t) => {
+    // Keep original fields; add normalized/cache fields prefixed with _
+    const statusRaw = t?.status ?? t?.tripStatus ?? t?.state ?? "";
+    const statusNorm = normalizeStatus(statusRaw);
+
+    // Only date-like candidates for the date field (do not inject time-only fields)
+    const dateField =
+      t?.date || t?.tripDate || t?.startDate || t?.createdAt || null;
+
+    // Time-like candidates for time field
+    const timeField = t?.departureTime || t?.time || null;
+
+    const isCanceledOrRejected = ["cancelled", "rejected"].includes(statusNorm);
+
+    return {
+      ...t,
+      _status: statusNorm,
+      _date: dateField,
+      _time: timeField,
+      _isCanceledOrRejected: isCanceledOrRejected,
+    };
+  };
+
+  // ---- tolerant helpers for slightly different trip shapes ----
+  // Keep the original helpers but route through normalized fields when present.
+  const getDate = (t) =>
+    t?._date ??
+    t?.date ??
+    t?.tripDate ??
+    t?.startDate ??
+    t?.departureTime /* legacy, but we no longer rely on this for date */ ??
+    t?.createdAt ??
+    null;
+
+  const getTime = (t) => t?._time ?? t?.departureTime ?? t?.time ?? null;
+
+  const getStatus = (t) => t?._status ?? normalizeStatus(t?.status || t?.tripStatus || t?.state || "");
+
+  const isCancelledOrRejected = (t) => t?._isCanceledOrRejected ?? ["cancelled", "rejected"].includes(getStatus(t));
+
+  // ---- single, canonical fetch ----
+  const fetchTrips = async (signal) => {
+    const res = await api.get("/api/trips", {
+      withCredentials: true,
+      signal,
+    });
+    const data = Array.isArray(res.data) ? res.data : [];
+    return data.map(normalizeTrip);
+  };
+
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const res = await api.get("/api/trips", {
-          withCredentials: true,
-          signal: ac.signal,
-        });
-        const data = Array.isArray(res.data) ? res.data : [];
+        const data = await fetchTrips(ac.signal);
         setTrips(data);
       } catch (e) {
         if (ac.signal.aborted) return;
@@ -65,25 +121,6 @@ const Dashboard = () => {
   if (!profile) return <div className="p-6">Loading user…</div>;
   const { role, name } = profile;
 
-  // ---- tolerant helpers for slightly different trip shapes ----
-  const getDate = (t) =>
-    t?.date || t?.tripDate || t?.startDate || t?.departureTime || t?.createdAt || null;
-
-  const getStatus = (t) => {
-    const raw = (t?.status || t?.tripStatus || t?.state || "").toString().toLowerCase();
-    if (["pending", "requested", "awaiting_approval"].includes(raw)) return "pending";
-    if (["approved", "confirmed", "accepted"].includes(raw)) return "approved";
-    if (["completed", "done", "finished"].includes(raw)) return "completed";
-    if (["cancelled", "canceled"].includes(raw)) return "cancelled";
-    if (["rejected"].includes(raw)) return "rejected";
-    return "unknown";
-  };
-
-  const isCancelledOrRejected = (t) => {
-    const s = (t?.status || t?.tripStatus || t?.state || "").toString().toLowerCase();
-    return s.includes("cancel") || s.includes("reject");
-  };
-
   const today = dayjs().startOf("day");
 
   const { total, upcoming, statusCounts } = useMemo(() => {
@@ -92,11 +129,15 @@ const Dashboard = () => {
     (trips || []).forEach((t) => {
       const d = getDate(t);
       const s = getStatus(t);
-      if (d && dayjs(d).isAfter(today.subtract(1, "day"))) upc += 1;
+      if (d) {
+        const dj = dayjs(d);
+        // Match the table rule exactly: today OR future
+        if (dj.isSame(today, "day") || dj.isAfter(today)) upc += 1;
+      }
       counts[s] = (counts[s] ?? 0) + 1;
     });
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
-  }, [trips]);
+  }, [trips, today]);
 
   // 👉 Agenda list: exclude Rejected/Canceled + only today or later
   const upcomingTrips = useMemo(() => {
@@ -104,7 +145,8 @@ const Dashboard = () => {
       .filter((t) => {
         const d = getDate(t);
         if (!d) return false;
-        const isFutureOrToday = dayjs(d).isSame(today, "day") || dayjs(d).isAfter(today);
+        const dj = dayjs(d);
+        const isFutureOrToday = dj.isSame(today, "day") || dj.isAfter(today);
         return isFutureOrToday && !isCancelledOrRejected(t);
       })
       .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
@@ -115,27 +157,26 @@ const Dashboard = () => {
     const d = getDate(t);
     if (!d) return "-";
     const dj = dayjs(d);
-    const time = t?.departureTime || t?.time || (dj.isValid() ? dj.format("h:mm A") : "");
+    const time = getTime(t) || (dj.isValid() ? dj.format("h:mm A") : "");
     const dateTxt = dj.isValid() ? dj.format("ddd, MMM D") : "-";
     return time ? `${dateTxt} • ${time}` : dateTxt;
   };
 
   const actionNeeded = (t) => {
-    const s = (t?.status || "").toString().toLowerCase();
+    const s = getStatus(t); // use normalized status everywhere
     if (role === "bus_company") {
       if (s === "pending") return "Review & Accept/Reject";
-      if (s === "accepted") return "Assign bus";
-      if (s === "confirmed") return "Complete after trip";
+      if (s === "approved") return "Assign bus";
+      if (s === "completed") return "No action";
     } else if (role === "school_staff") {
       if (s === "pending") return "Awaiting bus company (you can Cancel)";
-      if (s === "accepted") return "Add passengers";
-      if (s === "confirmed") return "Manage passengers";
+      if (s === "approved") return "Add passengers";
+      if (s === "completed") return "No action";
     } else if (role === "admin") {
       if (s === "pending") return "Monitor pending";
-      if (s === "accepted") return "Monitor assignment";
-      if (s === "confirmed") return "Monitor completion";
+      if (s === "approved") return "Monitor assignment";
+      if (s === "completed") return "No action";
     }
-    if (s === "completed") return "No action";
     return "—";
   };
 
@@ -145,8 +186,8 @@ const Dashboard = () => {
         onSuccess={async () => {
           try {
             setLoading(true);
-            const res = await api.get("/api/trips", { withCredentials: true });
-            setTrips(Array.isArray(res.data) ? res.data : []);
+            const data = await fetchTrips(); // reuse single fetch path
+            setTrips(data);
           } finally {
             setLoading(false);
           }
@@ -217,7 +258,8 @@ const Dashboard = () => {
                       </td>
                       <td className="py-2 pr-4">{t.students ?? "—"}</td>
                       <td className="py-2 pr-4">
-                        <StatusBadge status={t.status} />
+                        {/* Use normalized status for consistent badges */}
+                        <StatusBadge status={getStatus(t)} />
                       </td>
                       <td className="py-2 text-gray-700">{actionNeeded(t)}</td>
                     </tr>
