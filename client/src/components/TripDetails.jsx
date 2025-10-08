@@ -1,30 +1,26 @@
-// src/components/TripDetails.jsx
 import React, { useState } from "react";
 import dayjs from "dayjs";
 import StatusBadge from "./StatusBadge";
 
 /**
- * TripDetails
- * - Symmetric layout:
- *   Row 1: Trip Type (full width)
- *   Row 2: Origin | Destination
- *   Row 3: Departure | Return
- *   Row 4: Students | Staff
- *   Row 5: Passengers (Total)  [optional, full width when available]
- *   Row 6: Requested by        [optional, full width]
- *   Row 7: Status              [full width, last]
- *   Row 8: Notes               [full width]
+ * Symmetric layout:
+ *  - Trip Type (full width)
+ *  - Origin | Destination
+ *  - Departure | Return
+ *  - Students | Staff
+ *  - Passengers (Total) [optional, full width]
+ *  - Requested by [optional, full width]
+ *  - Status [full width, LAST]
+ *  - Notes [full width; shows DB-saved Notes which now include Booster seats]
  *
- * - Booster seats are reflected in Notes:
- *   If boosterSeatsRequested is true (optionally with boosterSeatCount),
- *   it is prepended to any existing notes using " - " as a separator, e.g.:
- *     "22 Booster seats - Leave from Gate 2"
+ * Label & value are left-aligned together:  "Trip Type: Sports Trip"
  */
 export default function TripDetails({ trip }) {
   if (!trip) return null;
 
-  // --- tolerant getters ---
-  const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && String(v).trim() !== "") ?? null;
+  // Tolerant getters
+  const pick = (...vals) =>
+    vals.find((v) => v !== undefined && v !== null && String(v).trim() !== "") ?? null;
 
   const origin = pick(trip.origin, trip.from, trip.startLocation, trip.pickup, "—");
   const destination = pick(trip.destination, trip.to, trip.endLocation, "—");
@@ -41,14 +37,18 @@ export default function TripDetails({ trip }) {
 
   const status = pick(trip._status, trip.status, "unknown");
 
-  const requesterName = pick(trip.requesterName, trip.requestedByName, trip.requester, trip.requestedBy?.name);
-  const requesterEmail = pick(trip.requesterEmail, trip.requestedByEmail, trip.requestedBy?.email);
+  const requesterName = pick(
+    trip.requesterName,
+    trip.requestedByName,
+    trip.requester,
+    trip.requestedBy?.name
+  );
+  const requesterEmail = pick(
+    trip.requesterEmail,
+    trip.requestedByEmail,
+    trip.requestedBy?.email
+  );
 
-  const boosterRequested = !!pick(trip.boosterSeatsRequested, trip.boosterSeatRequested, trip.requestBoosterSeats);
-  const boosterCountVal = pick(trip.boosterSeatCount, trip.boosterSeatsCount, trip.boosterCount, 0);
-  const boosterCount = Number(boosterCountVal) || 0;
-
-  // --- formatting helpers ---
   const fmtDate = (d) => {
     if (!d) return "—";
     const dj = dayjs(d);
@@ -61,31 +61,25 @@ export default function TripDetails({ trip }) {
   // Passengers (Total) shown only when it makes sense
   const studentsNum = Number(students);
   const hasStudentsNum = !Number.isNaN(studentsNum);
-  const totalPassengers = (hasStudentsNum ? studentsNum : 0) + (Number.isFinite(staffNum) ? staffNum : 0);
+  const totalPassengers =
+    (hasStudentsNum ? studentsNum : 0) + (Number.isFinite(staffNum) ? staffNum : 0);
   const showTotalPassengers = Number.isFinite(totalPassengers) && totalPassengers > 0;
 
-  // Compose Notes with Booster Seats requirement
-  const baseNotes = pick(trip.notes, trip.note, "");
-  const boosterText = boosterRequested
-    ? (boosterCount > 0 ? `${boosterCount} Booster seats` : `Booster seats requested`)
-    : "";
-  const notes =
-    boosterText && baseNotes
-      ? `${boosterText} - ${baseNotes}`
-      : boosterText || baseNotes || null;
+  // Notes now include Booster seats prefix already (saved in DB via forms)
+  const notes = trip.notes || null;
 
-  // Simple email popover for "Requested by"
+  // Email popover
   const [showEmail, setShowEmail] = useState(false);
 
-  // Reusable summary row
+  // Summary row with left-aligned "Label: Value"
   const SummaryItem = ({ label, children, className = "" }) => (
-    <div className={`flex items-baseline justify-between ${className}`}>
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className="font-medium text-gray-900 text-right ml-4">{children ?? "—"}</span>
+    <div className={`flex items-baseline ${className}`}>
+      <span className="text-sm text-gray-600 whitespace-nowrap">{label}:</span>
+      <span className="font-medium text-gray-900 ml-2">{children ?? "—"}</span>
     </div>
   );
 
-  // Assigned buses section (preserve existing feature if data present)
+  // Optional Assigned Buses
   const buses = Array.isArray(trip.assignedBuses)
     ? trip.assignedBuses
     : Array.isArray(trip.buses)
@@ -100,16 +94,16 @@ export default function TripDetails({ trip }) {
 
         <div className="bg-gray-50 p-4 rounded border">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Trip Type full width */}
+            {/* Trip Type (full width) */}
             <SummaryItem label="Trip Type" className="sm:col-span-2">
               {trip.tripType === "Other" ? pick(trip.customType, "Other") : pick(trip.tripType, "—")}
             </SummaryItem>
 
-            {/* Origin | Destination (facing each other) */}
+            {/* Origin | Destination */}
             <SummaryItem label="Origin">{origin}</SummaryItem>
             <SummaryItem label="Destination">{destination}</SummaryItem>
 
-            {/* Departure | Return (facing each other) */}
+            {/* Departure | Return */}
             <SummaryItem label="Departure">
               {formattedDate} <span className="text-gray-500">at</span> {departureTime}
             </SummaryItem>
@@ -120,7 +114,9 @@ export default function TripDetails({ trip }) {
             {/* Students | Staff */}
             <SummaryItem label="Students">{students}</SummaryItem>
             <SummaryItem label="Staff">
-              {staffNum != null && !Number.isNaN(staffNum) ? staffNum : <span className="text-gray-400">not set</span>}
+              {staffNum != null && !Number.isNaN(staffNum) ? staffNum : (
+                <span className="text-gray-400">not set</span>
+              )}
             </SummaryItem>
 
             {/* Passengers (Total) — optional */}
@@ -133,9 +129,9 @@ export default function TripDetails({ trip }) {
             {/* Requested by — optional */}
             {(requesterName || requesterEmail) && (
               <div className="sm:col-span-2">
-                <div className="flex items-baseline justify-between relative">
-                  <span className="text-sm text-gray-600">Requested by</span>
-                  <span className="ml-4 text-right">
+                <div className="flex items-baseline relative">
+                  <span className="text-sm text-gray-600 whitespace-nowrap">Requested by:</span>
+                  <span className="ml-2">
                     <button
                       type="button"
                       className="text-blue-600 hover:underline font-medium"
@@ -167,20 +163,20 @@ export default function TripDetails({ trip }) {
 
             {/* Status LAST */}
             <div className="sm:col-span-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Status</span>
-                <span className="ml-4">
+              <div className="flex items-baseline">
+                <span className="text-sm text-gray-600 whitespace-nowrap">Status:</span>
+                <span className="ml-2">
                   <StatusBadge status={status} />
                 </span>
               </div>
             </div>
 
-            {/* Notes (with Booster seats injected) */}
+            {/* Notes (DB-saved, includes Booster seats if set) */}
             {notes && (
               <div className="sm:col-span-2">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm text-gray-600">Notes</span>
-                  <span className="ml-4 text-right">{notes}</span>
+                <div className="flex items-baseline">
+                  <span className="text-sm text-gray-600 whitespace-nowrap">Notes:</span>
+                  <span className="ml-2 text-gray-900">{notes}</span>
                 </div>
               </div>
             )}
@@ -188,7 +184,7 @@ export default function TripDetails({ trip }) {
         </div>
       </div>
 
-      {/* Assigned Buses (preserved feature; renders only if present) */}
+      {/* Assigned Buses (optional) */}
       {buses.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-2">Assigned Buses</h3>
@@ -204,33 +200,34 @@ export default function TripDetails({ trip }) {
               return (
                 <div key={bus.id || i} className="border rounded-lg p-4 bg-white">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-sm text-gray-600">Bus #{i + 1}</div>
-                      <div className="font-medium">{type}</div>
+                    <div className="flex items-baseline">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Bus:</span>
+                      <span className="ml-2 font-medium">{type} (#{i + 1})</span>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-2">
-                      <span className="text-sm text-gray-600">Status</span>
+                    <div className="flex items-baseline sm:justify-end gap-2">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Status:</span>
                       <StatusBadge status={busStatus} />
                     </div>
 
-                    <div className="text-sm">
-                      <span className="text-gray-600">Seats:</span> <span className="font-medium">{seats ?? "—"}</span>
+                    <div className="flex items-baseline">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Seats:</span>
+                      <span className="ml-2 font-medium">{seats ?? "—"}</span>
                     </div>
 
-                    <div className="text-sm">
-                      <span className="text-gray-600">Price:</span>{" "}
-                      <span className="font-medium">{price != null ? price : "—"}</span>
+                    <div className="flex items-baseline">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Price:</span>
+                      <span className="ml-2 font-medium">{price != null ? price : "—"}</span>
                     </div>
 
-                    <div className="text-sm">
-                      <span className="text-gray-600">Driver Name:</span>{" "}
-                      <span className="font-medium">{driverName ?? "—"}</span>
+                    <div className="flex items-baseline">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Driver Name:</span>
+                      <span className="ml-2 font-medium">{driverName ?? "—"}</span>
                     </div>
 
-                    <div className="text-sm">
-                      <span className="text-gray-600">Driver Phone:</span>{" "}
-                      <span className="font-medium">{driverPhone ?? "—"}</span>
+                    <div className="flex items-baseline">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Driver Phone:</span>
+                      <span className="ml-2 font-medium">{driverPhone ?? "—"}</span>
                     </div>
                   </div>
                 </div>
