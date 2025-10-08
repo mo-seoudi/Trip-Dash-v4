@@ -1,13 +1,15 @@
-// src/pages/Dashboard.jsx
+// client/src/pages/Dashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
-import api from "../services/apiClient";
+
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
-import StatusBadge from "../components/StatusBadge";
 import ModalWrapper from "../components/ModalWrapper";
 import TripDetails from "../components/TripDetails";
+import StatusBadge from "../components/StatusBadge";
+
+import { getAllTrips } from "../services/tripService";
 
 // Small UI helpers
 const Card = ({ title, value, sub }) => (
@@ -27,174 +29,102 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const MAX_UPCOMING = 10;
-
-const Dashboard = () => {
+export default function Dashboard() {
   const { profile } = useAuth();
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const [isEditing] = useState(false);
+  const [showDetailsTrip, setShowDetailsTrip] = useState(null);
 
-  // TripDetails modal
-  const [selectedTrip, setSelectedTrip] = useState(null);
-
-  // ---- normalization helpers (non-destructive) ----
-  const normalizeStatus = (rawStatus) => {
-    const raw = (rawStatus || "").toString().toLowerCase();
-    if (["pending", "requested", "awaiting_approval"].includes(raw)) return "pending";
-    if (["approved", "confirmed", "accepted"].includes(raw)) return "approved";
-    if (["completed", "done", "finished"].includes(raw)) return "completed";
-    if (["cancelled", "canceled"].includes(raw)) return "cancelled";
-    if (["rejected"].includes(raw)) return "rejected";
-    return "unknown";
-  };
-
-  const normalizeTrip = (t) => {
-    // Keep original fields; add normalized/cache fields prefixed with _
-    const statusRaw = t?.status ?? t?.tripStatus ?? t?.state ?? "";
-    const statusNorm = normalizeStatus(statusRaw);
-
-    // Only date-like candidates for the date field (do not inject time-only fields)
-    const dateField =
-      t?.date || t?.tripDate || t?.startDate || t?.createdAt || null;
-
-    // Time-like candidates for time field
-    const timeField = t?.departureTime || t?.time || null;
-
-    const isCanceledOrRejected = ["cancelled", "rejected"].includes(statusNorm);
-
-    return {
-      ...t,
-      _status: statusNorm,
-      _date: dateField,
-      _time: timeField,
-      _isCanceledOrRejected: isCanceledOrRejected,
-    };
-  };
-
-  // ---- tolerant helpers for slightly different trip shapes ----
-  // Keep the original helpers but route through normalized fields when present.
-  const getDate = (t) =>
-    t?._date ??
-    t?.date ??
-    t?.tripDate ??
-    t?.startDate ??
-    t?.departureTime /* legacy, but we no longer rely on this for date */ ??
-    t?.createdAt ??
-    null;
-
-  const getTime = (t) => t?._time ?? t?.departureTime ?? t?.time ?? null;
-
-  const getStatus = (t) => t?._status ?? normalizeStatus(t?.status || t?.tripStatus || t?.state || "");
-
-  const isCancelledOrRejected = (t) => t?._isCanceledOrRejected ?? ["cancelled", "rejected"].includes(getStatus(t));
-
-  // ---- single, canonical fetch ----
-  const fetchTrips = async (signal) => {
-    const res = await api.get("/api/trips", {
-      withCredentials: true,
-      signal,
-    });
-    const data = Array.isArray(res.data) ? res.data : [];
-    return data.map(normalizeTrip);
+  // single canonical fetch using tripService (same as other screens)
+  const refetch = async () => {
+    try {
+      setLoading(true);
+      setErr(null);
+      const rows = await getAllTrips();
+      setTrips(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message || "Failed to load trips");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const ac = new AbortController();
-    (async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-        const data = await fetchTrips(ac.signal);
-        setTrips(data);
-      } catch (e) {
-        if (ac.signal.aborted) return;
-        setErr(e?.response?.data?.message || e.message || "Failed to load trips");
-      } finally {
-        if (!ac.signal.aborted) setLoading(false);
-      }
-    })();
-    return () => ac.abort();
+    refetch();
   }, []);
 
   if (!profile) return <div className="p-6">Loading user…</div>;
   const { role, name } = profile;
 
+  // Helpers
+  const isRejectedOrCanceled = (t) => {
+    const s = String(t?.status || "").toLowerCase();
+    return s === "rejected" || s === "canceled" || s === "cancelled";
+  };
+
   const today = dayjs().startOf("day");
 
-  const { total, upcoming, statusCounts } = useMemo(() => {
-    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, rejected: 0, unknown: 0 };
-    let upc = 0;
+  const { total, upcoming, statusCounts, nextTrips } = useMemo(() => {
+    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, unknown: 0 };
+    const future = [];
     (trips || []).forEach((t) => {
-      const d = getDate(t);
-      const s = getStatus(t);
-      if (d) {
-        const dj = dayjs(d);
-        // Match the table rule exactly: today OR future
-        if (dj.isSame(today, "day") || dj.isAfter(today)) upc += 1;
+      const raw = String(t?.status || "").toLowerCase();
+      if (raw === "pending") counts.pending++;
+      else if (raw === "approved" || raw === "confirmed" || raw === "accepted") counts.approved++;
+      else if (raw === "completed" || raw === "done") counts.completed++;
+      else if (raw === "cancelled" || raw === "canceled") counts.cancelled++;
+      else counts.unknown++;
+
+      const d = t?.date ? dayjs(t.date) : null;
+      if (d && d.isAfter(today.subtract(1, "day")) && !isRejectedOrCanceled(t)) {
+        future.push(t);
       }
-      counts[s] = (counts[s] ?? 0) + 1;
     });
-    return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
-  }, [trips, today]);
 
-  // 👉 Agenda list: exclude Rejected/Canceled + only today or later
-  const upcomingTrips = useMemo(() => {
-    return (trips || [])
-      .filter((t) => {
-        const d = getDate(t);
-        if (!d) return false;
-        const dj = dayjs(d);
-        const isFutureOrToday = dj.isSame(today, "day") || dj.isAfter(today);
-        return isFutureOrToday && !isCancelledOrRejected(t);
-      })
-      .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
-      .slice(0, MAX_UPCOMING);
-  }, [trips, today]);
+    future.sort((a, b) => {
+      const ad = a.date ? new Date(a.date).getTime() : 0;
+      const bd = b.date ? new Date(b.date).getTime() : 0;
+      return ad - bd;
+    });
 
-  const formatWhen = (t) => {
-    const d = getDate(t);
-    if (!d) return "-";
-    const dj = dayjs(d);
-    const time = getTime(t) || (dj.isValid() ? dj.format("h:mm A") : "");
-    const dateTxt = dj.isValid() ? dj.format("ddd, MMM D") : "-";
-    return time ? `${dateTxt} • ${time}` : dateTxt;
-  };
-
-  const actionNeeded = (t) => {
-    const s = getStatus(t); // use normalized status everywhere
-    if (role === "bus_company") {
-      if (s === "pending") return "Review & Accept/Reject";
-      if (s === "approved") return "Assign bus";
-      if (s === "completed") return "No action";
-    } else if (role === "school_staff") {
-      if (s === "pending") return "Awaiting bus company (you can Cancel)";
-      if (s === "approved") return "Add passengers";
-      if (s === "completed") return "No action";
-    } else if (role === "admin") {
-      if (s === "pending") return "Monitor pending";
-      if (s === "approved") return "Monitor assignment";
-      if (s === "completed") return "No action";
-    }
-    return "—";
-  };
+    return {
+      total: trips?.length || 0,
+      upcoming: future.length,
+      statusCounts: counts,
+      nextTrips: future.slice(0, 10), // show at most 10
+    };
+  }, [trips]);
 
   const staffCTA =
     role === "school_staff" ? (
       <RequestTripButton
         onSuccess={async () => {
-          try {
-            setLoading(true);
-            const data = await fetchTrips(); // reuse single fetch path
-            setTrips(data);
-          } finally {
-            setLoading(false);
-          }
+          await refetch(); // keep behavior consistent
         }}
-        hidden={isEditing}
       />
     ) : null;
+
+  const fmtWhen = (t) => {
+    const d = t?.date ? new Date(t.date) : null;
+    const time = t?.departureTime || "";
+    if (!d) return "-";
+    const dateStr = d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+    });
+    return `${dateStr} · ${time}`;
+  };
+
+  const actionNeeded = (t) => {
+    const s = String(t?.status || "").toLowerCase();
+    if (s === "pending") return "Awaiting bus company (you can Cancel)";
+    if (s === "accepted") return "Assign buses";
+    if (s === "confirmed") return "Manage passengers";
+    if (s === "completed") return "—";
+    return "—";
+    };
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -223,52 +153,60 @@ const Dashboard = () => {
         <Card title="Cancelled" value={loading ? "…" : statusCounts.cancelled || 0} />
       </div>
 
-      {/* ✅ Upcoming Agenda — excludes Rejected & Cancelled */}
-      <div className="mt-6">
-        <Section title="Upcoming Trips">
-          {loading ? (
-            <div className="text-gray-500 text-sm">Loading upcoming trips…</div>
-          ) : upcomingTrips.length === 0 ? (
-            <div className="text-gray-500 text-sm">No upcoming trips found.</div>
-          ) : (
-            <div className="w-full overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b">
-                    <th className="py-2 pr-4">When</th>
-                    <th className="py-2 pr-4">Destination</th>
-                    <th className="py-2 pr-4">Students</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2">Action needed</th>
+      {/* Upcoming Trips (agenda-style) */}
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold mb-3">Upcoming Trips</h3>
+        <div className="rounded-2xl bg-white shadow-sm border border-gray-100">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-2 w-[220px]">When</th>
+                  <th className="text-left px-4 py-2">Destination</th>
+                  <th className="text-left px-4 py-2 w-[100px]">Students</th>
+                  <th className="text-left px-4 py-2 w-[140px]">Status</th>
+                  <th className="text-left px-4 py-2">Action needed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-gray-500">
+                      Loading…
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {upcomingTrips.map((t) => (
-                    <tr key={t.id} className="border-b last:border-0">
-                      <td className="py-2 pr-4 whitespace-nowrap">{formatWhen(t)}</td>
-                      <td className="py-2 pr-4">
+                ) : nextTrips.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-gray-500">
+                      No upcoming trips found.
+                    </td>
+                  </tr>
+                ) : (
+                  nextTrips.map((t) => (
+                    <tr key={t.id} className="border-t">
+                      <td className="px-4 py-2 whitespace-nowrap">{fmtWhen(t)}</td>
+                      <td className="px-4 py-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedTrip(t)}
-                          className="text-blue-600 hover:underline font-medium"
-                          title="View trip details"
+                          className="text-gray-800 hover:text-blue-600"
+                          onClick={() => setShowDetailsTrip(t)}
+                          title="View details"
                         >
-                          {t.destination || t.tripType || "—"}
+                          {t.destination || "-"}
                         </button>
                       </td>
-                      <td className="py-2 pr-4">{t.students ?? "—"}</td>
-                      <td className="py-2 pr-4">
-                        {/* Use normalized status for consistent badges */}
-                        <StatusBadge status={getStatus(t)} />
+                      <td className="px-4 py-2">{t.students ?? "-"}</td>
+                      <td className="px-4 py-2">
+                        <StatusBadge status={t.status} />
                       </td>
-                      <td className="py-2 text-gray-700">{actionNeeded(t)}</td>
+                      <td className="px-4 py-2 text-gray-600">{actionNeeded(t)}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Section>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {err && (
@@ -277,13 +215,11 @@ const Dashboard = () => {
         </div>
       )}
 
-      {selectedTrip && (
-        <ModalWrapper onClose={() => setSelectedTrip(null)}>
-          <TripDetails trip={selectedTrip} />
+      {showDetailsTrip && (
+        <ModalWrapper onClose={() => setShowDetailsTrip(null)}>
+          <TripDetails trip={showDetailsTrip} />
         </ModalWrapper>
       )}
     </div>
   );
-};
-
-export default Dashboard;
+}
