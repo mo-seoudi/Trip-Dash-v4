@@ -195,8 +195,7 @@ export default function TripDetails({ trip }) {
               const type = pick(bus.type, bus.busType, "—");
               const driverName = pick(bus.driverName, bus.driver?.name);
               const driverPhone = pick(bus.driverPhone, bus.driver?.phone);
-              const busStatus = pick(bus.status, bus.state);
-
+              
               return (
                 <div key={bus.id || i} className="border rounded-lg p-4 bg-white">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -205,11 +204,7 @@ export default function TripDetails({ trip }) {
                       <span className="ml-2 font-medium">{type} (#{i + 1})</span>
                     </div>
 
-                    <div className="flex items-baseline sm:justify-end gap-2">
-                      <span className="text-sm text-gray-600 whitespace-nowrap">Status:</span>
-                      <StatusBadge status={busStatus} />
-                    </div>
-
+                    
                     <div className="flex items-baseline">
                       <span className="text-sm text-gray-600 whitespace-nowrap">Seats:</span>
                       <span className="ml-2 font-medium">{seats ?? "—"}</span>
