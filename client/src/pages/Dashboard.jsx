@@ -1,11 +1,12 @@
-// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx  
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
-import { getAllTrips } from "../services/tripService";   // <-- use the shared service
+import api from "../services/apiClient";
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
 
+// Small UI helpers
 const Card = ({ title, value, sub }) => (
   <div className="rounded-2xl bg-white shadow-sm p-5 border border-gray-100">
     <p className="text-sm text-gray-500">{title}</p>
@@ -23,23 +24,29 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-export default function Dashboard() {
+const Dashboard = () => {
   const { profile } = useAuth();
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [isEditing] = useState(false);
 
+  // ---- single, canonical endpoint ----
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const data = await getAllTrips();          // <-- unified call
-        if (!ac.signal.aborted) setTrips(data || []);
+        const res = await api.get("/api/trips", {
+          withCredentials: true, // include cookie
+          signal: ac.signal,
+        });
+        const data = Array.isArray(res.data) ? res.data : [];
+        setTrips(data);
       } catch (e) {
-        if (!ac.signal.aborted) setErr(e?.message || "Failed to load trips");
+        if (ac.signal.aborted) return;
+        setErr(e?.response?.data?.message || e.message || "Failed to load trips");
       } finally {
         if (!ac.signal.aborted) setLoading(false);
       }
@@ -50,6 +57,7 @@ export default function Dashboard() {
   if (!profile) return <div className="p-6">Loading user…</div>;
   const { role, name } = profile;
 
+  // ---- tolerant helpers for slightly different trip shapes ----
   const getDate = (t) =>
     t?.date || t?.tripDate || t?.startDate || t?.departureTime || t?.createdAt || null;
 
@@ -76,6 +84,23 @@ export default function Dashboard() {
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
   }, [trips]);
 
+  const staffCTA =
+    role === "school_staff" ? (
+      <RequestTripButton
+        onSuccess={async () => {
+          // Optional: light refetch after creating a trip
+          try {
+            setLoading(true);
+            const res = await api.get("/api/trips", { withCredentials: true });
+            setTrips(Array.isArray(res.data) ? res.data : []);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        hidden={isEditing}
+      />
+    ) : null;
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="mb-6">
@@ -83,7 +108,8 @@ export default function Dashboard() {
           Welcome{role !== "admin" ? "," : " Admin,"} {name}
         </h2>
         <p className="text-gray-500">
-          Here’s a quick snapshot of your trips{role === "admin" ? " across all organizations" : ""}.
+          Here’s a quick snapshot of your trips
+          {role === "admin" ? " across all organizations" : ""}.
         </p>
       </div>
 
@@ -93,22 +119,7 @@ export default function Dashboard() {
         </Section>
       )}
 
-      {role === "school_staff" && (
-        <div className="mb-6 flex justify-end">
-          <RequestTripButton
-            onSuccess={async () => {
-              setLoading(true);
-              try {
-                const data = await getAllTrips();
-                setTrips(data || []);
-              } finally {
-                setLoading(false);
-              }
-            }}
-            hidden={isEditing}
-          />
-        </div>
-      )}
+      {role === "school_staff" && <div className="mb-6 flex justify-end">{staffCTA}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card title="Total trips" value={loading ? "…" : total} />
@@ -122,8 +133,8 @@ export default function Dashboard() {
           {err}
         </div>
       )}
-
-      {/* …the Upcoming Trips table we added earlier can remain unchanged … */}
     </div>
   );
-}
+};
+
+export default Dashboard;
