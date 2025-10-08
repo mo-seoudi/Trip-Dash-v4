@@ -1,19 +1,12 @@
 // server/src/routes/trips/index.js
 
-import express from "express";
-import {
-  requestCancelTrip,
-  requestEditTrip,
-  respondCancelTrip,
-  applyEditTrip,
-} from "./trips.core.js";
+import { Router } from "express";
+import core from "./trips.core.js";
+import subtrips from "./trips.subtrips.js";
+import passengers from "./trips.passengers.js";
 
-const router = express.Router();
-
-// 🧩 New routes (non-breaking; keep your existing ones)
-router.post("/:id/request-cancel", requestCancelTrip);
-router.post("/:id/request-edit", requestEditTrip);
-router.patch("/:id/respond-cancel", respondCancelTrip); // approve/decline cancel request
-router.patch("/:id/apply-edit", applyEditTrip);         // apply requested changes
-
+const router = Router();
+router.use("/", core);          // /api/trips, /api/trips/:id
+router.use("/", subtrips);      // /api/trips/:id/subtrips
+router.use("/", passengers);    // /api/trips/:id/passengers
 export default router;
