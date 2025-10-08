@@ -1,10 +1,13 @@
-// src/pages/Dashboard.jsx  (adjust path if yours differs)
+// src/pages/Dashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/apiClient";
 import AdminUsers from "./AdminUsers";
 import RequestTripButton from "../components/RequestTripButton";
+import StatusBadge from "../components/StatusBadge";
+import ModalWrapper from "../components/ModalWrapper";
+import TripDetails from "../components/TripDetails";
 
 // Small UI helpers
 const Card = ({ title, value, sub }) => (
@@ -24,12 +27,17 @@ const Section = ({ title, children }) => (
   </div>
 );
 
+const MAX_UPCOMING = 10;
+
 const Dashboard = () => {
   const { profile } = useAuth();
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [isEditing] = useState(false);
+
+  // TripDetails modal
+  const [selectedTrip, setSelectedTrip] = useState(null);
 
   // ---- single, canonical endpoint ----
   useEffect(() => {
@@ -39,7 +47,7 @@ const Dashboard = () => {
         setLoading(true);
         setErr(null);
         const res = await api.get("/api/trips", {
-          withCredentials: true, // include cookie
+          withCredentials: true,
           signal: ac.signal,
         });
         const data = Array.isArray(res.data) ? res.data : [];
@@ -67,13 +75,19 @@ const Dashboard = () => {
     if (["approved", "confirmed", "accepted"].includes(raw)) return "approved";
     if (["completed", "done", "finished"].includes(raw)) return "completed";
     if (["cancelled", "canceled"].includes(raw)) return "cancelled";
+    if (["rejected"].includes(raw)) return "rejected";
     return "unknown";
+  };
+
+  const isCancelledOrRejected = (t) => {
+    const s = (t?.status || t?.tripStatus || t?.state || "").toString().toLowerCase();
+    return s.includes("cancel") || s.includes("reject");
   };
 
   const today = dayjs().startOf("day");
 
   const { total, upcoming, statusCounts } = useMemo(() => {
-    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, unknown: 0 };
+    const counts = { pending: 0, approved: 0, completed: 0, cancelled: 0, rejected: 0, unknown: 0 };
     let upc = 0;
     (trips || []).forEach((t) => {
       const d = getDate(t);
@@ -84,11 +98,51 @@ const Dashboard = () => {
     return { total: trips?.length || 0, upcoming: upc, statusCounts: counts };
   }, [trips]);
 
+  // 👉 Agenda list: exclude Rejected/Canceled + only today or later
+  const upcomingTrips = useMemo(() => {
+    return (trips || [])
+      .filter((t) => {
+        const d = getDate(t);
+        if (!d) return false;
+        const isFutureOrToday = dayjs(d).isSame(today, "day") || dayjs(d).isAfter(today);
+        return isFutureOrToday && !isCancelledOrRejected(t);
+      })
+      .sort((a, b) => dayjs(getDate(a)).valueOf() - dayjs(getDate(b)).valueOf())
+      .slice(0, MAX_UPCOMING);
+  }, [trips, today]);
+
+  const formatWhen = (t) => {
+    const d = getDate(t);
+    if (!d) return "-";
+    const dj = dayjs(d);
+    const time = t?.departureTime || t?.time || (dj.isValid() ? dj.format("h:mm A") : "");
+    const dateTxt = dj.isValid() ? dj.format("ddd, MMM D") : "-";
+    return time ? `${dateTxt} • ${time}` : dateTxt;
+  };
+
+  const actionNeeded = (t) => {
+    const s = (t?.status || "").toString().toLowerCase();
+    if (role === "bus_company") {
+      if (s === "pending") return "Review & Accept/Reject";
+      if (s === "accepted") return "Assign bus";
+      if (s === "confirmed") return "Complete after trip";
+    } else if (role === "school_staff") {
+      if (s === "pending") return "Awaiting bus company (you can Cancel)";
+      if (s === "accepted") return "Add passengers";
+      if (s === "confirmed") return "Manage passengers";
+    } else if (role === "admin") {
+      if (s === "pending") return "Monitor pending";
+      if (s === "accepted") return "Monitor assignment";
+      if (s === "confirmed") return "Monitor completion";
+    }
+    if (s === "completed") return "No action";
+    return "—";
+  };
+
   const staffCTA =
     role === "school_staff" ? (
       <RequestTripButton
         onSuccess={async () => {
-          // Optional: light refetch after creating a trip
           try {
             setLoading(true);
             const res = await api.get("/api/trips", { withCredentials: true });
@@ -128,10 +182,63 @@ const Dashboard = () => {
         <Card title="Cancelled" value={loading ? "…" : statusCounts.cancelled || 0} />
       </div>
 
+      {/* ✅ Upcoming Agenda — excludes Rejected & Cancelled */}
+      <div className="mt-6">
+        <Section title="Upcoming Trips">
+          {loading ? (
+            <div className="text-gray-500 text-sm">Loading upcoming trips…</div>
+          ) : upcomingTrips.length === 0 ? (
+            <div className="text-gray-500 text-sm">No upcoming trips found.</div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b">
+                    <th className="py-2 pr-4">When</th>
+                    <th className="py-2 pr-4">Destination</th>
+                    <th className="py-2 pr-4">Students</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2">Action needed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingTrips.map((t) => (
+                    <tr key={t.id} className="border-b last:border-0">
+                      <td className="py-2 pr-4 whitespace-nowrap">{formatWhen(t)}</td>
+                      <td className="py-2 pr-4">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTrip(t)}
+                          className="text-blue-600 hover:underline font-medium"
+                          title="View trip details"
+                        >
+                          {t.destination || t.tripType || "—"}
+                        </button>
+                      </td>
+                      <td className="py-2 pr-4">{t.students ?? "—"}</td>
+                      <td className="py-2 pr-4">
+                        <StatusBadge status={t.status} />
+                      </td>
+                      <td className="py-2 text-gray-700">{actionNeeded(t)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      </div>
+
       {err && (
         <div className="mt-6 rounded-lg bg-red-50 text-red-700 p-3 border border-red-100">
           {err}
         </div>
+      )}
+
+      {selectedTrip && (
+        <ModalWrapper onClose={() => setSelectedTrip(null)}>
+          <TripDetails trip={selectedTrip} />
+        </ModalWrapper>
       )}
     </div>
   );
