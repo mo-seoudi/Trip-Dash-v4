@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx  
+// src/pages/Dashboard.jsx  (adjust path if yours differs)
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useAuth } from "../context/AuthContext";
@@ -38,7 +38,7 @@ const Dashboard = () => {
       try {
         setLoading(true);
         setErr(null);
-        const res = await api.get("/trips", {
+        const res = await api.get("/api/trips", {
           withCredentials: true, // include cookie
           signal: ac.signal,
         });
@@ -91,7 +91,7 @@ const Dashboard = () => {
           // Optional: light refetch after creating a trip
           try {
             setLoading(true);
-            const res = await api.get("/trips", { withCredentials: true });
+            const res = await api.get("/api/trips", { withCredentials: true });
             setTrips(Array.isArray(res.data) ? res.data : []);
           } finally {
             setLoading(false);
