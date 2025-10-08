@@ -22,7 +22,7 @@ export default function TripDetails({ trip }) {
   const pick = (...vals) =>
     vals.find((v) => v !== undefined && v !== null && String(v).trim() !== "") ?? null;
 
-  const origin = pick(trip.origin, trip.from, trip.startLocation, trip.pickup, "—");
+  const origin = pick(trip.origin, trip.from, trip.startLocation, trip.pickup, "School");
   const destination = pick(trip.destination, trip.to, trip.endLocation, "—");
 
   const rawDate = pick(trip.date, trip.tripDate, trip.startDate, trip.departureDate);
