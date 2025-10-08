@@ -1,196 +1,45 @@
-// prisma/schema.prisma
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")  // pooler (6543) for runtime
-  directUrl = env("DIRECT_URL")    // direct (5432) for migrations
-}
-
-// USERS
-model User {
-  id               Int          @id @default(autoincrement())
-  name             String
-  email            String       @unique
-  passwordHash     String?
-  role             String       @default("school_staff") // e.g. "admin", "finance", ...
-  status           String       @default("pending")      // "approved" | "pending" | "blocked"
-  createdAt        DateTime     @default(now())
-  createdBookings  BusBooking[] @relation("BookingCreator")
-
-  // Trips created by this user
-  trips Trip[] @relation("TripsByUser")
-
-  @@map("User")
-}
-
-// TRIPS
-model Trip {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // creator info (stored snapshot on doc)
-  createdBy       String?
-  createdByEmail  String?
-  createdById     Int?
-  createdByUser   User?    @relation("TripsByUser", fields: [createdById], references: [id])
-
-  // main trip fields (UI)
-  tripType      String?
-  destination   String?
-  date          DateTime?
-  departureTime String?
-  returnDate    DateTime?
-  returnTime    String?
-  students      Int?
-  status        String?
-  price         Float?
-  notes         String?
-
-  // ── NEW: Requests & approvals (non-breaking additions) ─────────────────────
-  /// legacy flag kept for backward compatibility with existing UI
-  cancelRequest       Boolean?  @default(false)
-
-  /// school_staff can request cancellation; bus_company/admin can handle it
-  cancelRequested     Boolean   @default(false)
-  cancelReason        String?
-  cancelRequestedAt   DateTime?
-  cancelHandledAt     DateTime?
-
-  /// school_staff can request edits (when e.g. status is Confirmed)
-  editRequested       Boolean   @default(false)
-  editRequestPayload  Json?
-  editRequestedAt     DateTime?
-  editHandledAt       DateTime?
-
-  // flexible JSON
-  busInfo    Json?
-  driverInfo Json?
-  buses      Json?
-
-  // self-relation
-  parentId Int?
-  parent   Trip?   @relation("TripSelf", fields: [parentId], references: [id])
-  children Trip[]  @relation("TripSelf")
-
-  // back-relation to SubTrip
-  subTripDocs SubTrip[] @relation("TripToSubTrip")
-
-  // NEW: back-relation to TripPassenger rows
-  tripPassengers TripPassenger[]
-
-  @@index([createdAt])
-  @@index([status])
-  @@index([createdBy])
-  @@index([destination])
-  @@index([cancelRequested]) // NEW: fast filters in dashboards/inboxes
-  @@index([editRequested])   // NEW: fast filters in dashboards/inboxes
-  @@map("Trip")
-}
-
-// Roster rows scoped to a single trip
-model TripPassenger {
-  id            Int       @id @default(autoincrement())
-  tripId        Int
-  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  createdAt     DateTime  @default(now())
-  fullName      String
-  guardianName  String?
-  guardianPhone String?
-  pickupPoint   String?
-  dropoffPoint  String?
-  notes         String?
-  checkedIn     Boolean   @default(false)
-
-  payments      TripPassengerPayment[]
-
-  @@index([tripId])
-  @@map("TripPassenger")
-}
-
-// Optional payments (keep if you’ll need it)
-model TripPassengerPayment {
-  id               Int            @id @default(autoincrement())
-  tripPassengerId  Int
-  passenger        TripPassenger  @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
-
-  createdAt        DateTime       @default(now())
-  amountDue        Float
-  amountPaid       Float?         @default(0)
-  status           String?
-  method           String?
-  reference        String?
-  currency         String?        @default("USD")
-
-  @@index([tripPassengerId])
-  @@map("TripPassengerPayment")
-}
-
-// SUBTRIPS
-model SubTrip {
-  id           Int      @id @default(autoincrement())
-  parentTripId Int
-  parent       Trip     @relation("TripToSubTrip", fields: [parentTripId], references: [id])
-
-  createdAt    DateTime @default(now())
-  status       String?
-  tripPrice    Float?
-  busSeats     Int?
-  busType      String?
-
-  @@index([parentTripId])
-  @@map("SubTrip")
-}
-
-// ── BUS BOOKING (stand-alone, not tied to trips) ──────────────────────────────
-model BusBooking {
-  id               Int       @id @default(autoincrement())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  // who created this booking (optional)
-  createdById      Int?
-  creator          User?     @relation("BookingCreator", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
-
-  // redundant metadata you like to store for auditing
-  createdBy        String?
-  createdByEmail   String?
-
-  // multi-tenant/org scoping used by UI filters
-  tenant_id        String?   // <-- added to match UI
-  school_org_id    String?   // <-- added to match UI
-
-  // basics
-  title            String?
-  purpose          String?
-
-  // schedule (match UI field names)
-  date_start       DateTime? // <-- renamed from date/startTime
-  date_end         DateTime? // <-- renamed from endDate/endTime
-
-  // passengers (match UI names)
-  passengers_students Int     @default(0)
-  passengers_adults   Int     @default(0)
-  totalPassengers     Int?
-
-  // logistics (match UI names/shape)
-  pickup           Json?      // [{ name, address, notes }]
-  dropoff          Json?      // [{ name, address, notes }]
-  busesRequested   Int?
-  busType          String?
-
-  notes            String?
-
-  // status values used in UI: "requested" | "approved" | "cancelled"
-  status           String     @default("requested")
-
-  @@index([tenant_id])
-  @@index([school_org_id])
-  @@index([status])
-  @@map("BusBooking")
-}
+// ⚠️ IMPORTANT: Do NOT replace your whole schema with this file.
+// Copy the added fields into your existing Trip model and re-run migrations.
+//
+// Added fields:
+//   cancelRequested      Boolean   @default(false)
+//   cancelReason         String?
+//   cancelRequestedAt    DateTime?
+//   cancelHandledAt      DateTime?
+//   editRequested        Boolean   @default(false)
+//   editRequestPayload   Json?
+//   editRequestedAt      DateTime?
+//   editHandledAt        DateTime?
+//
+// Example Trip model with additions (merge these into YOUR Trip model):
+//
+// model Trip {
+//   id                  Int       @id @default(autoincrement())
+//   // …your existing fields…
+//   status              String    @default("Pending")
+//
+//   // Request-to-cancel
+//   cancelRequested     Boolean   @default(false)
+//   cancelReason        String?
+//   cancelRequestedAt   DateTime?
+//   cancelHandledAt     DateTime?
+//
+//   // Request-to-edit
+//   editRequested       Boolean   @default(false)
+//   editRequestPayload  Json?
+//   editRequestedAt     DateTime?
+//   editHandledAt       DateTime?
+//
+//   // optional: link to requester
+//   createdById         Int?
+//   createdByUser       User?     @relation(fields: [createdById], references: [id])
+//
+//   @@index([status])
+//   @@index([cancelRequested])
+//   @@index([editRequested])
+// }
+//
+// After merging, run:
+//   npx prisma generate
+//   npx prisma migrate dev -n "trip-requests"
+//
