@@ -111,19 +111,9 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                 <td className="px-4 py-2">
                   {trip.tripType === "Other" ? trip.customType : trip.tripType}
                 </td>
-
-                {/* ✅ Make destination clickable to open details */}
                 <td className="px-4 py-2 whitespace-nowrap overflow-hidden text-ellipsis">
-                  <button
-                    type="button"
-                    className="text-gray-900 hover:text-blue-700"
-                    onClick={() => setShowDetailsTrip(trip)}
-                    title="View trip details"
-                  >
-                    {trip.destination}
-                  </button>
+                  {trip.destination}
                 </td>
-
                 <td className="px-4 py-2">{trip.students}</td>
                 <td className="px-4 py-2">
                   {trip.date
@@ -159,28 +149,23 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
                       <ActionsCell
                         trip={trip}
                         role={profile?.role}
-                        onStatusChange={(tripArg, status) => {
+                        onStatusChange={(trip, status) => {
                           // Parent-trip status updates only.
-                          handleStatusChange(tripArg, status);
-
+                          handleStatusChange(trip, status);
                           // 🔔 broadcast optimistic update upstream so AllTrips can patch `trips`
                           try {
                             window.dispatchEvent(
-                              new CustomEvent("trip:updated", { detail: { ...tripArg, status } })
+                              new CustomEvent("trip:updated", { detail: { ...trip, status } })
                             );
                           } catch (_) {}
-
                           closeRow();
-
-                          // ✨ Immediately show updated details
-                          setShowDetailsTrip({ ...tripArg, status });
                         }}
-                        onAssignBus={(tripArg) => setAssignTrip(tripArg)}
-                        onConfirmAction={(tripArg, label, nextStatus) =>
-                          setConfirmAction({ trip: tripArg, label, nextStatus })
+                        onAssignBus={(trip) => setAssignTrip(trip)}
+                        onConfirmAction={(trip, label, nextStatus) =>
+                          setConfirmAction({ trip, label, nextStatus })
                         }
-                        onView={(tripArg) => setShowDetailsTrip(tripArg)}
-                        onEdit={(tripArg) => setEditTrip(tripArg)} // opens edit modal (unchanged)
+                        onView={(trip) => setShowDetailsTrip(trip)}
+                        onEdit={(trip) => setEditTrip(trip)} // ✅ this now opens a modal
                         onSoftDelete={handleSoftDelete}
                       />
 
@@ -227,20 +212,17 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
             trip={assignTrip}
             onClose={() => setAssignTrip(null)}
             onSubmit={(updatedTrip) => {
-              // 1) update the row in the table immediately
-              setTripData((prev) => prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t)));
-
-              // 2) broadcast so AllTrips/Calendar can also update in place
+              setTripData((prev) =>
+                prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t))
+              );
+              // 🔔 broadcast to parent
               try {
-                window.dispatchEvent(new CustomEvent("trip:updated", { detail: updatedTrip }));
+                window.dispatchEvent(
+                  new CustomEvent("trip:updated", { detail: updatedTrip })
+                );
               } catch (_) {}
-
-              // 3) close the Assign modal + collapse the row
               setAssignTrip(null);
               closeRow();
-
-              // 4) ✨ open TripDetails right away with the updated trip
-              setShowDetailsTrip(updatedTrip);
             }}
           />
         </ModalWrapper>
@@ -251,20 +233,17 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
           title={`${confirmAction.label} Trip`}
           description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`}
           onConfirm={() => {
-            const updated = { ...confirmAction.trip, status: confirmAction.nextStatus };
-
             handleStatusChange(confirmAction.trip, confirmAction.nextStatus);
-
             // 🔔 broadcast optimistic update
             try {
-              window.dispatchEvent(new CustomEvent("trip:updated", { detail: updated }));
+              window.dispatchEvent(
+                new CustomEvent("trip:updated", {
+                  detail: { ...confirmAction.trip, status: confirmAction.nextStatus },
+                })
+              );
             } catch (_) {}
-
             setConfirmAction(null);
             closeRow();
-
-            // ✨ show updated details after the confirm modal
-            setShowDetailsTrip(updated);
           }}
           onClose={() => setConfirmAction(null)}
         />
@@ -281,25 +260,19 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
         </ModalWrapper>
       )}
 
-      {/* ✅ Edit Trip modal (kept as-is; optional: open details after saving) */}
+      {/* ✅ NEW: Edit Trip modal (school_staff and others) */}
       {editTrip && (
         <ModalWrapper onClose={() => setEditTrip(null)}>
           <EditTripForm
             trip={editTrip}
             onClose={() => setEditTrip(null)}
-            onUpdated={(maybeUpdated) => {
+            onUpdated={() => {
               refreshEditedTrip();
-              if (maybeUpdated?.id) {
-                setTripData((prev) => prev.map((t) => (t.id === maybeUpdated.id ? maybeUpdated : t)));
-                try {
-                  window.dispatchEvent(new CustomEvent("trip:updated", { detail: maybeUpdated }));
-                } catch (_) {}
-                setShowDetailsTrip(maybeUpdated); // ✨ show details after edit
-              }
             }}
             // keep your rule from StaffActions: staff editing Confirmed ⇒ request mode
             isRequestMode={
-              (profile?.role === "school_staff" && editTrip?.status === "Confirmed") || false
+              (profile?.role === "school_staff" && editTrip?.status === "Confirmed") ||
+              false
             }
           />
         </ModalWrapper>
