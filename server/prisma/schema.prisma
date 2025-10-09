@@ -12,14 +12,14 @@ datasource db {
 
 // USERS
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String?
-  role         String   @default("school_staff") // e.g. "admin", "finance", ...
-  status       String   @default("pending")      // "approved" | "pending" | "blocked"
-  createdAt    DateTime @default(now())
-  createdBookings  BusBooking[] @relation("BookingCreator")
+  id              Int          @id @default(autoincrement())
+  name            String
+  email           String       @unique
+  passwordHash    String?
+  role            String       @default("school_staff") // e.g. "admin", "finance", ...
+  status          String       @default("pending")      // "approved" | "pending" | "blocked"
+  createdAt       DateTime     @default(now())
+  createdBookings BusBooking[] @relation("BookingCreator")
 
   // Trips created by this user
   trips Trip[] @relation("TripsByUser")
@@ -40,6 +40,7 @@ model Trip {
   createdByUser   User?    @relation("TripsByUser", fields: [createdById], references: [id])
 
   // main trip fields (UI)
+  origin        String?   // NEW: starting point (e.g. "School")
   tripType      String?
   destination   String?
   date          DateTime?
@@ -47,11 +48,11 @@ model Trip {
   returnDate    DateTime?
   returnTime    String?
   students      Int?
-  staff         Int?       // NEW: number of staff
+  staff         Int?      // number of staff
   status        String?
   price         Float?
   notes         String?
-  cancelRequest Boolean? @default(false)
+  cancelRequest Boolean?  @default(false)
 
   // flexible JSON
   busInfo    Json?
@@ -64,9 +65,9 @@ model Trip {
   children Trip[]  @relation("TripSelf")
 
   // back-relation to SubTrip
-  subTripDocs     SubTrip[]       @relation("TripToSubTrip")
+  subTripDocs    SubTrip[]       @relation("TripToSubTrip")
   // back-relation to TripPassenger rows
-  tripPassengers  TripPassenger[]
+  tripPassengers TripPassenger[]
 
   @@index([createdAt])
   @@index([status])
@@ -74,7 +75,6 @@ model Trip {
   @@index([destination])
   @@map("Trip")
 }
-
 
 // Roster rows scoped to a single trip
 model TripPassenger {
@@ -114,7 +114,6 @@ model TripPassengerPayment {
   @@index([tripPassengerId])
   @@map("TripPassengerPayment")
 }
-
 
 // SUBTRIPS
 model SubTrip {
