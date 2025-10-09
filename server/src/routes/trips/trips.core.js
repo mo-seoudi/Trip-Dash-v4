@@ -1,4 +1,5 @@
 // server/src/routes/trips/trips.core.js
+
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import jwt from "jsonwebtoken";
@@ -12,18 +13,17 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true,
 };
 
-// ✅ helper to decode your JWT (from cookie or Authorization) – requires env secret
+// ✅ helper to decode your JWT (from cookie or Authorization)
 function getDecodedUser(req) {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    // Developer/config error – surface it clearly
     throw new Error("JWT_SECRET is required but missing. Set it in your environment.");
   }
   try {
     const bearer = req.headers.authorization || "";
     const token = bearer.startsWith("Bearer ")
       ? bearer.slice(7)
-      : req.cookies?.token; // your cookie name
+      : req.cookies?.token;
     if (!token) return null;
     return jwt.verify(token, secret);
   } catch {
@@ -31,11 +31,6 @@ function getDecodedUser(req) {
   }
 }
 
-/**
- * GET /api/trips?createdBy=Name
- * - If role === school_staff => show only trips they created
- * - Otherwise keep the existing behavior (optionally narrowed by createdBy search)
- */
 router.get("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
@@ -143,14 +138,20 @@ router.patch("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const data = { ...req.body };
+
     if ("date" in data) data.date = data.date ? new Date(data.date) : null;
     if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
     if ("staff" in data && typeof data.staff !== "number") {
       data.staff = data.staff === null || data.staff === "" ? null : Number(data.staff);
+    } // ← MISSING BRACE ADDED
 
     const updated = await prisma.trip.update({ where: { id }, data });
+
     try {
-      const withRels = await prisma.trip.findUnique({ where: { id }, include: TRIP_REL_INCLUDE });
+      const withRels = await prisma.trip.findUnique({
+        where: { id },
+        include: TRIP_REL_INCLUDE,
+      });
       return res.json(withRels ?? updated);
     } catch {
       return res.json(updated);
