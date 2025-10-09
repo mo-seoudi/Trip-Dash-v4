@@ -19,15 +19,16 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
 
   const parseTime = (timeStr) => {
     if (!timeStr) return { hour: "08", minute: "00", ampm: "AM" };
-    const [time, ampm] = timeStr.split(" ");
+    const [time, ampm] = String(timeStr).split(" ");
     const [hour, minute] = (time || "08:00").split(":");
     return {
-      hour: hour?.padStart(2, "0") || "08",
-      minute: minute?.padStart(2, "0") || "00",
+      hour: (hour || "08").padStart(2, "0"),
+      minute: (minute || "00").padStart(2, "0"),
       ampm: (ampm || "AM").toUpperCase(),
     };
   };
 
+  // Build Notes (Booster seats -> Notes)
   const buildNotes = (notesText, boosterRequested, boosterCountRaw) => {
     const count = Number(boosterCountRaw) || 0;
     const boosterPart = boosterRequested
@@ -38,13 +39,15 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     return [boosterPart, (notesText || "").trim()].filter(Boolean).join(" - ");
   };
 
-  // Form state
+  // Initial parse of times
   const dep = parseTime(trip.departureTime);
   const ret = parseTime(trip.returnTime);
 
+  // Form state (add origin + staff)
   const [formData, setFormData] = useState({
     tripType: trip.tripType,
     customType: trip.customType || "",
+    origin: trip.origin || "School",            // ← NEW
     destination: trip.destination || "",
     date: toDateInput(trip.date),
     departureHour: dep.hour,
@@ -54,8 +57,8 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     returnHour: ret.hour,
     returnMinute: ret.minute,
     returnAmPm: ret.ampm,
-    students: trip.students,
-    staff: trip.staff ?? "",                 // NEW
+    students: trip.students ?? "",
+    staff: (trip.staff ?? "") === null ? "" : trip.staff ?? "", // ← NEW (string for input)
     notes: trip.notes || "",
     boosterSeatsRequested: !!trip.boosterSeatsRequested,
     boosterSeatCount: trip.boosterSeatCount || "",
@@ -64,7 +67,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
   const [timeError, setTimeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Keep times synced (existing behavior)
+  // Keep return time synced to departure time (existing behavior)
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
@@ -72,9 +75,10 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
       returnMinute: prev.departureMinute,
       returnAmPm: prev.departureAmPm,
     }));
-  }, [formData.departureHour, formData.departureMinute, formData.departureAmPm]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.departureHour, formData.departureMinute, formData.departureAmPm]);
 
-  // Keep return date synced if it matched previous
+  // Keep return date synced ONLY when it was empty or matched the old date
   const prevDateRef = useRef(formData.date);
   useEffect(() => {
     setFormData((prev) => {
@@ -86,10 +90,12 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     prevDateRef.current = formData.date;
   }, [formData.date]);
 
-  // ESC close
+  // ESC close (optional; safe even if a wrapper handles it)
   useEffect(() => {
     const onKeyDown = (e) => {
-      if ((e.key === "Escape" || e.key === "Esc") && !e.isComposing) onClose?.();
+      if ((e.key === "Escape" || e.key === "Esc") && !e.isComposing) {
+        onClose?.();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -131,13 +137,17 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         tripType:
           formData.tripType === "Other" ? formData.customType : formData.tripType,
         customType: formData.customType,
+        origin: formData.origin || null,                      // ← NEW
         destination: formData.destination,
         date: formData.date,
         departureTime,
         returnDate: formData.returnDate,
         returnTime,
         students: Number(formData.students),
-        staff: formData.staff === "" ? null : Number(formData.staff),   // NEW
+        staff:
+          formData.staff === "" || formData.staff === null
+            ? null
+            : Number(formData.staff),                         // ← NEW
         notes: buildNotes(
           formData.notes,
           formData.boosterSeatsRequested,
@@ -168,9 +178,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
   };
 
   const handleRequestCancel = async () => {
-    const confirm = window.confirm(
-      "Are you sure you want to request to cancel this trip?"
-    );
+    const confirm = window.confirm("Are you sure you want to request to cancel this trip?");
     if (!confirm) return;
     try {
       await updateTrip(trip.id, { status: "Pending", cancelRequest: true });
@@ -201,6 +209,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         <button
           onClick={onClose}
           className="absolute top-2 right-2 text-gray-500 hover:text-black text-xl"
+          aria-label="Close"
         >
           &times;
         </button>
@@ -237,17 +246,31 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
             )}
           </div>
 
-          {/* Destination */}
-          <div>
-            <label className="block text-sm font-medium">Destination *</label>
-            <input
-              type="text"
-              name="destination"
-              value={formData.destination}
-              onChange={handleChange}
-              required
-              className="w-full p-2 border rounded"
-            />
+          {/* Origin & Destination */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium">Origin</label>
+              <input
+                type="text"
+                name="origin"
+                value={formData.origin}
+                onChange={handleChange}
+                className="w-full p-2 border rounded"
+                placeholder="e.g., School"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium">Destination *</label>
+              <input
+                type="text"
+                name="destination"
+                value={formData.destination}
+                onChange={handleChange}
+                required
+                className="w-full p-2 border rounded"
+              />
+            </div>
           </div>
 
           {/* Departure */}
@@ -349,33 +372,32 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
             </div>
           </div>
 
-          {/* Students */}
-          <div>
-            <label className="block text-sm font-medium">Number of Students *</label>
-            <input
-              type="number"
-              name="students"
-              value={formData.students}
-              onChange={handleChange}
-              onWheel={(e) => e.target.blur()}
-              required
-              className="w-full p-2 border rounded"
-            />
-          </div>
+          {/* Students & Staff */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium">Number of Students *</label>
+              <input
+                type="number"
+                name="students"
+                value={formData.students}
+                onChange={handleChange}
+                onWheel={(e) => e.target.blur()}
+                required
+                className="w-full p-2 border rounded"
+              />
+            </div>
 
-          {/* NEW: Staff */}
-          <div>
-            <label className="block text-sm font-medium">Number of Staff</label>
-            <input
-              type="number"
-              name="staff"
-              value={formData.staff}
-              onChange={handleChange}
-              onWheel={(e) => e.target.blur()}
-              className="w-full p-2 border rounded"
-              placeholder="e.g., 4"
-              min="0"
-            />
+            <div>
+              <label className="block text-sm font-medium">Number of Staff</label>
+              <input
+                type="number"
+                name="staff"
+                value={formData.staff}
+                onChange={handleChange}
+                onWheel={(e) => e.target.blur()}
+                className="w-full p-2 border rounded"
+              />
+            </div>
           </div>
 
           {/* Booster seats */}
@@ -401,7 +423,6 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
               onChange={handleChange}
               onWheel={(e) => e.target.blur()}
               className="w-full p-2 border rounded"
-              min="0"
             />
           )}
 
@@ -435,7 +456,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
             </button>
           </div>
 
-          {/* Cancel buttons */}
+          {/* Cancel buttons (preserve behavior) */}
           {isRequestMode ? (
             <button
               type="button"
