@@ -1,3 +1,4 @@
+// client/src/components/EditTripForm.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { updateTrip } from "../services/tripService";
 import { toast } from "react-toastify";
@@ -27,7 +28,6 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     };
   };
 
-  // Build Notes (Booster seats -> Notes)
   const buildNotes = (notesText, boosterRequested, boosterCountRaw) => {
     const count = Number(boosterCountRaw) || 0;
     const boosterPart = boosterRequested
@@ -46,7 +46,6 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     tripType: trip.tripType,
     customType: trip.customType || "",
     destination: trip.destination || "",
-    // normalize for <input type="date">
     date: toDateInput(trip.date),
     departureHour: dep.hour,
     departureMinute: dep.minute,
@@ -56,6 +55,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     returnMinute: ret.minute,
     returnAmPm: ret.ampm,
     students: trip.students,
+    staff: trip.staff ?? "",                 // NEW
     notes: trip.notes || "",
     boosterSeatsRequested: !!trip.boosterSeatsRequested,
     boosterSeatCount: trip.boosterSeatCount || "",
@@ -64,7 +64,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
   const [timeError, setTimeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Keep return time synced to departure time (existing behavior)
+  // Keep times synced (existing behavior)
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
@@ -72,9 +72,9 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
       returnMinute: prev.departureMinute,
       returnAmPm: prev.departureAmPm,
     }));
-  }, [formData.departureHour, formData.departureMinute, formData.departureAmPm]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [formData.departureHour, formData.departureMinute, formData.departureAmPm]); // eslint-disable-line
 
-  // Keep return date synced ONLY when it was empty or matched the old date
+  // Keep return date synced if it matched previous
   const prevDateRef = useRef(formData.date);
   useEffect(() => {
     setFormData((prev) => {
@@ -86,12 +86,10 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     prevDateRef.current = formData.date;
   }, [formData.date]);
 
-  // ESC close (optional; safe even if a wrapper handles it)
+  // ESC close
   useEffect(() => {
     const onKeyDown = (e) => {
-      if ((e.key === "Escape" || e.key === "Esc") && !e.isComposing) {
-        onClose?.();
-      }
+      if ((e.key === "Escape" || e.key === "Esc") && !e.isComposing) onClose?.();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -139,6 +137,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         returnDate: formData.returnDate,
         returnTime,
         students: Number(formData.students),
+        staff: formData.staff === "" ? null : Number(formData.staff),   // NEW
         notes: buildNotes(
           formData.notes,
           formData.boosterSeatsRequested,
@@ -169,7 +168,9 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
   };
 
   const handleRequestCancel = async () => {
-    const confirm = window.confirm("Are you sure you want to request to cancel this trip?");
+    const confirm = window.confirm(
+      "Are you sure you want to request to cancel this trip?"
+    );
     if (!confirm) return;
     try {
       await updateTrip(trip.id, { status: "Pending", cancelRequest: true });
@@ -362,6 +363,21 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
             />
           </div>
 
+          {/* NEW: Staff */}
+          <div>
+            <label className="block text-sm font-medium">Number of Staff</label>
+            <input
+              type="number"
+              name="staff"
+              value={formData.staff}
+              onChange={handleChange}
+              onWheel={(e) => e.target.blur()}
+              className="w-full p-2 border rounded"
+              placeholder="e.g., 4"
+              min="0"
+            />
+          </div>
+
           {/* Booster seats */}
           <div className="flex items-center space-x-2">
             <input
@@ -385,6 +401,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
               onChange={handleChange}
               onWheel={(e) => e.target.blur()}
               className="w-full p-2 border rounded"
+              min="0"
             />
           )}
 
@@ -418,7 +435,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
             </button>
           </div>
 
-          {/* Cancel buttons (preserve behavior) */}
+          {/* Cancel buttons */}
           {isRequestMode ? (
             <button
               type="button"
