@@ -48,6 +48,7 @@ model Trip {
   returnTime    String?
   students      Int?
   staff         Int?
+  status        String?
   price         Float?
   notes         String?
   cancelRequest Boolean? @default(false)
