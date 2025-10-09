@@ -1,5 +1,4 @@
 // server/src/routes/trips/trips.core.js
-
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import jwt from "jsonwebtoken";
@@ -31,6 +30,11 @@ function getDecodedUser(req) {
   }
 }
 
+/**
+ * GET /api/trips?createdBy=Name
+ * - If role === school_staff => show only trips they created
+ * - Otherwise keep the existing behavior (optionally narrowed by createdBy search)
+ */
 router.get("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
@@ -91,6 +95,7 @@ router.post("/", async (req, res, next) => {
 
     const {
       createdById, createdBy, createdByEmail,
+      origin,                    // ← NEW
       tripType, destination, date, departureTime,
       returnDate, returnTime, students, staff, status, price,
       notes, cancelRequest, busInfo, driverInfo, buses, parentId,
@@ -100,6 +105,9 @@ router.post("/", async (req, res, next) => {
       createdById: createdById ?? (decoded?.id ? Number(decoded.id) : null),
       createdBy: createdBy ?? null,
       createdByEmail: createdByEmail ?? decoded?.email ?? null,
+
+      origin: typeof origin === "string" && origin.trim() !== "" ? origin.trim() : null, // ← NEW
+
       tripType: tripType ?? null,
       destination: destination ?? null,
       date: date ? new Date(date) : null,
@@ -141,9 +149,15 @@ router.patch("/:id", async (req, res, next) => {
 
     if ("date" in data) data.date = data.date ? new Date(data.date) : null;
     if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
+
     if ("staff" in data && typeof data.staff !== "number") {
       data.staff = data.staff === null || data.staff === "" ? null : Number(data.staff);
-    } // ← MISSING BRACE ADDED
+    }
+
+    if ("origin" in data) {
+      const v = typeof data.origin === "string" ? data.origin.trim() : data.origin;
+      data.origin = v === "" ? null : v;
+    }
 
     const updated = await prisma.trip.update({ where: { id }, data });
 
