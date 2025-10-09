@@ -147,10 +147,7 @@ router.patch("/:id", async (req, res, next) => {
       const s = "students" in data ? data.students : undefined;
       const a = "adults" in data ? data.adults : undefined;
       if (typeof s === "number" || typeof a === "number") {
-        data.totalPassengers =
-          (typeof s === "number" ? s : undefined) ??
-          undefined +
-            ((typeof a === "number" ? a : undefined) ?? 0);
+        data.totalPassengers = (s ?? 0) + (a ?? 0);
       }
     }
 
