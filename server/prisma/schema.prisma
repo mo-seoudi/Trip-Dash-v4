@@ -29,9 +29,9 @@ model User {
 
 // TRIPS
 model Trip {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // creator info (stored snapshot on doc)
   createdBy       String?
@@ -47,16 +47,16 @@ model Trip {
   returnDate    DateTime?
   returnTime    String?
   students      Int?
-  staff         Int?
+  staff         Int?       // NEW: number of staff
   status        String?
   price         Float?
   notes         String?
   cancelRequest Boolean? @default(false)
 
   // flexible JSON
-  busInfo   Json?
+  busInfo    Json?
   driverInfo Json?
-  buses     Json?
+  buses      Json?
 
   // self-relation
   parentId Int?
@@ -64,9 +64,8 @@ model Trip {
   children Trip[]  @relation("TripSelf")
 
   // back-relation to SubTrip
-  subTripDocs SubTrip[] @relation("TripToSubTrip")
-  
-  // NEW: back-relation to TripPassenger rows
+  subTripDocs     SubTrip[]       @relation("TripToSubTrip")
+  // back-relation to TripPassenger rows
   tripPassengers  TripPassenger[]
 
   @@index([createdAt])
@@ -75,6 +74,7 @@ model Trip {
   @@index([destination])
   @@map("Trip")
 }
+
 
 // Roster rows scoped to a single trip
 model TripPassenger {
