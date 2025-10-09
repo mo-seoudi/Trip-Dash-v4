@@ -97,7 +97,7 @@ router.post("/", async (req, res, next) => {
     const {
       createdById, createdBy, createdByEmail,
       tripType, destination, date, departureTime,
-      returnDate, returnTime, students, status, price,
+      returnDate, returnTime, students, staff, status, price,
       notes, cancelRequest, busInfo, driverInfo, buses, parentId,
     } = req.body;
 
@@ -112,6 +112,7 @@ router.post("/", async (req, res, next) => {
       returnDate: returnDate ? new Date(returnDate) : null,
       returnTime: returnTime ?? null,
       students: typeof students === "number" ? students : students ? Number(students) : null,
+      staff: typeof staff === "number" ? staff : staff ? Number(staff) : null,
       status: status ?? "Pending",
       price: typeof price === "number" ? price : price ? Number(price) : 0,
       notes: notes ?? null,
@@ -144,6 +145,8 @@ router.patch("/:id", async (req, res, next) => {
     const data = { ...req.body };
     if ("date" in data) data.date = data.date ? new Date(data.date) : null;
     if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
+    if ("staff" in data && typeof data.staff !== "number") {
+      data.staff = data.staff === null || data.staff === "" ? null : Number(data.staff);
 
     const updated = await prisma.trip.update({ where: { id }, data });
     try {
