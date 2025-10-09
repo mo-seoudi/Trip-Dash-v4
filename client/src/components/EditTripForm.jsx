@@ -1,4 +1,5 @@
 // client/src/components/EditTripForm.jsx
+// client/src/components/EditTripForm.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { updateTrip } from "../services/tripService";
 import { toast } from "react-toastify";
@@ -43,11 +44,11 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
   const dep = parseTime(trip.departureTime);
   const ret = parseTime(trip.returnTime);
 
-  // Form state (add origin + staff)
+  // Form state (origin + staff included)
   const [formData, setFormData] = useState({
     tripType: trip.tripType,
     customType: trip.customType || "",
-    origin: trip.origin || "School",            // ← NEW
+    origin: trip.origin || "School",
     destination: trip.destination || "",
     date: toDateInput(trip.date),
     departureHour: dep.hour,
@@ -58,7 +59,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     returnMinute: ret.minute,
     returnAmPm: ret.ampm,
     students: trip.students ?? "",
-    staff: (trip.staff ?? "") === null ? "" : trip.staff ?? "", // ← NEW (string for input)
+    staff: (trip.staff ?? "") === null ? "" : trip.staff ?? "",
     notes: trip.notes || "",
     boosterSeatsRequested: !!trip.boosterSeatsRequested,
     boosterSeatCount: trip.boosterSeatCount || "",
@@ -137,7 +138,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         tripType:
           formData.tripType === "Other" ? formData.customType : formData.tripType,
         customType: formData.customType,
-        origin: formData.origin || null,                      // ← NEW
+        origin: formData.origin || null,
         destination: formData.destination,
         date: formData.date,
         departureTime,
@@ -147,7 +148,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         staff:
           formData.staff === "" || formData.staff === null
             ? null
-            : Number(formData.staff),                         // ← NEW
+            : Number(formData.staff),
         notes: buildNotes(
           formData.notes,
           formData.boosterSeatsRequested,
@@ -160,7 +161,8 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
       };
 
       if (isRequestMode) {
-        await updateTrip(trip.id, { ...payload, status: "Pending", editRequest: true });
+        // IMPORTANT FIX: do NOT send editRequest (column doesn't exist)
+        await updateTrip(trip.id, { ...payload, status: "Pending" });
         toast.success("Edit request sent. Awaiting bus officer approval.");
       } else {
         await updateTrip(trip.id, payload);
@@ -481,3 +483,4 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
 };
 
 export default EditTripForm;
+
