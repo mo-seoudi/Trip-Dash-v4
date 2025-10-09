@@ -12,7 +12,7 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true,
 };
 
-// ✅ helper to decode your JWT (from cookie or Authorization)
+// Decode JWT from header/cookie (needs JWT_SECRET)
 function getDecodedUser(req) {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -30,11 +30,7 @@ function getDecodedUser(req) {
   }
 }
 
-/**
- * GET /api/trips?createdBy=Name
- * - If role === school_staff => show only trips they created
- * - Otherwise keep the existing behavior (optionally narrowed by createdBy search)
- */
+/** GET /api/trips */
 router.get("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
@@ -89,14 +85,14 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+/** POST /api/trips */
 router.post("/", async (req, res, next) => {
   try {
     const decoded = getDecodedUser(req);
 
     const {
       createdById, createdBy, createdByEmail,
-      origin,                    // ← NEW
-      tripType, destination, date, departureTime,
+      tripType, destination, origin, date, departureTime,
       returnDate, returnTime, students, staff, status, price,
       notes, cancelRequest, busInfo, driverInfo, buses, parentId,
     } = req.body;
@@ -105,10 +101,8 @@ router.post("/", async (req, res, next) => {
       createdById: createdById ?? (decoded?.id ? Number(decoded.id) : null),
       createdBy: createdBy ?? null,
       createdByEmail: createdByEmail ?? decoded?.email ?? null,
-
-      origin: typeof origin === "string" && origin.trim() !== "" ? origin.trim() : null, // ← NEW
-
       tripType: tripType ?? null,
+      origin: origin ?? null,                               // ← origin handled
       destination: destination ?? null,
       date: date ? new Date(date) : null,
       departureTime: departureTime ?? null,
@@ -142,30 +136,46 @@ router.post("/", async (req, res, next) => {
   }
 });
 
+/** PATCH /api/trips/:id */
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const data = { ...req.body };
 
-    if ("date" in data) data.date = data.date ? new Date(data.date) : null;
-    if ("returnDate" in data) data.returnDate = data.returnDate ? new Date(data.returnDate) : null;
+    // Only allow known fields (prevents Prisma "Unknown arg" 500s)
+    const allow = new Set([
+      "tripType","customType","origin","destination","date","departureTime",
+      "returnDate","returnTime","students","staff","status","price","notes",
+      "cancelRequest","busInfo","driverInfo","buses","parentId","createdBy",
+      "createdByEmail","createdById"
+    ]);
 
-    if ("staff" in data && typeof data.staff !== "number") {
-      data.staff = data.staff === null || data.staff === "" ? null : Number(data.staff);
+    const incoming = { ...req.body };
+    Object.keys(incoming).forEach((k) => { if (!allow.has(k)) delete incoming[k]; });
+
+    // Coercions
+    if ("date" in incoming) incoming.date = incoming.date ? new Date(incoming.date) : null;
+    if ("returnDate" in incoming) incoming.returnDate = incoming.returnDate ? new Date(incoming.returnDate) : null;
+
+    if ("students" in incoming && typeof incoming.students !== "number") {
+      incoming.students = incoming.students === "" || incoming.students === null
+        ? null
+        : Number(incoming.students);
+    }
+    if ("staff" in incoming && typeof incoming.staff !== "number") {
+      incoming.staff = incoming.staff === "" || incoming.staff === null
+        ? null
+        : Number(incoming.staff);
+    }
+    if ("price" in incoming && typeof incoming.price !== "number") {
+      incoming.price = incoming.price === "" || incoming.price === null
+        ? 0
+        : Number(incoming.price);
     }
 
-    if ("origin" in data) {
-      const v = typeof data.origin === "string" ? data.origin.trim() : data.origin;
-      data.origin = v === "" ? null : v;
-    }
-
-    const updated = await prisma.trip.update({ where: { id }, data });
+    const updated = await prisma.trip.update({ where: { id }, data: incoming });
 
     try {
-      const withRels = await prisma.trip.findUnique({
-        where: { id },
-        include: TRIP_REL_INCLUDE,
-      });
+      const withRels = await prisma.trip.findUnique({ where: { id }, include: TRIP_REL_INCLUDE });
       return res.json(withRels ?? updated);
     } catch {
       return res.json(updated);
@@ -175,6 +185,7 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
+/** DELETE /api/trips/:id */
 router.delete("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
