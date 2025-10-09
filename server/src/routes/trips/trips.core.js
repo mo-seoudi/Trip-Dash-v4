@@ -12,7 +12,7 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true,
 };
 
-// Decode JWT from header/cookie (needs JWT_SECRET)
+// helper to decode your JWT (from cookie or Authorization)
 function getDecodedUser(req) {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -101,22 +101,28 @@ router.post("/", async (req, res, next) => {
       createdById: createdById ?? (decoded?.id ? Number(decoded.id) : null),
       createdBy: createdBy ?? null,
       createdByEmail: createdByEmail ?? decoded?.email ?? null,
+
       tripType: tripType ?? null,
-      origin: origin ?? null,                               // ← origin handled
       destination: destination ?? null,
+      origin: origin ?? null,                                   // NEW
+
       date: date ? new Date(date) : null,
       departureTime: departureTime ?? null,
       returnDate: returnDate ? new Date(returnDate) : null,
       returnTime: returnTime ?? null,
+
       students: typeof students === "number" ? students : students ? Number(students) : null,
       staff: typeof staff === "number" ? staff : staff ? Number(staff) : null,
+
       status: status ?? "Pending",
       price: typeof price === "number" ? price : price ? Number(price) : 0,
       notes: notes ?? null,
       cancelRequest: !!cancelRequest,
+
       busInfo: busInfo ?? null,
       driverInfo: driverInfo ?? null,
       buses: buses ?? null,
+
       parentId: parentId ?? null,
     };
 
@@ -141,41 +147,66 @@ router.patch("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
 
-    // Only allow known fields (prevents Prisma "Unknown arg" 500s)
-    const allow = new Set([
-      "tripType","customType","origin","destination","date","departureTime",
-      "returnDate","returnTime","students","staff","status","price","notes",
-      "cancelRequest","busInfo","driverInfo","buses","parentId","createdBy",
-      "createdByEmail","createdById"
-    ]);
+    // ALLOWLIST ONLY FIELDS THAT EXIST IN THE Trip MODEL
+    const {
+      tripType,
+      destination,
+      origin,           // NEW
+      date,
+      departureTime,
+      returnDate,
+      returnTime,
+      students,
+      staff,
+      status,
+      price,
+      notes,
+      cancelRequest,
+      busInfo,
+      driverInfo,
+      buses,
+      parentId,
+      // Everything else (customType, boosterSeatsRequested, boosterSeatCount, editRequest, etc.)
+      // will be intentionally ignored to avoid Prisma "Unknown arg" errors.
+    } = req.body || {};
 
-    const incoming = { ...req.body };
-    Object.keys(incoming).forEach((k) => { if (!allow.has(k)) delete incoming[k]; });
+    const data = {
+      ...(tripType !== undefined && { tripType }),
+      ...(destination !== undefined && { destination }),
+      ...(origin !== undefined && { origin }),
+      ...(date !== undefined && { date: date ? new Date(date) : null }),
+      ...(departureTime !== undefined && { departureTime }),
+      ...(returnDate !== undefined && { returnDate: returnDate ? new Date(returnDate) : null }),
+      ...(returnTime !== undefined && { returnTime }),
+      ...(students !== undefined && {
+        students:
+          typeof students === "number" ? students :
+          students === "" || students === null ? null : Number(students),
+      }),
+      ...(staff !== undefined && {
+        staff:
+          typeof staff === "number" ? staff :
+          staff === "" || staff === null ? null : Number(staff),
+      }),
+      ...(status !== undefined && { status }),
+      ...(price !== undefined && {
+        price: typeof price === "number" ? price : price ? Number(price) : 0,
+      }),
+      ...(notes !== undefined && { notes }),
+      ...(cancelRequest !== undefined && { cancelRequest: !!cancelRequest }),
+      ...(busInfo !== undefined && { busInfo }),
+      ...(driverInfo !== undefined && { driverInfo }),
+      ...(buses !== undefined && { buses }),
+      ...(parentId !== undefined && { parentId }),
+    };
 
-    // Coercions
-    if ("date" in incoming) incoming.date = incoming.date ? new Date(incoming.date) : null;
-    if ("returnDate" in incoming) incoming.returnDate = incoming.returnDate ? new Date(incoming.returnDate) : null;
-
-    if ("students" in incoming && typeof incoming.students !== "number") {
-      incoming.students = incoming.students === "" || incoming.students === null
-        ? null
-        : Number(incoming.students);
-    }
-    if ("staff" in incoming && typeof incoming.staff !== "number") {
-      incoming.staff = incoming.staff === "" || incoming.staff === null
-        ? null
-        : Number(incoming.staff);
-    }
-    if ("price" in incoming && typeof incoming.price !== "number") {
-      incoming.price = incoming.price === "" || incoming.price === null
-        ? 0
-        : Number(incoming.price);
-    }
-
-    const updated = await prisma.trip.update({ where: { id }, data: incoming });
+    const updated = await prisma.trip.update({ where: { id }, data });
 
     try {
-      const withRels = await prisma.trip.findUnique({ where: { id }, include: TRIP_REL_INCLUDE });
+      const withRels = await prisma.trip.findUnique({
+        where: { id },
+        include: TRIP_REL_INCLUDE,
+      });
       return res.json(withRels ?? updated);
     } catch {
       return res.json(updated);
