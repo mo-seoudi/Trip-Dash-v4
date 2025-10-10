@@ -69,11 +69,6 @@ export default function Bookings() {
 
       {/* Header (single, de-duplicated) */}
       <header className="mb-2">
-        <div className="text-xs text-gray-500">
-          School Trips <span className="mx-1">/</span>
-          <span className="text-gray-700">Bus Bookings</span>
-        </div>
-
         <div className="mt-1 flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">Bus Bookings</h1>
           <button
