@@ -8,7 +8,7 @@ import {
   FiSettings,
   FiTable
 } from "react-icons/fi";
-import { LuBus } from "react-icons/lu";
+import { FaBus } from "react-icons/fa6";
 import { useAuth } from "../context/AuthContext";
 
 function Sidebar({ sidebarOpen, setSidebarOpen }) {
@@ -31,7 +31,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
 
     // Bus Bookings (school staff, trip managers, admins)
     ...(has("school_staff") || has("trip_manager") || has("admin")
-      ? [{ to: "/bookings", label: "Bus Bookings", icon: <LuBus size={18} /> }]
+      ? [{ to: "/bookings", label: "Bus Bookings", icon: <FaBus size={18} /> }]
       : []),
 
     // Finance (finance + admins)
