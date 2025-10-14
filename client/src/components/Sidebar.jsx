@@ -6,9 +6,9 @@ import {
   FiList,
   FiDollarSign,
   FiSettings,
-  FiTable,
-  FiTruck,
+  FiTable
 } from "react-icons/fi";
+import { LuBus } from "react-icons/lu";
 import { useAuth } from "../context/AuthContext";
 
 function Sidebar({ sidebarOpen, setSidebarOpen }) {
@@ -31,7 +31,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
 
     // Bus Bookings (school staff, trip managers, admins)
     ...(has("school_staff") || has("trip_manager") || has("admin")
-      ? [{ to: "/bookings", label: "Bus Bookings", icon: <FiTruck size={18} /> }]
+      ? [{ to: "/bookings", label: "Bus Bookings", icon: <LuBus size={18} /> }]
       : []),
 
     // Finance (finance + admins)
