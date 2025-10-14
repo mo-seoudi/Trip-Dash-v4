@@ -31,7 +31,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
 
     // Bus Bookings (school staff, trip managers, admins)
     ...(has("school_staff") || has("trip_manager") || has("admin")
-      ? [{ to: "/bookings", label: "Bus Bookings", icon: <FaBus size={18} /> }]
+      ? [{ to: "/bookings", label: "Extra Bookings", icon: <FaBus size={18} /> }]
       : []),
 
     // Finance (finance + admins)
