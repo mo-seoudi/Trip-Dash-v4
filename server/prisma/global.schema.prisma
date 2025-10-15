@@ -232,7 +232,7 @@ model DataConnection {
 
   tenant  Tenant        @relation(fields: [tenantId], references: [id])
   org     Organization  @relation("OrgDataConnections", fields: [orgId], references: [id])
-  trips   TripRegistry[]
+  trips   TripRegistry[] @relation("TripRegistryConn")
 
   @@unique([orgId, mode])
   @@index([tenantId])
