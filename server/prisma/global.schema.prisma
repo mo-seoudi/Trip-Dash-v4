@@ -9,7 +9,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//   Enums (your preferred names)
+/* =========================
+   Enums (your preferred names)
+   ========================= */
 enum OrgType {
   edu_group
   school
@@ -32,7 +34,10 @@ enum DataConnectionMode {
   BYODB
 }
 
-//   Tenants  (maps to existing table `tenants` with uuid id)
+/* =========================
+   Tenants
+   (maps to existing table `tenants` with uuid id)
+   ========================= */
 model Tenant {
   id           String   @id @default(uuid())  // keep UUID from existing DB
   name         String
@@ -53,7 +58,10 @@ model Tenant {
   @@map("tenants")
 }
 
-//   Organizations (parent/child)  (maps to `organizations`)
+/* =========================
+   Organizations (parent/child)
+   (maps to `organizations`)
+   ========================= */
 model Organization {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
@@ -98,7 +106,10 @@ model Organization {
   @@map("organizations")
 }
 
-//   Users directory (global/control-plane)  (maps to `global_users`)
+/* =========================
+   Users directory (global/control-plane)
+   (maps to `global_users`)
+   ========================= */
 model User {
   id             String   @id               // already exists as text UUID in your DB
   tenantId       String?  @map("tenant_id")
@@ -119,7 +130,10 @@ model User {
   @@map("global_users")
 }
 
-//   User ↔ Organization membership  (your preferred name)  -> maps to `user_roles`
+/* =========================
+   User ↔ Organization membership
+   (your preferred name)  -> maps to `user_roles`
+   ========================= */
 model UserOrgMembership {
   id        Int      @id @default(autoincrement())
   userId    String   @map("user_id")
@@ -140,7 +154,11 @@ model UserOrgMembership {
   @@map("user_roles")
 }
 
-//   Fine-grained user scopes:  user -> (org, role) scoped to a specific school  (your preferred naming) -> maps to `user_role_scopes`
+/* =========================
+   Fine-grained user scopes:
+   user -> (org, role) scoped to a specific school
+   (your preferred naming) -> maps to `user_role_scopes`
+   ========================= */
 model UserOrgScope {
   userId       String   @map("user_id")
   orgId        String   @map("org_id")         // the org that granted the role
@@ -158,7 +176,10 @@ model UserOrgScope {
   @@map("user_role_scopes")
 }
 
-//   Partnerships (School ↔ Bus Company)  (your preferred name/fields) -> maps to `partnerships`
+/* =========================
+   Partnerships (School ↔ Bus Company)
+   (your preferred name/fields) -> maps to `partnerships`
+   ========================= */
 model Partnership {
   id               String   @id @default(uuid())
   tenantId         String   @map("tenant_id")
@@ -185,7 +206,10 @@ model Partnership {
   @@map("partnerships")
 }
 
-//   Data connections (per org)  (maps to `data_connections`)
+/* =========================
+   Data connections (per org)
+   (maps to `data_connections`)
+   ========================= */
 model DataConnection {
   id               String   @id @default(uuid())
   tenantId         String   @map("tenant_id")
@@ -216,7 +240,10 @@ model DataConnection {
   @@map("data_connections")
 }
 
-//   Trip registry (control-plane index of trips)  (maps to `trip_registry`)
+/* =========================
+   Trip registry (control-plane index of trips)
+   (maps to `trip_registry`)
+   ========================= */
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenantId           String   @map("tenant_id")
