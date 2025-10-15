@@ -49,9 +49,9 @@ model Tenant {
   createdAt    DateTime @default(now())       @map("created_at")
   updatedAt    DateTime @default(now())       @db.Timestamptz(6) @map("updated_at")
 
-  organizations  Organization[]
-  users          User[]
-  partnerships   Partnership[]
+  organizations   Organization[]
+  users           User[]
+  partnerships    Partnership[]
   dataConnections DataConnection[]
   tripRegistry    TripRegistry[]
 
@@ -67,13 +67,13 @@ model Organization {
   tenantId     String   @map("tenant_id")
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
 
-  type         OrgType  @map("type") // stored as text in existing DB; Prisma will map enum <-> text
+  type         OrgType  @map("type")
   name         String
   slug         String   @unique
   code         String?
   parentOrgId  String?  @map("parent_org_id")
-  parent       Organization? @relation("OrgParent", fields: [parentOrgId], references: [id])
-  children     Organization[] @relation("OrgParent")
+  parent       Organization?   @relation("OrgParent", fields: [parentOrgId], references: [id])
+  children     Organization[]  @relation("OrgParent")
 
   email        String?
   phone        String?
@@ -82,21 +82,15 @@ model Organization {
   createdAt    DateTime @default(now())       @map("created_at")
   updatedAt    DateTime @default(now())       @db.Timestamptz(6) @map("updated_at")
 
-  // memberships & scopes
-  memberships  UserOrgMembership[]
-  // used by scopes (org end)
+  memberships        UserOrgMembership[]
   scopedRolesAsOrg    UserOrgScope[] @relation("ScopeOnOrg")
-  // used by scopes (school end)
   scopedRolesAsSchool UserOrgScope[] @relation("ScopeOnSchool")
 
-  // partnerships
   schoolPartnerships  Partnership[] @relation("SchoolRef")
   busPartnerships     Partnership[] @relation("BusRef")
 
-  // data connections
-  dataConnections DataConnection[] @relation("OrgDataConnections")
+  dataConnections     DataConnection[] @relation("OrgDataConnections")
 
-  // trip registry backrefs
   tripRegistryAsSchool  TripRegistry[] @relation("SchoolTrips")
   tripRegistryAsCompany TripRegistry[] @relation("CompanyTrips")
 
@@ -111,7 +105,7 @@ model Organization {
    (maps to `global_users`)
    ========================= */
 model User {
-  id             String   @id               // already exists as text UUID in your DB
+  id             String   @id
   tenantId       String?  @map("tenant_id")
   tenant         Tenant?  @relation(fields: [tenantId], references: [id])
 
@@ -123,8 +117,8 @@ model User {
   createdAt      DateTime @default(now())   @map("created_at")
   updatedAt      DateTime @default(now())   @db.Timestamptz(6) @map("updated_at")
 
-  memberships    UserOrgMembership[]        // new clean name (maps to user_roles)
-  roleScopes     UserOrgScope[]             // new clean name (maps to user_role_scopes)
+  memberships    UserOrgMembership[]
+  roleScopes     UserOrgScope[]
 
   @@index([tenantId])
   @@map("global_users")
@@ -138,33 +132,29 @@ model UserOrgMembership {
   id        Int      @id @default(autoincrement())
   userId    String   @map("user_id")
   orgId     String   @map("org_id")
-
-  // keep role flexible per org type; you can later switch to an enum if desired
   role      String
   status    MembershipStatus @default(pending)
-
   isDefault Boolean  @default(false)        @map("is_default")
   createdAt DateTime @default(now())        @map("created_at")
 
   user  User         @relation(fields: [userId], references: [id])
   org   Organization @relation(fields: [orgId], references: [id])
 
-  @@unique([userId, orgId, role])           // preserves your original uniqueness semantics
+  @@unique([userId, orgId, role])
   @@index([orgId])
   @@map("user_roles")
 }
 
 /* =========================
-   Fine-grained user scopes:
-   user -> (org, role) scoped to a specific school
-   (your preferred naming) -> maps to `user_role_scopes`
+   Fine-grained user scopes
+   (maps to `user_role_scopes`)
    ========================= */
 model UserOrgScope {
   userId       String   @map("user_id")
-  orgId        String   @map("org_id")         // the org that granted the role
-  role         String   // same string as membership role
-  schoolOrgId  String   @map("school_org_id")  // the school being scoped to
-  createdAt    DateTime @default(now())        @map("created_at")
+  orgId        String   @map("org_id")
+  role         String
+  schoolOrgId  String   @map("school_org_id")
+  createdAt    DateTime @default(now())      @map("created_at")
 
   user   User          @relation(fields: [userId], references: [id])
   org    Organization  @relation("ScopeOnOrg",    fields: [orgId],       references: [id])
@@ -178,7 +168,7 @@ model UserOrgScope {
 
 /* =========================
    Partnerships (School ↔ Bus Company)
-   (your preferred name/fields) -> maps to `partnerships`
+   (maps to `partnerships`)
    ========================= */
 model Partnership {
   id               String   @id @default(uuid())
@@ -186,13 +176,13 @@ model Partnership {
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
 
   schoolOrgId      String   @map("school_org_id")
-  school           Organization @relation("SchoolRef", fields: [schoolOrgId], references: [id])
+  school           Organization  @relation("SchoolRef", fields: [schoolOrgId], references: [id])
 
   busCompanyOrgId  String   @map("bus_company_org_id")
-  busCompany       Organization @relation("BusRef", fields: [busCompanyOrgId], references: [id])
+  busCompany       Organization  @relation("BusRef", fields: [busCompanyOrgId], references: [id])
 
   inHouse          Boolean  @default(false)
-  operatorUserId   String?  @map("operator_user_id") // optional: when a school's operator acts as “bus company”
+  operatorUserId   String?  @map("operator_user_id")
   status           PartnershipStatus @default(active)
   notes            String?
 
@@ -232,7 +222,7 @@ model DataConnection {
 
   tenant  Tenant        @relation(fields: [tenantId], references: [id])
   org     Organization  @relation("OrgDataConnections", fields: [orgId], references: [id])
-  trips   TripRegistry[] @relation("TripRegistryConn")
+  trips   TripRegistry[] @relation("TripRegistryConn")   // ← added relation name
 
   @@unique([orgId, mode])
   @@index([tenantId])
