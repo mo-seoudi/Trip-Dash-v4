@@ -9,9 +9,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* =========================
-   Enums (keep for app-level types/docs)
-   ========================= */
+//   Enums (keep for app-level types/docs)
 enum OrgType {
   edu_group
   school
@@ -34,9 +32,7 @@ enum DataConnectionMode {
   BYODB
 }
 
-/* =========================
-   Tenants  -> tenants
-   ========================= */
+//   Tenants  -> tenants
 model Tenant {
   id           String   @id @default(uuid())
   name         String
@@ -57,9 +53,7 @@ model Tenant {
   @@map("tenants")
 }
 
-/* =========================
-   Organizations -> organizations
-   ========================= */
+//   Organizations -> organizations
 model Organization {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
@@ -99,9 +93,7 @@ model Organization {
   @@map("organizations")
 }
 
-/* =========================
-   Users -> global_users
-   ========================= */
+//   Users -> global_users
 model User {
   id             String   @id
   tenantId       String?  @map("tenant_id")
@@ -122,9 +114,7 @@ model User {
   @@map("global_users")
 }
 
-/* =========================
-   User ↔ Organization membership -> user_roles
-   ========================= */
+//   User ↔ Organization membership -> user_roles
 model UserOrgMembership {
   id        Int      @id @default(autoincrement())
   userId    String   @map("user_id")
@@ -143,9 +133,7 @@ model UserOrgMembership {
   @@map("user_roles")
 }
 
-/* =========================
-   Fine-grained user scopes -> user_role_scopes
-   ========================= */
+//   Fine-grained user scopes -> user_role_scopes
 model UserOrgScope {
   userId       String   @map("user_id")
   orgId        String   @map("org_id")
@@ -163,9 +151,7 @@ model UserOrgScope {
   @@map("user_role_scopes")
 }
 
-/* =========================
-   Partnerships -> partnerships
-   ========================= */
+//   Partnerships -> partnerships
 model Partnership {
   id               String   @id @default(uuid())
   tenantId         String   @map("tenant_id")
@@ -192,9 +178,7 @@ model Partnership {
   @@map("partnerships")
 }
 
-/* =========================
-   Data connections -> data_connections
-   ========================= */
+//   Data connections -> data_connections
 model DataConnection {
   id               String   @id @default(uuid())
   tenantId         String   @map("tenant_id")
@@ -225,9 +209,7 @@ model DataConnection {
   @@map("data_connections")
 }
 
-/* =========================
-   Trip registry -> trip_registry
-   ========================= */
+//   Trip registry -> trip_registry
 model TripRegistry {
   id                 String   @id @default(uuid())
   tenantId           String   @map("tenant_id")
