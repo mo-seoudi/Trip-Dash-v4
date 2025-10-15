@@ -1,36 +1,44 @@
-// server/routes/globalRolesRoutes.js
-const express = require("express");
-const router = express.Router();
+// server/routes/globalRolesRoutes.js  (ESM)
+import express from "express";
 
-// ✅ Prefer your existing singleton Prisma client:
+// Try to reuse the singleton Prisma from globalDb if available.
+// Fall back to a new client generated from prisma/global.schema.prisma.
 let prisma;
 try {
-  ({ prisma } = require("../globalDb"));
-  if (!prisma) ({ prismaGlobal: prisma } = require("../globalDb"));
+  // accommodate either named or default export styles in globalDb.js
+  const db = await import("../globalDb.js");
+  prisma = db.prisma ?? db.default?.prisma ?? null;
 } catch {
-  const { PrismaClient } = require("../src/prisma-global");
+  prisma = null;
+}
+
+if (!prisma) {
+  // Generated client from prisma/global.schema.prisma
+  const { PrismaClient } = await import("../src/prisma-global/index.js");
   prisma = new PrismaClient();
 }
 
-// ---- Utilities -------------------------------------------------------------
-function bad(res, msg, code = 400) {
-  return res.status(code).json({ error: msg });
-}
-async function orgMustExist(id) {
-  return prisma.organization.findUnique({ where: { id: String(id) } });
-}
-async function userMustExist(id) {
-  return prisma.user.findUnique({ where: { id: String(id) } });
-}
+const router = express.Router();
 
-// ===========================================================================
+// ───────── utilities ─────────
+const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
+
+const orgMustExist = async (id) =>
+  prisma.organization.findUnique({ where: { id: String(id) } });
+
+const userMustExist = async (id) =>
+  prisma.user.findUnique({ where: { id: String(id) } });
+
+// ===================================================================
 // Memberships (UserOrgMembership)  -> maps to `user_roles`
-// ===========================================================================
+// ===================================================================
 
-// POST /api/global/roles/memberships  { userId, orgId, role, status?, isDefault? }
+// POST /api/global/roles/memberships
+// body: { userId, orgId, role, status?, isDefault? }
 router.post("/memberships", async (req, res) => {
   try {
-    const { userId, orgId, role, status = "pending", isDefault = false } = req.body || {};
+    const { userId, orgId, role, status = "pending", isDefault = false } =
+      req.body || {};
     if (!userId || !orgId || !role) return bad(res, "userId, orgId, role are required");
 
     const [user, org] = await Promise.all([userMustExist(userId), orgMustExist(orgId)]);
@@ -45,24 +53,18 @@ router.post("/memberships", async (req, res) => {
     }
 
     const created = await prisma.userOrgMembership.create({
-      data: {
-        userId: user.id,
-        orgId: org.id,
-        role,
-        status,
-        isDefault,
-      },
+      data: { userId: user.id, orgId: org.id, role, status, isDefault },
     });
     res.status(201).json(created);
   } catch (e) {
-    // Unique constraint (userId, orgId, role)
     if (e.code === "P2002") return bad(res, "Membership already exists for this role");
     console.error("POST membership error:", e);
     res.status(500).json({ error: "Failed to create membership" });
   }
 });
 
-// DELETE /api/global/roles/memberships  { userId, orgId, role }
+// DELETE /api/global/roles/memberships
+// body: { userId, orgId, role }
 router.delete("/memberships", async (req, res) => {
   try {
     const { userId, orgId, role } = req.body || {};
@@ -70,8 +72,11 @@ router.delete("/memberships", async (req, res) => {
 
     const deleted = await prisma.userOrgMembership.delete({
       where: {
-        // composite unique in schema: [userId, orgId, role]
-        userId_orgId_role: { userId: String(userId), orgId: String(orgId), role: String(role) },
+        userId_orgId_role: {
+          userId: String(userId),
+          orgId: String(orgId),
+          role: String(role),
+        },
       },
     });
     res.json(deleted);
@@ -87,10 +92,11 @@ router.patch("/memberships/:id", async (req, res) => {
     const { id } = req.params;
     const { status, isDefault } = req.body || {};
 
-    const existing = await prisma.userOrgMembership.findUnique({ where: { id: Number(id) } });
+    const existing = await prisma.userOrgMembership.findUnique({
+      where: { id: Number(id) },
+    });
     if (!existing) return bad(res, "Membership not found", 404);
 
-    // If toggling default true, clear others for this user
     if (isDefault === true) {
       await prisma.userOrgMembership.updateMany({
         where: { userId: existing.userId, isDefault: true, NOT: { id: existing.id } },
@@ -112,9 +118,9 @@ router.patch("/memberships/:id", async (req, res) => {
   }
 });
 
-// ===========================================================================
+// ===================================================================
 // Fine-grained scopes (UserOrgScope) -> maps to `user_role_scopes`
-// ===========================================================================
+// ===================================================================
 
 // POST /api/global/roles/scopes  { userId, orgId, role, schoolOrgId }
 router.post("/scopes", async (req, res) => {
@@ -133,7 +139,8 @@ router.post("/scopes", async (req, res) => {
 
     // Ensure the scoped school is a school and belongs to the same tenant
     if (school.type !== "school") return bad(res, "schoolOrgId must be type=school");
-    if (school.tenantId !== org.tenantId) return bad(res, "orgId and schoolOrgId must be under same tenant");
+    if (school.tenantId !== org.tenantId)
+      return bad(res, "orgId and schoolOrgId must be under same tenant");
 
     const created = await prisma.userOrgScope.create({
       data: {
@@ -176,4 +183,4 @@ router.delete("/scopes", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
