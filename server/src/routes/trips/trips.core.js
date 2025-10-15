@@ -95,6 +95,7 @@ router.post("/", async (req, res, next) => {
       tripType, destination, origin, date, departureTime,
       returnDate, returnTime, students, staff, status, price,
       notes, cancelRequest, busInfo, driverInfo, buses, parentId,
+      boosterSeatsRequested, boosterSeatCount,
     } = req.body;
 
     const data = {
@@ -124,6 +125,11 @@ router.post("/", async (req, res, next) => {
       buses: buses ?? null,
 
       parentId: parentId ?? null,
+
+      boosterSeatsRequested: !!boosterSeatsRequested,
+      boosterSeatCount: typeof boosterSeatCount === "number"
+        ? boosterSeatCount
+        : boosterSeatCount ? Number(boosterSeatCount) : 0,
     };
 
     const created = await prisma.trip.create({ data });
@@ -166,8 +172,8 @@ router.patch("/:id", async (req, res, next) => {
       driverInfo,
       buses,
       parentId,
-      // Everything else (customType, boosterSeatsRequested, boosterSeatCount, editRequest, etc.)
-      // will be intentionally ignored to avoid Prisma "Unknown arg" errors.
+      boosterSeatsRequested,
+      boosterSeatCount,
     } = req.body || {};
 
     const data = {
@@ -198,6 +204,12 @@ router.patch("/:id", async (req, res, next) => {
       ...(driverInfo !== undefined && { driverInfo }),
       ...(buses !== undefined && { buses }),
       ...(parentId !== undefined && { parentId }),
+      ...(boosterSeatsRequested !== undefined && { boosterSeatsRequested: !!boosterSeatsRequested }),
+      ...(boosterSeatCount !== undefined && {
+        boosterSeatCount: typeof boosterSeatCount === "number"
+          ? boosterSeatCount
+          : boosterSeatCount ? Number(boosterSeatCount) : 0
+      }),  
     };
 
     const updated = await prisma.trip.update({ where: { id }, data });
