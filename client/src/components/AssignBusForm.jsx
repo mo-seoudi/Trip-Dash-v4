@@ -6,7 +6,7 @@ import ModalWrapper from "./ModalWrapper";
 
 const AssignBusForm = ({ trip, onClose, onSubmit }) => {
   const [busType, setBusType] = useState("Internal Yellow Bus");
-  const [busSeats, setBusSeats] = useState(trip.students || "");
+  const [busSeats, setBusSeats] = useState((Number(trip?.students) || 0) + (Number(trip?.staff) || 0) || "");
   const [tripPrice, setTripPrice] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
@@ -19,12 +19,12 @@ const AssignBusForm = ({ trip, onClose, onSubmit }) => {
       setBuses(trip.buses);
     }
     // Initialize seats to requested students
-    setBusSeats(trip.students || "");
+    setBusSeats((Number(trip?.students) || 0) + (Number(trip?.staff) || 0) || "");
   }, [trip]);
 
   const resetForm = () => {
     setBusType("Internal Yellow Bus");
-    setBusSeats(trip.students || "");
+    setBusSeats((Number(trip?.students) || 0) + (Number(trip?.staff) || 0) || "");
     setTripPrice("");
     setDriverName("");
     setDriverPhone("");
