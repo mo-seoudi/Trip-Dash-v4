@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-import GlobalConsole from "./pages/Admin/GlobalConsole.jsx";
+import GlobalAdminPage from "./pages/Admin/GlobalAdminPage.jsx"
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -111,7 +111,7 @@ function AppRoutes() {
               path="/admin/global"
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
-                  <GlobalConsole />
+                  <GlobalAdminPage />
                 </ProtectedRoute>
               }
             />
