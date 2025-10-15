@@ -10,7 +10,7 @@ datasource db {
 }
 
 /* =========================
-   Enums (your preferred names)
+   Enums (keep for app-level types/docs)
    ========================= */
 enum OrgType {
   edu_group
@@ -35,54 +35,53 @@ enum DataConnectionMode {
 }
 
 /* =========================
-   Tenants
-   (maps to existing table `tenants` with uuid id)
+   Tenants  -> tenants
    ========================= */
 model Tenant {
-  id           String   @id @default(uuid())  // keep UUID from existing DB
+  id           String   @id @default(uuid())
   name         String
   slug         String   @unique
   status       String   @default("active")
   billingEmail String?  @map("billing_email")
   timezone     String?  @default("Asia/Dubai")
   plan         String?  @default("standard")
-  createdAt    DateTime @default(now())       @map("created_at")
-  updatedAt    DateTime @default(now())       @db.Timestamptz(6) @map("updated_at")
+  createdAt    DateTime @default(now())        @map("created_at")
+  updatedAt    DateTime @default(now())        @db.Timestamptz(6) @map("updated_at")
 
-  organizations   Organization[]
-  users           User[]
-  partnerships    Partnership[]
-  dataConnections DataConnection[]
-  tripRegistry    TripRegistry[]
+  organizations    Organization[]
+  users            User[]
+  partnerships     Partnership[]
+  dataConnections  DataConnection[]
+  tripRegistry     TripRegistry[]
 
   @@map("tenants")
 }
 
 /* =========================
-   Organizations (parent/child)
-   (maps to `organizations`)
+   Organizations -> organizations
    ========================= */
 model Organization {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
 
-  type         OrgType  @map("type")
+  // Stored as text in DB; keep Prisma field as String
+  type         String   @map("type")           // values: 'edu_group' | 'school' | 'bus_company'
   name         String
   slug         String   @unique
   code         String?
   parentOrgId  String?  @map("parent_org_id")
-  parent       Organization?   @relation("OrgParent", fields: [parentOrgId], references: [id])
-  children     Organization[]  @relation("OrgParent")
+  parent       Organization?  @relation("OrgParent", fields: [parentOrgId], references: [id])
+  children     Organization[] @relation("OrgParent")
 
   email        String?
   phone        String?
   timezone     String?  @default("Asia/Dubai")
 
-  createdAt    DateTime @default(now())       @map("created_at")
-  updatedAt    DateTime @default(now())       @db.Timestamptz(6) @map("updated_at")
+  createdAt    DateTime @default(now())        @map("created_at")
+  updatedAt    DateTime @default(now())        @db.Timestamptz(6) @map("updated_at")
 
-  memberships        UserOrgMembership[]
+  memberships         UserOrgMembership[]
   scopedRolesAsOrg    UserOrgScope[] @relation("ScopeOnOrg")
   scopedRolesAsSchool UserOrgScope[] @relation("ScopeOnSchool")
 
@@ -101,8 +100,7 @@ model Organization {
 }
 
 /* =========================
-   Users directory (global/control-plane)
-   (maps to `global_users`)
+   Users -> global_users
    ========================= */
 model User {
   id             String   @id
@@ -111,11 +109,11 @@ model User {
 
   email          String   @unique
   fullName       String?  @map("full_name")
-  isActive       Boolean  @default(true)    @map("is_active")
-  legacyUserId   Int?     @unique           @map("legacy_user_id")
+  isActive       Boolean  @default(true)       @map("is_active")
+  legacyUserId   Int?     @unique              @map("legacy_user_id")
 
-  createdAt      DateTime @default(now())   @map("created_at")
-  updatedAt      DateTime @default(now())   @db.Timestamptz(6) @map("updated_at")
+  createdAt      DateTime @default(now())      @map("created_at")
+  updatedAt      DateTime @default(now())      @db.Timestamptz(6) @map("updated_at")
 
   memberships    UserOrgMembership[]
   roleScopes     UserOrgScope[]
@@ -125,17 +123,17 @@ model User {
 }
 
 /* =========================
-   User ↔ Organization membership
-   (your preferred name)  -> maps to `user_roles`
+   User ↔ Organization membership -> user_roles
    ========================= */
 model UserOrgMembership {
   id        Int      @id @default(autoincrement())
   userId    String   @map("user_id")
   orgId     String   @map("org_id")
-  role      String
-  status    MembershipStatus @default(pending)
-  isDefault Boolean  @default(false)        @map("is_default")
-  createdAt DateTime @default(now())        @map("created_at")
+
+  role      String   // 'admin' | 'finance' | 'staff' | 'manager' | 'operator' | 'executive'
+  status    String   @default("pending")      // was enum; DB column is text
+  isDefault Boolean  @default(false)          @map("is_default")
+  createdAt DateTime @default(now())          @map("created_at")
 
   user  User         @relation(fields: [userId], references: [id])
   org   Organization @relation(fields: [orgId], references: [id])
@@ -146,15 +144,14 @@ model UserOrgMembership {
 }
 
 /* =========================
-   Fine-grained user scopes
-   (maps to `user_role_scopes`)
+   Fine-grained user scopes -> user_role_scopes
    ========================= */
 model UserOrgScope {
   userId       String   @map("user_id")
   orgId        String   @map("org_id")
-  role         String
+  role         String   // same string as membership role
   schoolOrgId  String   @map("school_org_id")
-  createdAt    DateTime @default(now())      @map("created_at")
+  createdAt    DateTime @default(now())       @map("created_at")
 
   user   User          @relation(fields: [userId], references: [id])
   org    Organization  @relation("ScopeOnOrg",    fields: [orgId],       references: [id])
@@ -167,8 +164,7 @@ model UserOrgScope {
 }
 
 /* =========================
-   Partnerships (School ↔ Bus Company)
-   (maps to `partnerships`)
+   Partnerships -> partnerships
    ========================= */
 model Partnership {
   id               String   @id @default(uuid())
@@ -183,11 +179,11 @@ model Partnership {
 
   inHouse          Boolean  @default(false)
   operatorUserId   String?  @map("operator_user_id")
-  status           PartnershipStatus @default(active)
+  status           String   @default("active")    // was enum; DB column is text
   notes            String?
 
-  createdAt        DateTime @default(now())         @map("created_at")
-  updatedAt        DateTime @default(now())         @db.Timestamptz(6) @map("updated_at")
+  createdAt        DateTime @default(now())       @map("created_at")
+  updatedAt        DateTime @default(now())       @db.Timestamptz(6) @map("updated_at")
 
   @@unique([tenantId, schoolOrgId, busCompanyOrgId])
   @@index([tenantId])
@@ -197,14 +193,13 @@ model Partnership {
 }
 
 /* =========================
-   Data connections (per org)
-   (maps to `data_connections`)
+   Data connections -> data_connections
    ========================= */
 model DataConnection {
   id               String   @id @default(uuid())
   tenantId         String   @map("tenant_id")
   orgId            String   @map("org_id")
-  mode             DataConnectionMode
+  mode             String                           // was enum; DB column is text
 
   dbHost           String?  @map("db_host")
   dbPort           Int?     @map("db_port")
@@ -215,14 +210,14 @@ model DataConnection {
   vaultSecretId    String?  @map("vault_secret_id")
 
   lastVerifiedAt   DateTime? @map("last_verified_at")
-  isActive         Boolean   @default(true) @map("is_active")
+  isActive         Boolean   @default(true)         @map("is_active")
 
   createdAt        DateTime  @default(now())        @map("created_at")
   updatedAt        DateTime  @default(now())        @db.Timestamptz(6) @map("updated_at")
 
   tenant  Tenant        @relation(fields: [tenantId], references: [id])
   org     Organization  @relation("OrgDataConnections", fields: [orgId], references: [id])
-  trips   TripRegistry[] @relation("TripRegistryConn")   // ← added relation name
+  trips   TripRegistry[] @relation("TripRegistryConn")
 
   @@unique([orgId, mode])
   @@index([tenantId])
@@ -231,8 +226,7 @@ model DataConnection {
 }
 
 /* =========================
-   Trip registry (control-plane index of trips)
-   (maps to `trip_registry`)
+   Trip registry -> trip_registry
    ========================= */
 model TripRegistry {
   id                 String   @id @default(uuid())
