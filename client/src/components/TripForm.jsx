@@ -260,6 +260,7 @@ const TripForm = ({ onSuccess, onClose }) => {
           placeholder="Number of Booster Seats"
           value={formData.boosterSeatCount}
           onChange={handleChange}
+          disabled={!formData.boosterSeatsRequested}
           onWheel={(e) => e.target.blur()}
           className="w-full p-2 border rounded"
         />
