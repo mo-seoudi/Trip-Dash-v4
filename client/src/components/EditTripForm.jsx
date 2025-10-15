@@ -59,7 +59,7 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     returnMinute: ret.minute,
     returnAmPm: ret.ampm,
     students: trip.students ?? "",
-    staff: (trip.staff ?? "") === null ? "" : trip.staff ?? "",
+    staff: trip.staff ?? "",
     notes: trip.notes || "",
     boosterSeatsRequested: !!trip.boosterSeatsRequested,
     boosterSeatCount: trip.boosterSeatCount || "",
@@ -104,10 +104,20 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    setFormData((prev) => {
+      // Booster toggle: clear count when unchecked
+      if (name === "boosterSeatsRequested") {
+        return {
+          ...prev,
+          boosterSeatsRequested: checked,
+          boosterSeatCount: checked ? (prev.boosterSeatCount || "") : "",
+        };
+      }
+      return {
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      };
+    });
   };
 
   const validateTimes = () => {
@@ -129,6 +139,15 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
     e.preventDefault();
     if (!validateTimes()) return;
 
+    // Booster validation: if requested, count must be > 0
+    if (formData.boosterSeatsRequested) {
+      const c = Number(formData.boosterSeatCount);
+      if (!Number.isFinite(c) || c <= 0) {
+        toast.error("Please enter a valid number of booster seats (> 0).");
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const departureTime = `${formData.departureHour}:${formData.departureMinute} ${formData.departureAmPm}`;
@@ -146,14 +165,10 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
         returnTime,
         students: Number(formData.students),
         staff:
-          formData.staff === "" || formData.staff === null
+          formData.staff === "" || formData.staff == null
             ? null
             : Number(formData.staff),
-        notes: buildNotes(
-          formData.notes,
-          formData.boosterSeatsRequested,
-          formData.boosterSeatCount
-        ),
+        notes: formData.notes, // boosters are first-class now
         boosterSeatsRequested: formData.boosterSeatsRequested,
         boosterSeatCount: formData.boosterSeatsRequested
           ? Number(formData.boosterSeatCount)
@@ -425,6 +440,8 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
               onChange={handleChange}
               onWheel={(e) => e.target.blur()}
               className="w-full p-2 border rounded"
+              min={1}
+              disabled={!formData.boosterSeatsRequested}
             />
           )}
 
@@ -483,4 +500,3 @@ const EditTripForm = ({ trip, onClose, onUpdated, isRequestMode }) => {
 };
 
 export default EditTripForm;
-
