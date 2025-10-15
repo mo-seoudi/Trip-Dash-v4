@@ -1,128 +1,159 @@
-// server/src/routes/globalRoutes.js
-import { Router } from "express";
-import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js";
+// server/routes/globalRoutes.js
+const express = require("express");
+const router = express.Router();
 
-const router = Router();
-const pg = new PrismaGlobal();
-
-// ---- helpers ----
-const ORG_TYPE_IN = {
-  school: "SCHOOL",
-  bus_company: "BUS_COMPANY",
-  parent_org: "PARENT_ORG",
-};
-const ORG_TYPE_OUT = {
-  SCHOOL: "school",
-  BUS_COMPANY: "bus_company",
-  PARENT_ORG: "parent_org",
-};
-
-function toOutOrg(o) {
-  return {
-    id: o.id,
-    tenant_id: o.tenant_id,
-    name: o.name,
-    type: ORG_TYPE_OUT[o.type] ?? o.type,
-    code: o.code,
-    parent_org_id: o.parent_org_id,
-    created_at: o.created_at,
-    updated_at: o.updated_at,
-    parent: o.parent
-      ? {
-          id: o.parent.id,
-          name: o.parent.name,
-          type: ORG_TYPE_OUT[o.parent.type] ?? o.parent.type,
-        }
-      : null,
-  };
+// ✅ Prefer your existing singleton Prisma client:
+let prisma;
+try {
+  // Option A: your helper that exports { prisma } or { prismaGlobal }
+  // Edit either line to match your export name:
+  ({ prisma } = require("../globalDb"));
+  if (!prisma) ({ prismaGlobal: prisma } = require("../globalDb"));
+} catch {
+  // Option B: fallback (not recommended if you already have a shared client)
+  const { PrismaClient } = require("../src/prisma-global");
+  prisma = new PrismaClient();
 }
 
-function bad(res, code, msg) {
-  return res.status(code).json({ message: msg });
+// ---- Utilities -------------------------------------------------------------
+function bad(res, msg, code = 400) {
+  return res.status(code).json({ error: msg });
 }
+async function tenantMustExist(tenantId) {
+  return prisma.tenant.findUnique({ where: { id: String(tenantId) } });
+}
+async function orgMustExist(id) {
+  return prisma.organization.findUnique({ where: { id: String(id) } });
+}
+async function userMustExist(id) {
+  return prisma.user.findUnique({ where: { id: String(id) } });
+}
+const ORG_TYPES = new Set(["edu_group", "school", "bus_company"]);
 
-// ---------- Tenants ----------
+// ===========================================================================
+// Tenants
+// ===========================================================================
 
 // GET /api/global/tenants
-router.get("/tenants", async (_req, res, next) => {
+router.get("/tenants", async (req, res) => {
   try {
-    const rows = await pg.tenants.findMany({ orderBy: { created_at: "desc" } });
+    const rows = await prisma.tenant.findMany({
+      orderBy: { createdAt: "desc" },
+    });
     res.json(rows);
   } catch (e) {
-    next(e);
+    console.error("GET tenants error:", e);
+    res.status(500).json({ error: "Failed to fetch tenants" });
   }
 });
 
-// POST /api/global/tenants  { name, slug }
+// POST /api/global/tenants
 router.post("/tenants", async (req, res) => {
   try {
-    const { name, slug } = req.body || {};
-    if (!name || !slug) return bad(res, 400, "name and slug are required");
-    const created = await pg.tenants.create({ data: { name, slug } });
+    const { name, slug, billingEmail, status = "active", plan = "standard", timezone = "Asia/Dubai" } = req.body || {};
+    if (!name || !slug) return bad(res, "name and slug are required");
+
+    const created = await prisma.tenant.create({
+      data: { name, slug, billingEmail, status, plan, timezone },
+    });
     res.status(201).json(created);
   } catch (e) {
-    console.error("create tenant error:", e);
-    return bad(res, 500, "Failed to create tenant");
+    console.error("POST tenant error:", e);
+    res.status(500).json({ error: "Failed to create tenant" });
   }
 });
 
-// ---------- Organizations ----------
+// PATCH /api/global/tenants/:id
+router.patch("/tenants/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const t = await tenantMustExist(id);
+    if (!t) return bad(res, "Tenant not found", 404);
+
+    const { name, slug, billingEmail, status, plan, timezone } = req.body || {};
+    const updated = await prisma.tenant.update({
+      where: { id: String(id) },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(slug !== undefined ? { slug } : {}),
+        ...(billingEmail !== undefined ? { billingEmail } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(plan !== undefined ? { plan } : {}),
+        ...(timezone !== undefined ? { timezone } : {}),
+        updatedAt: new Date(),
+      },
+    });
+    res.json(updated);
+  } catch (e) {
+    console.error("PATCH tenant error:", e);
+    res.status(500).json({ error: "Failed to update tenant" });
+  }
+});
+
+// ===========================================================================
+// Organizations
+// ===========================================================================
 
 // GET /api/global/orgs?tenant_id=...
 router.get("/orgs", async (req, res) => {
   try {
     const { tenant_id } = req.query;
-    if (!tenant_id) return bad(res, 400, "tenant_id is required");
+    if (!tenant_id) return bad(res, "tenant_id is required");
+    const tenant = await tenantMustExist(tenant_id);
+    if (!tenant) return bad(res, "Tenant not found", 404);
 
-    const orgs = await pg.organizations.findMany({
-      where: { tenant_id: String(tenant_id) },
-      include: { parent: true },
-      orderBy: { updated_at: "desc" },
+    const rows = await prisma.organization.findMany({
+      where: { tenantId: String(tenant_id) },
+      include: {
+        parent: { select: { id: true, name: true, type: true } },
+      },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
     });
-
-    res.json(orgs.map(toOutOrg));
+    res.json(rows);
   } catch (e) {
-    console.error("list orgs error:", e);
-    return bad(res, 500, "Failed to list organizations");
+    console.error("GET orgs error:", e);
+    res.status(500).json({ error: "Failed to fetch organizations" });
   }
 });
 
 // POST /api/global/orgs
-// { tenant_id, name, type: 'school'|'bus_company'|'parent_org', code?, parent_org_id? }
 router.post("/orgs", async (req, res) => {
   try {
-    const { tenant_id, name, type, code, parent_org_id } = req.body || {};
-    if (!tenant_id) return bad(res, 400, "tenant_id is required");
-    if (!name) return bad(res, 400, "name is required");
-    if (!type || !ORG_TYPE_IN[type]) return bad(res, 400, "invalid type");
+    const { tenant_id, type, name, slug, code, parent_org_id, email, phone, timezone = "Asia/Dubai" } = req.body || {};
+    if (!tenant_id || !type || !name) return bad(res, "tenant_id, type, name are required");
+    if (!ORG_TYPES.has(type)) return bad(res, "type must be one of edu_group | school | bus_company");
 
+    const tenant = await tenantMustExist(tenant_id);
+    if (!tenant) return bad(res, "Tenant not found", 404);
+
+    // Validate parent (only allowed when creating a school)
+    let parentIdToUse = null;
     if (parent_org_id) {
-      const parent = await pg.organizations.findFirst({
-        where: { id: String(parent_org_id), tenant_id: String(tenant_id) },
-        select: { id: true },
-      });
-      if (!parent) return bad(res, 400, "parent_org_id not found in tenant");
+      const parent = await orgMustExist(parent_org_id);
+      if (!parent || parent.tenantId !== tenant.id) return bad(res, "Invalid parent_org_id");
+      if (type !== "school") return bad(res, "parent_org_id is only valid for type=school");
+      if (parent.type !== "edu_group") return bad(res, "Parent must be of type edu_group");
+      parentIdToUse = parent.id;
     }
 
-    const created = await pg.organizations.create({
+    const created = await prisma.organization.create({
       data: {
-        tenant_id: String(tenant_id),
+        tenantId: tenant.id,
+        type,
         name,
-        type: ORG_TYPE_IN[type],
-        code: code || null,
-        parent_org_id: parent_org_id || null,
+        slug: slug || undefined,
+        code: code || undefined,
+        parentOrgId: parentIdToUse,
+        email: email || undefined,
+        phone: phone || undefined,
+        timezone,
       },
     });
 
-    const fresh = await pg.organizations.findUnique({
-      where: { id: created.id },
-      include: { parent: true },
-    });
-
-    res.status(201).json(toOutOrg(fresh));
+    res.status(201).json(created);
   } catch (e) {
-    console.error("create org error:", e);
-    return bad(res, 500, "Failed to create organization");
+    console.error("POST org error:", e);
+    res.status(500).json({ error: "Failed to create organization" });
   }
 });
 
@@ -130,93 +161,125 @@ router.post("/orgs", async (req, res) => {
 router.patch("/orgs/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const patch = { ...req.body };
+    const org = await orgMustExist(id);
+    if (!org) return bad(res, "Organization not found", 404);
 
-    if (patch.type) {
-      if (!ORG_TYPE_IN[patch.type]) return bad(res, 400, "invalid type");
-      patch.type = ORG_TYPE_IN[patch.type];
+    const {
+      name, slug, code, email, phone, timezone, parent_org_id,
+    } = req.body || {};
+
+    // if parent change is requested, validate (school -> parent edu_group)
+    let parentUpdate = {};
+    if (parent_org_id !== undefined) {
+      if (!parent_org_id) {
+        parentUpdate = { parentOrgId: null };
+      } else {
+        const parent = await orgMustExist(parent_org_id);
+        if (!parent || parent.tenantId !== org.tenantId) return bad(res, "Invalid parent_org_id");
+        if (org.type !== "school") return bad(res, "Only schools can have a parent");
+        if (parent.type !== "edu_group") return bad(res, "Parent must be of type edu_group");
+        parentUpdate = { parentOrgId: parent.id };
+      }
     }
-    if (patch.code === "") patch.code = null;
-    if (patch.parent_org_id === "") patch.parent_org_id = null;
 
-    await pg.organizations.update({
+    const updated = await prisma.organization.update({
       where: { id: String(id) },
-      data: patch,
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(slug !== undefined ? { slug } : {}),
+        ...(code !== undefined ? { code } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(timezone !== undefined ? { timezone } : {}),
+        ...parentUpdate,
+        updatedAt: new Date(),
+      },
+      include: { parent: { select: { id: true, name: true, type: true } } },
     });
 
-    const fresh = await pg.organizations.findUnique({
-      where: { id: String(id) },
-      include: { parent: true },
-    });
-
-    res.json(toOutOrg(fresh));
+    res.json(updated);
   } catch (e) {
-    console.error("update org error:", e);
-    return bad(res, 500, "Failed to update organization");
+    console.error("PATCH org error:", e);
+    res.status(500).json({ error: "Failed to update organization" });
   }
 });
 
-// ---------- Partnerships ----------
+// ===========================================================================
+// Partnerships (School ↔ Bus Company)
+// ===========================================================================
 
 // GET /api/global/partnerships?tenant_id=...
 router.get("/partnerships", async (req, res) => {
   try {
     const { tenant_id } = req.query;
-    if (!tenant_id) return bad(res, 400, "tenant_id is required");
+    if (!tenant_id) return bad(res, "tenant_id is required");
+    const tenant = await tenantMustExist(tenant_id);
+    if (!tenant) return bad(res, "Tenant not found", 404);
 
-    const rows = await pg.partnerships.findMany({
-      where: { tenant_id: String(tenant_id), is_active: true },
-      include: { school_org: true, bus_company: true },
-      orderBy: { created_at: "desc" },
+    const rows = await prisma.partnership.findMany({
+      where: { tenantId: tenant.id },
+      include: {
+        school: { select: { id: true, name: true } },
+        busCompany: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
-
-    res.json(
-      rows.map((p) => ({
-        id: p.id,
-        tenant_id: p.tenant_id,
-        school_org_id: p.school_org_id,
-        bus_company_org_id: p.bus_company_id,
-        created_at: p.created_at,
-        school_org: p.school_org ? { id: p.school_org.id, name: p.school_org.name } : null,
-        bus_company: p.bus_company ? { id: p.bus_company.id, name: p.bus_company.name } : null,
-      }))
-    );
+    res.json(rows);
   } catch (e) {
-    console.error("list partnerships error:", e);
-    return bad(res, 500, "Failed to list partnerships");
+    console.error("GET partnerships error:", e);
+    res.status(500).json({ error: "Failed to fetch partnerships" });
   }
 });
 
 // POST /api/global/partnerships
-// { tenant_id, school_org_id, bus_company_org_id }
 router.post("/partnerships", async (req, res) => {
   try {
-    const { tenant_id, school_org_id, bus_company_org_id } = req.body || {};
-    if (!tenant_id || !school_org_id || !bus_company_org_id)
-      return bad(res, 400, "tenant_id, school_org_id, bus_company_org_id required");
+    const { tenant_id, school_org_id, bus_company_org_id, inHouse = false, status = "active", notes, operator_user_id } = req.body || {};
+    if (!tenant_id || !school_org_id || !bus_company_org_id) {
+      return bad(res, "tenant_id, school_org_id, bus_company_org_id are required");
+    }
 
-    const created = await pg.partnerships.create({
+    const tenant = await tenantMustExist(tenant_id);
+    if (!tenant) return bad(res, "Tenant not found", 404);
+
+    const school = await orgMustExist(school_org_id);
+    const company = await orgMustExist(bus_company_org_id);
+    if (!school || !company) return bad(res, "Invalid school_org_id or bus_company_org_id");
+    if (school.tenantId !== tenant.id || company.tenantId !== tenant.id) {
+      return bad(res, "Organizations must belong to the same tenant");
+    }
+    if (school.type !== "school") return bad(res, "school_org_id must be type=school");
+    if (!inHouse && company.type !== "bus_company") {
+      return bad(res, "bus_company_org_id must be type=bus_company unless inHouse=true");
+    }
+    if (inHouse && school.id !== company.id) {
+      return bad(res, "inHouse=true requires bus_company_org_id === school_org_id");
+    }
+
+    // optional operator user validation (if provided)
+    let operatorLink = {};
+    if (operator_user_id) {
+      const user = await userMustExist(operator_user_id);
+      if (!user) return bad(res, "operator_user_id not found");
+      operatorLink = { operatorUserId: user.id };
+    }
+
+    const created = await prisma.partnership.create({
       data: {
-        tenant_id: String(tenant_id),
-        school_org_id: String(school_org_id),
-        bus_company_id: String(bus_company_org_id),
-        is_active: true,
+        tenantId: tenant.id,
+        schoolOrgId: school.id,
+        busCompanyOrgId: company.id,
+        inHouse,
+        status,
+        notes: notes || undefined,
+        ...operatorLink,
       },
-      include: { school_org: true, bus_company: true },
     });
 
-    res.status(201).json({
-      id: created.id,
-      tenant_id: created.tenant_id,
-      school_org_id: created.school_org_id,
-      bus_company_org_id: created.bus_company_id,
-      created_at: created.created_at,
-      school_org: created.school_org ? { id: created.school_org.id, name: created.school_org.name } : null,
-      bus_company: created.bus_company ? { id: created.bus_company.id, name: created.bus_company.name } : null,
-    });
+    res.status(201).json(created);
   } catch (e) {
-    console.error("create partnership error:", e);
-    return bad(res, 500, "Failed to create partnership");
+    console.error("POST partnership error:", e);
+    res.status(500).json({ error: "Failed to create partnership" });
   }
 });
 
@@ -224,164 +287,72 @@ router.post("/partnerships", async (req, res) => {
 router.delete("/partnerships/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    await pg.partnerships.delete({ where: { id: String(id) } });
-    res.json({ ok: true });
+    // will throw if not found—wrap in try
+    const deleted = await prisma.partnership.delete({ where: { id: String(id) } });
+    res.json(deleted);
   } catch (e) {
-    console.error("delete partnership error:", e);
-    return bad(res, 500, "Failed to delete partnership");
+    console.error("DELETE partnership error:", e);
+    res.status(500).json({ error: "Failed to delete partnership" });
   }
 });
 
-// ---------- Users / Roles / Scopes ----------
+// ===========================================================================
+// Users (directory + quick grants peek)
+// ===========================================================================
 
 // GET /api/global/users?q=...
-router.get("/users", async (req, res, next) => {
+router.get("/users", async (req, res) => {
   try {
-    const { q = "" } = req.query;
-    const rows = await pg.users.findMany({
-      where: q
-        ? {
-            OR: [
-              { email: { contains: String(q), mode: "insensitive" } },
-              { full_name: { contains: String(q), mode: "insensitive" } },
-            ],
-          }
-        : undefined,
-      take: 25,
-      orderBy: { created_at: "desc" },
+    const q = String(req.query.q || "").trim();
+    const where = q
+      ? {
+          OR: [
+            { email: { contains: q, mode: "insensitive" } },
+            { fullName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {};
+    const rows = await prisma.user.findMany({
+      where,
+      include: {
+        memberships: {
+          include: { org: { select: { id: true, name: true, type: true, tenantId: true } } },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 100,
     });
     res.json(rows);
   } catch (e) {
-    next(e);
+    console.error("GET users error:", e);
+    res.status(500).json({ error: "Failed to search users" });
   }
 });
 
 // GET /api/global/users/:id/grants
-router.get("/users/:id/grants", async (req, res, next) => {
+router.get("/users/:id/grants", async (req, res) => {
   try {
     const { id } = req.params;
-
-    const [roles, scopes] = await Promise.all([
-      pg.userRoles.findMany({
-        where: { user_id: String(id) },
-        include: { organizations: true },
-        orderBy: { created_at: "desc" },
-      }),
-      pg.userRoleScopes.findMany({
-        where: { user_id: String(id) },
-        include: { org: true },
-        orderBy: { created_at: "desc" },
-      }),
-    ]);
-
-    res.json({
-      roles: roles.map((r) => ({
-        user_id: r.user_id,
-        org_id: r.org_id,
-        role: r.role,
-        is_default: r.is_default,
-        created_at: r.created_at,
-        org: r.organizations ? { id: r.organizations.id, name: r.organizations.name } : null,
-      })),
-      scopes: scopes.map((s) => ({
-        user_id: s.user_id,
-        org_id: s.org_id,
-        role: s.role,
-        school_org_id: s.school_org_id,
-        created_at: s.created_at,
-        org: s.org ? { id: s.org.id, name: s.org.name } : null,
-      })),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// POST /api/global/users/:id/roles   { org_id, role, is_default? }
-router.post("/users/:id/roles", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { org_id, role, is_default = false } = req.body || {};
-    if (!org_id || !role) return bad(res, 400, "org_id and role are required");
-
-    if (is_default) {
-      await pg.userRoles.updateMany({
-        where: { user_id: String(id), org_id: String(org_id) },
-        data: { is_default: false },
-      });
-    }
-
-    const created = await pg.userRoles.create({
-      data: { user_id: String(id), org_id: String(org_id), role, is_default: Boolean(is_default) },
-    });
-    res.status(201).json(created);
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE /api/global/users/:id/roles  body: { org_id, role }
-router.delete("/users/:id/roles", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { org_id, role } = req.body || {};
-    if (!org_id || !role) return bad(res, 400, "org_id and role are required");
-
-    await pg.userRoles.delete({
-      where: { user_id_org_id_role: { user_id: String(id), org_id: String(org_id), role } },
-    });
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// POST /api/global/users/:id/scopes   { org_id, role, school_org_id }
-router.post("/users/:id/scopes", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { org_id, role, school_org_id } = req.body || {};
-    if (!org_id || !role || !school_org_id)
-      return bad(res, 400, "org_id, role, school_org_id required");
-
-    const created = await pg.userRoleScopes.create({
-      data: {
-        user_id: String(id),
-        org_id: String(org_id),
-        role,
-        school_org_id: String(school_org_id),
-      },
-    });
-    res.status(201).json(created);
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE /api/global/users/:id/scopes  body: { org_id, role, school_org_id }
-router.delete("/users/:id/scopes", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { org_id, role, school_org_id } = req.body || {};
-    if (!org_id || !role || !school_org_id)
-      return bad(res, 400, "org_id, role, school_org_id required");
-
-    await pg.userRoleScopes.delete({
-      where: {
-        user_id_org_id_role_school_org_id: {
-          user_id: String(id),
-          org_id: String(org_id),
-          role,
-          school_org_id: String(school_org_id),
+    const user = await prisma.user.findUnique({
+      where: { id: String(id) },
+      include: {
+        memberships: {
+          include: { org: { select: { id: true, name: true, type: true, tenantId: true } } },
+        },
+        roleScopes: {
+          include: {
+            org: { select: { id: true, name: true, type: true, tenantId: true } },
+            school: { select: { id: true, name: true, type: true, tenantId: true } },
+          },
         },
       },
     });
-    res.json({ ok: true });
+    if (!user) return bad(res, "User not found", 404);
+    res.json(user);
   } catch (e) {
-    next(e);
+    console.error("GET user grants error:", e);
+    res.status(500).json({ error: "Failed to fetch user grants" });
   }
 });
 
-export default router;
-
-
+module.exports = router;
