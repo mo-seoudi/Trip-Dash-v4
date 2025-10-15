@@ -1,45 +1,42 @@
 // server/routes/globalRoutes.js
-const express = require("express");
-const router = express.Router();
+import express from "express";
 
-// ✅ Prefer your existing singleton Prisma client:
+// Try to reuse the singleton Prisma from globalDb.js; fall back to generated client.
 let prisma;
 try {
-  // Option A: your helper that exports { prisma } or { prismaGlobal }
-  // Edit either line to match your export name:
-  ({ prisma } = require("../globalDb"));
-  if (!prisma) ({ prismaGlobal: prisma } = require("../globalDb"));
+  const db = await import("../globalDb.js");
+  prisma = db.prisma ?? db.default?.prisma ?? null;
 } catch {
-  // Option B: fallback (not recommended if you already have a shared client)
-  const { PrismaClient } = require("../src/prisma-global");
+  prisma = null;
+}
+if (!prisma) {
+  const { PrismaClient } = await import("../src/prisma-global/index.js");
   prisma = new PrismaClient();
 }
 
-// ---- Utilities -------------------------------------------------------------
-function bad(res, msg, code = 400) {
-  return res.status(code).json({ error: msg });
-}
-async function tenantMustExist(tenantId) {
-  return prisma.tenant.findUnique({ where: { id: String(tenantId) } });
-}
-async function orgMustExist(id) {
-  return prisma.organization.findUnique({ where: { id: String(id) } });
-}
-async function userMustExist(id) {
-  return prisma.user.findUnique({ where: { id: String(id) } });
-}
+const router = express.Router();
+
+// ----------------- utils -----------------
+const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
+
+const tenantMustExist = (tenantId) =>
+  prisma.tenant.findUnique({ where: { id: String(tenantId) } });
+
+const orgMustExist = (id) =>
+  prisma.organization.findUnique({ where: { id: String(id) } });
+
+const userMustExist = (id) =>
+  prisma.user.findUnique({ where: { id: String(id) } });
+
 const ORG_TYPES = new Set(["edu_group", "school", "bus_company"]);
 
-// ===========================================================================
+// ===================================================================
 // Tenants
-// ===========================================================================
+// ===================================================================
 
-// GET /api/global/tenants
-router.get("/tenants", async (req, res) => {
+router.get("/tenants", async (_req, res) => {
   try {
-    const rows = await prisma.tenant.findMany({
-      orderBy: { createdAt: "desc" },
-    });
+    const rows = await prisma.tenant.findMany({ orderBy: { createdAt: "desc" } });
     res.json(rows);
   } catch (e) {
     console.error("GET tenants error:", e);
@@ -47,10 +44,16 @@ router.get("/tenants", async (req, res) => {
   }
 });
 
-// POST /api/global/tenants
 router.post("/tenants", async (req, res) => {
   try {
-    const { name, slug, billingEmail, status = "active", plan = "standard", timezone = "Asia/Dubai" } = req.body || {};
+    const {
+      name,
+      slug,
+      billingEmail,
+      status = "active",
+      plan = "standard",
+      timezone = "Asia/Dubai",
+    } = req.body || {};
     if (!name || !slug) return bad(res, "name and slug are required");
 
     const created = await prisma.tenant.create({
@@ -63,7 +66,6 @@ router.post("/tenants", async (req, res) => {
   }
 });
 
-// PATCH /api/global/tenants/:id
 router.patch("/tenants/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -90,11 +92,10 @@ router.patch("/tenants/:id", async (req, res) => {
   }
 });
 
-// ===========================================================================
+// ===================================================================
 // Organizations
-// ===========================================================================
+// ===================================================================
 
-// GET /api/global/orgs?tenant_id=...
 router.get("/orgs", async (req, res) => {
   try {
     const { tenant_id } = req.query;
@@ -104,9 +105,7 @@ router.get("/orgs", async (req, res) => {
 
     const rows = await prisma.organization.findMany({
       where: { tenantId: String(tenant_id) },
-      include: {
-        parent: { select: { id: true, name: true, type: true } },
-      },
+      include: { parent: { select: { id: true, name: true, type: true } } },
       orderBy: [{ type: "asc" }, { name: "asc" }],
     });
     res.json(rows);
@@ -116,17 +115,27 @@ router.get("/orgs", async (req, res) => {
   }
 });
 
-// POST /api/global/orgs
 router.post("/orgs", async (req, res) => {
   try {
-    const { tenant_id, type, name, slug, code, parent_org_id, email, phone, timezone = "Asia/Dubai" } = req.body || {};
-    if (!tenant_id || !type || !name) return bad(res, "tenant_id, type, name are required");
-    if (!ORG_TYPES.has(type)) return bad(res, "type must be one of edu_group | school | bus_company");
+    const {
+      tenant_id,
+      type,
+      name,
+      slug,
+      code,
+      parent_org_id,
+      email,
+      phone,
+      timezone = "Asia/Dubai",
+    } = req.body || {};
+    if (!tenant_id || !type || !name)
+      return bad(res, "tenant_id, type, name are required");
+    if (!ORG_TYPES.has(type))
+      return bad(res, "type must be one of edu_group | school | bus_company");
 
     const tenant = await tenantMustExist(tenant_id);
     if (!tenant) return bad(res, "Tenant not found", 404);
 
-    // Validate parent (only allowed when creating a school)
     let parentIdToUse = null;
     if (parent_org_id) {
       const parent = await orgMustExist(parent_org_id);
@@ -149,7 +158,6 @@ router.post("/orgs", async (req, res) => {
         timezone,
       },
     });
-
     res.status(201).json(created);
   } catch (e) {
     console.error("POST org error:", e);
@@ -157,18 +165,13 @@ router.post("/orgs", async (req, res) => {
   }
 });
 
-// PATCH /api/global/orgs/:id
 router.patch("/orgs/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const org = await orgMustExist(id);
     if (!org) return bad(res, "Organization not found", 404);
 
-    const {
-      name, slug, code, email, phone, timezone, parent_org_id,
-    } = req.body || {};
-
-    // if parent change is requested, validate (school -> parent edu_group)
+    const { name, slug, code, email, phone, timezone, parent_org_id } = req.body || {};
     let parentUpdate = {};
     if (parent_org_id !== undefined) {
       if (!parent_org_id) {
@@ -196,7 +199,6 @@ router.patch("/orgs/:id", async (req, res) => {
       },
       include: { parent: { select: { id: true, name: true, type: true } } },
     });
-
     res.json(updated);
   } catch (e) {
     console.error("PATCH org error:", e);
@@ -204,11 +206,10 @@ router.patch("/orgs/:id", async (req, res) => {
   }
 });
 
-// ===========================================================================
-// Partnerships (School ↔ Bus Company)
-// ===========================================================================
+// ===================================================================
+// Partnerships
+// ===================================================================
 
-// GET /api/global/partnerships?tenant_id=...
 router.get("/partnerships", async (req, res) => {
   try {
     const { tenant_id } = req.query;
@@ -231,10 +232,18 @@ router.get("/partnerships", async (req, res) => {
   }
 });
 
-// POST /api/global/partnerships
 router.post("/partnerships", async (req, res) => {
   try {
-    const { tenant_id, school_org_id, bus_company_org_id, inHouse = false, status = "active", notes, operator_user_id } = req.body || {};
+    const {
+      tenant_id,
+      school_org_id,
+      bus_company_org_id,
+      inHouse = false,
+      status = "active",
+      notes,
+      operator_user_id,
+    } = req.body || {};
+
     if (!tenant_id || !school_org_id || !bus_company_org_id) {
       return bad(res, "tenant_id, school_org_id, bus_company_org_id are required");
     }
@@ -256,7 +265,6 @@ router.post("/partnerships", async (req, res) => {
       return bad(res, "inHouse=true requires bus_company_org_id === school_org_id");
     }
 
-    // optional operator user validation (if provided)
     let operatorLink = {};
     if (operator_user_id) {
       const user = await userMustExist(operator_user_id);
@@ -275,7 +283,6 @@ router.post("/partnerships", async (req, res) => {
         ...operatorLink,
       },
     });
-
     res.status(201).json(created);
   } catch (e) {
     console.error("POST partnership error:", e);
@@ -283,11 +290,9 @@ router.post("/partnerships", async (req, res) => {
   }
 });
 
-// DELETE /api/global/partnerships/:id
 router.delete("/partnerships/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    // will throw if not found—wrap in try
     const deleted = await prisma.partnership.delete({ where: { id: String(id) } });
     res.json(deleted);
   } catch (e) {
@@ -296,11 +301,10 @@ router.delete("/partnerships/:id", async (req, res) => {
   }
 });
 
-// ===========================================================================
+// ===================================================================
 // Users (directory + quick grants peek)
-// ===========================================================================
+// ===================================================================
 
-// GET /api/global/users?q=...
 router.get("/users", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
@@ -329,7 +333,6 @@ router.get("/users", async (req, res) => {
   }
 });
 
-// GET /api/global/users/:id/grants
 router.get("/users/:id/grants", async (req, res) => {
   try {
     const { id } = req.params;
@@ -355,4 +358,4 @@ router.get("/users/:id/grants", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
