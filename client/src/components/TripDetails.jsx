@@ -189,17 +189,9 @@ function TripDetails({ trip }) {
     Number.isFinite(totalPassengers) && totalPassengers > 0 ? totalPassengers : "—";
 
   // Booster: show only if requested and > 0
-  const boosterRequested = !!(
-    currentTrip.boosterSeatsRequested ||
-    currentTrip.boosterSeatRequested ||
-    currentTrip.requestBoosterSeats
-  );
-  const boosterCount = Number(
-    currentTrip.boosterSeatCount ??
-      currentTrip.boosterSeatsCount ??
-      currentTrip.boosterCount ??
-      0
-  );
+
+  const boosterRequested = !!currentTrip.boosterSeatsRequested;
+  const boosterCount = Number(currentTrip.boosterSeatCount || 0);
   const showBoosterRow = boosterRequested && boosterCount > 0;
 
   // Origin/Destination tolerant
