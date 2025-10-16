@@ -1,6 +1,6 @@
 // server/src/routes/globalRolesRoutes.js
 import express from "express";
-import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js"; // <-- fixed path
+import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js";
 
 const prisma = new PrismaGlobal();
 const router = express.Router();
@@ -167,3 +167,4 @@ router.delete("/scopes", async (req, res) => {
 });
 
 export default router;
+
