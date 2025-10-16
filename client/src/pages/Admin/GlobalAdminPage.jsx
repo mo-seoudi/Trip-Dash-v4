@@ -1,69 +1,22 @@
+// client/src/pages/Admin/GlobalAdminPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
+import api from "@/services/apiClient"; 
 
-/** ---------- helpers ---------- */
-// Add a base URL so requests hit the API server (not the Vercel static site)
-const API_BASE = import.meta.env.VITE_API_BASE || "";
-const withBase = (url) => (/^https?:\/\//.test(url) ? url : `${API_BASE}${url}`);
-
-async function fetchJSON(url, init = {}) {
-  const res = await fetch(withBase(url), {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${text}`);
-  }
-  return res.json();
-}
-
-const api = {
-  tenants: {
-    list: () => fetchJSON("/api/global/tenants"),
-    create: (p) =>
-      fetchJSON("/api/global/tenants", { method: "POST", body: JSON.stringify(p) }),
-    update: (id, p) =>
-      fetchJSON(`/api/global/tenants/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
-  },
-  orgs: {
-    list: (tenant_id) =>
-      fetchJSON(`/api/global/orgs?tenant_id=${encodeURIComponent(tenant_id)}`),
-    create: (p) =>
-      fetchJSON("/api/global/orgs", { method: "POST", body: JSON.stringify(p) }),
-    update: (id, p) =>
-      fetchJSON(`/api/global/orgs/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
-  },
-  partnerships: {
-    list: (tenant_id) =>
-      fetchJSON(`/api/global/partnerships?tenant_id=${encodeURIComponent(tenant_id)}`),
-    create: (p) =>
-      fetchJSON("/api/global/partnerships", { method: "POST", body: JSON.stringify(p) }),
-    remove: (id) =>
-      fetchJSON(`/api/global/partnerships/${id}`, { method: "DELETE" }),
-  },
-  users: {
-    search: (q) => fetchJSON(`/api/global/users?q=${encodeURIComponent(q || "")}`),
-    grants: (id) => fetchJSON(`/api/global/users/${id}/grants`),
-  },
-};
-
-// Match server’s allowed org types exactly
+// Match server’s allowed org types
 const ORG_TYPES = [
   { value: "edu_group", label: "Edu Group (Parent)" },
   { value: "school", label: "School" },
   { value: "bus_company", label: "Bus Company" },
 ];
 
-/** ---------- page ---------- */
 export default function GlobalAdminPage() {
   const [tenants, setTenants] = useState([]);
   const [activeTenantId, setActiveTenantId] = useState("");
   const [orgs, setOrgs] = useState([]);
   const [parts, setParts] = useState([]);
 
-  // create/edit forms
+  // forms
   const [tForm, setTForm] = useState({ name: "", slug: "" });
   const [oForm, setOForm] = useState({
     tenant_id: "",
@@ -78,82 +31,117 @@ export default function GlobalAdminPage() {
     bus_company_org_id: "",
   });
 
+  // ---- API helpers (thin wrappers around the shared client) ----
+  const apiGlobal = {
+    tenants: {
+      list: () => api.get("/global/tenants").then((r) => r.data),
+      create: (p) => api.post("/global/tenants", p).then((r) => r.data),
+      update: (id, p) => api.patch(`/global/tenants/${id}`, p).then((r) => r.data),
+    },
+    orgs: {
+      list: (tenant_id) =>
+        api.get("/global/orgs", { params: { tenant_id } }).then((r) => r.data),
+      create: (p) => api.post("/global/orgs", p).then((r) => r.data),
+      update: (id, p) => api.patch(`/global/orgs/${id}`, p).then((r) => r.data),
+    },
+    partnerships: {
+      list: (tenant_id) =>
+        api.get("/global/partnerships", { params: { tenant_id } }).then((r) => r.data),
+      create: (p) => api.post("/global/partnerships", p).then((r) => r.data),
+      remove: (id) => api.delete(`/global/partnerships/${id}`).then((r) => r.data),
+    },
+    users: {
+      search: (q) => api.get("/global/users", { params: { q: q || "" } }).then((r) => r.data),
+      grants: (id) => api.get(`/global/users/${id}/grants`).then((r) => r.data),
+    },
+  };
+
   // initial load
   useEffect(() => {
-    api.tenants.list()
+    apiGlobal.tenants
+      .list()
       .then((rows) => {
         setTenants(rows || []);
         if (rows?.length && !activeTenantId) setActiveTenantId(rows[0].id);
       })
-      .catch((e) => toast.error(`Failed to load tenants: ${e.message}`));
+      .catch((e) => toast.error(`Failed to load tenants: ${readErr(e)}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // reload orgs/partnerships when tenant changes
   useEffect(() => {
     if (!activeTenantId) return;
-    api.orgs.list(activeTenantId)
+    apiGlobal.orgs
+      .list(activeTenantId)
       .then(setOrgs)
-      .catch((e) => toast.error(`Failed to load organizations: ${e.message}`));
-    api.partnerships.list(activeTenantId)
+      .catch((e) => toast.error(`Failed to load organizations: ${readErr(e)}`));
+    apiGlobal.partnerships
+      .list(activeTenantId)
       .then(setParts)
-      .catch((e) => toast.error(`Failed to load partnerships: ${e.message}`));
+      .catch((e) => toast.error(`Failed to load partnerships: ${readErr(e)}`));
     setOForm((f) => ({ ...f, tenant_id: activeTenantId }));
     setPForm((f) => ({ ...f, tenant_id: activeTenantId }));
-  }, [activeTenantId]);
+  }, [activeTenantId]); // eslint-disable-line
 
-  // NOTE: server uses 'edu_group' (not 'parent_org')
+  // server uses 'edu_group' (not 'parent_org')
   const eduGroups = useMemo(() => orgs.filter((o) => o.type === "edu_group"), [orgs]);
-  const schools   = useMemo(() => orgs.filter((o) => o.type === "school"), [orgs]);
+  const schools = useMemo(() => orgs.filter((o) => o.type === "school"), [orgs]);
   const companies = useMemo(() => orgs.filter((o) => o.type === "bus_company"), [orgs]);
 
   async function onCreateTenant(e) {
     e.preventDefault();
     try {
-      const created = await api.tenants.create(tForm);
+      const created = await apiGlobal.tenants.create(tForm);
       setTenants((prev) => [created, ...prev]);
       setTForm({ name: "", slug: "" });
       toast.success("Tenant created");
     } catch (e) {
-      toast.error(e.message);
+      toast.error(readErr(e));
     }
   }
 
   async function onCreateOrg(e) {
     e.preventDefault();
     try {
-      const created = await api.orgs.create({
+      const payload = {
         ...oForm,
         code: oForm.code || null,
-        parent_org_id: oForm.parent_org_id || null,
-      });
+        parent_org_id: oForm.type === "school" ? oForm.parent_org_id || null : null,
+      };
+      const created = await apiGlobal.orgs.create(payload);
       setOrgs((prev) => [created, ...prev]);
-      setOForm({ tenant_id: activeTenantId, name: "", type: "school", code: "", parent_org_id: "" });
+      setOForm({
+        tenant_id: activeTenantId,
+        name: "",
+        type: "school",
+        code: "",
+        parent_org_id: "",
+      });
       toast.success("Organization created");
     } catch (e) {
-      toast.error(e.message);
+      toast.error(readErr(e));
     }
   }
 
   async function onCreatePartnership(e) {
     e.preventDefault();
     try {
-      const created = await api.partnerships.create(pForm);
+      const created = await apiGlobal.partnerships.create(pForm);
       setParts((prev) => [created, ...prev]);
       setPForm({ tenant_id: activeTenantId, school_org_id: "", bus_company_org_id: "" });
       toast.success("Partnership created");
     } catch (e) {
-      toast.error(e.message);
+      toast.error(readErr(e));
     }
   }
 
   async function onDeletePartnership(id) {
     try {
-      await api.partnerships.remove(id);
+      await apiGlobal.partnerships.remove(id);
       setParts((p) => p.filter((x) => x.id !== id));
       toast.success("Partnership removed");
     } catch (e) {
-      toast.error(e.message);
+      toast.error(readErr(e));
     }
   }
 
@@ -362,4 +350,14 @@ export default function GlobalAdminPage() {
       </section>
     </div>
   );
+}
+
+// Centralized error-message extraction to keep toasts friendly
+function readErr(e) {
+  const msg =
+    e?.response?.data?.message ||
+    e?.response?.data?.error ||
+    e?.message ||
+    "Request failed";
+  return msg;
 }
