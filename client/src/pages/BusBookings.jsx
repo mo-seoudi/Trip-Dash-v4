@@ -11,12 +11,55 @@ import {
 } from "../services/bookingService";
 import { useAuth } from "../context/AuthContext";
 
+// ⬇️ NEW: import the actual form so the modal can render it
+import BusBookingForm from "../components/booking/BusBookingForm";
+
 const EmptyRow = ({ children }) => (
   <div className="px-4 py-10 text-sm text-gray-500 text-center">{children}</div>
 );
 
+// ⬇️ REPLACED the stub with a working modal that mounts the form
 function BookingModal({ open, onClose, onSave, context }) {
-  /* … keep your existing modal implementation unchanged … */
+  if (!open) return null;
+
+  const stopClick = (e) => e.stopPropagation();
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* Modal */}
+      <div
+        className="relative z-10 w-full max-w-3xl rounded-xl bg-white p-4 shadow-xl"
+        onClick={stopClick}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">New Bus Booking</h3>
+          <button
+            onClick={onClose}
+            className="rounded px-2 py-1 text-sm border border-gray-300 hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <BusBookingForm
+          onSuccess={async () => {
+            // Let parent refresh the table
+            if (onSave) await onSave();
+            onClose();
+          }}
+          onCancel={onClose}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function Bookings() {
@@ -51,9 +94,8 @@ export default function Bookings() {
     load();
   }, [load]);
 
-  const onSave = async (payload) => {
-    await createBooking(payload);
-    toast.success("Booking created.");
+  // ⬇️ CHANGED: the form already creates the booking; just refresh here
+  const onSave = async () => {
     await load();
   };
 
