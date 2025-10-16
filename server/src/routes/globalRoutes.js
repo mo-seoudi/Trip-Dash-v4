@@ -8,17 +8,33 @@ const pg = new PrismaGlobal();
 // ---- helpers ----
 const ORG_TYPE_ALLOWED = new Set(["edu_group", "school", "bus_company"]);
 
-// normalize Prisma Organization to your old API shape
+function bad(res, code, msg) {
+  return res.status(code).json({ message: msg });
+}
+
+// Keep server-side slug logic lenient: optional in request, auto if absent.
+function slugify(s = "") {
+  return String(s)
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+// normalize Prisma Organization to the wire shape you were using
 function orgToOut(o) {
   return {
     id: o.id,
     tenant_id: o.tenantId,
     name: o.name,
-    type: o.type, // already 'edu_group' | 'school' | 'bus_company'
+    type: o.type,
     code: o.code ?? null,
     parent_org_id: o.parentOrgId ?? null,
     created_at: o.createdAt,
     updated_at: o.updatedAt,
+    // keep parent summary if present
     parent: o.parent
       ? {
           id: o.parent.id,
@@ -26,11 +42,9 @@ function orgToOut(o) {
           type: o.parent.type,
         }
       : null,
+    // expose slug only if you want to read it on the client; harmless otherwise
+    slug: o.slug,
   };
-}
-
-function bad(res, code, msg) {
-  return res.status(code).json({ message: msg });
 }
 
 /* ============================================================================
@@ -41,7 +55,6 @@ function bad(res, code, msg) {
 router.get("/tenants", async (_req, res, next) => {
   try {
     const rows = await pg.tenant.findMany({ orderBy: { createdAt: "desc" } });
-    // keep old snake_case keys on the wire
     res.json(
       rows.map((t) => ({
         id: t.id,
@@ -102,39 +115,39 @@ router.get("/orgs", async (req, res) => {
     res.json(orgs.map(orgToOut));
   } catch (e) {
     console.error("list orgs error:", e);
-    return bad(res, 500, "Failed to list organizations");
+    return bad(res, 500, "Failed to load organizations");
   }
 });
 
 // POST /api/global/orgs
-// { tenant_id, name, type: 'edu_group'|'school'|'bus_company', code?, parent_org_id? }
+// { tenant_id, name, type, code?, parent_org_id?, slug? }
 router.post("/orgs", async (req, res) => {
   try {
-    const { tenant_id, name, type, code, parent_org_id } = req.body || {};
+    const { tenant_id, name, type, code, parent_org_id, slug } = req.body || {};
     if (!tenant_id) return bad(res, 400, "tenant_id is required");
     if (!name) return bad(res, 400, "name is required");
-    if (!type || !ORG_TYPE_ALLOWED.has(type))
-      return bad(res, 400, "invalid type");
+    if (!type || !ORG_TYPE_ALLOWED.has(type)) return bad(res, 400, "invalid type");
 
     if (parent_org_id) {
-      // parent must exist inside same tenant
+      // parent must exist inside same tenant and be edu_group; only schools can have parents
       const parent = await pg.organization.findFirst({
         where: { id: String(parent_org_id), tenantId: String(tenant_id) },
         select: { id: true, type: true },
       });
       if (!parent) return bad(res, 400, "parent_org_id not found in tenant");
-      if (type !== "school")
-        return bad(res, 400, "parent_org_id is only allowed for type=school");
-      if (parent.type !== "edu_group")
-        return bad(res, 400, "parent must be type=edu_group");
+      if (type !== "school") return bad(res, 400, "parent_org_id is only allowed for type=school");
+      if (parent.type !== "edu_group") return bad(res, 400, "parent must be type=edu_group");
     }
+
+    const finalSlug = slug?.trim() ? slugify(slug) : slugify(name);
 
     const created = await pg.organization.create({
       data: {
         tenantId: String(tenant_id),
-        name,
-        type, // already the exact string you store
-        code: code || null,
+        name: name.trim(),
+        type,
+        slug: finalSlug,                 // DB has NOT NULL + UNIQUE; derive when absent
+        code: code?.trim() || null,
         parentOrgId: parent_org_id || null,
       },
       include: { parent: true },
@@ -148,55 +161,50 @@ router.post("/orgs", async (req, res) => {
 });
 
 // PATCH /api/global/orgs/:id
+// accepts: name?, type?, slug?, code?, email?, phone?, timezone?, parent_org_id?
 router.patch("/orgs/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const patch = { ...req.body };
 
-    // validate 'type' if present
-    if (patch.type !== undefined) {
-      if (!ORG_TYPE_ALLOWED.has(patch.type))
-        return bad(res, 400, "invalid type");
-    }
+    if (patch.type !== undefined && !ORG_TYPE_ALLOWED.has(patch.type))
+      return bad(res, 400, "invalid type");
 
     if (patch.code === "") patch.code = null;
     if (patch.parent_org_id === "") patch.parent_org_id = null;
 
-    // if changing parent, enforce rules (only schools can have parents, parent must be edu_group)
-    if ("parent_org_id" in patch) {
-      if (patch.parent_org_id) {
-        const [org, parent] = await Promise.all([
-          pg.organization.findUnique({
-            where: { id: String(id) },
-            select: { id: true, tenantId: true, type: true },
-          }),
-          pg.organization.findUnique({
-            where: { id: String(patch.parent_org_id) },
-            select: { id: true, tenantId: true, type: true },
-          }),
-        ]);
-        if (!org) return bad(res, 400, "organization not found");
-        if (!parent || parent.tenantId !== org.tenantId)
-          return bad(res, 400, "invalid parent_org_id");
-        if (org.type !== "school")
-          return bad(res, 400, "only schools can have a parent");
-        if (parent.type !== "edu_group")
-          return bad(res, 400, "parent must be type=edu_group");
-      }
+    // if changing parent, enforce: same tenant, parent edu_group, only for schools
+    if ("parent_org_id" in patch && patch.parent_org_id) {
+      const [org, parent] = await Promise.all([
+        pg.organization.findUnique({
+          where: { id: String(id) },
+          select: { id: true, tenantId: true, type: true },
+        }),
+        pg.organization.findUnique({
+          where: { id: String(patch.parent_org_id) },
+          select: { id: true, tenantId: true, type: true },
+        }),
+      ]);
+      if (!org) return bad(res, 400, "organization not found");
+      if (!parent || parent.tenantId !== org.tenantId)
+        return bad(res, 400, "invalid parent_org_id");
+      if (org.type !== "school")
+        return bad(res, 400, "only schools can have a parent");
+      if (parent.type !== "edu_group")
+        return bad(res, 400, "parent must be type=edu_group");
     }
 
     const updated = await pg.organization.update({
       where: { id: String(id) },
       data: {
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.name !== undefined ? { name: patch.name?.trim() } : {}),
         ...(patch.type !== undefined ? { type: patch.type } : {}),
-        ...(patch.code !== undefined ? { code: patch.code } : {}),
+        ...(patch.slug !== undefined ? { slug: slugify(patch.slug || "") } : {}),
+        ...(patch.code !== undefined ? { code: patch.code?.trim() || null } : {}),
         ...(patch.email !== undefined ? { email: patch.email } : {}),
         ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
         ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
-        ...(patch.parent_org_id !== undefined
-          ? { parentOrgId: patch.parent_org_id }
-          : {}),
+        ...(patch.parent_org_id !== undefined ? { parentOrgId: patch.parent_org_id } : {}),
         updatedAt: new Date(),
       },
       include: { parent: true },
@@ -221,10 +229,7 @@ router.get("/partnerships", async (req, res) => {
 
     const rows = await pg.partnership.findMany({
       where: { tenantId: String(tenant_id) },
-      include: {
-        school: true,
-        busCompany: true,
-      },
+      include: { school: true, busCompany: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -240,8 +245,7 @@ router.get("/partnerships", async (req, res) => {
         created_at: p.createdAt,
         updated_at: p.updatedAt,
         school_org: p.school ? { id: p.school.id, name: p.school.name } : null,
-        bus_company:
-          p.busCompany ? { id: p.busCompany.id, name: p.busCompany.name } : null,
+        bus_company: p.busCompany ? { id: p.busCompany.id, name: p.busCompany.name } : null,
       }))
     );
   } catch (e) {
@@ -250,8 +254,7 @@ router.get("/partnerships", async (req, res) => {
   }
 });
 
-// POST /api/global/partnerships
-// { tenant_id, school_org_id, bus_company_org_id }
+// POST /api/global/partnerships  { tenant_id, school_org_id, bus_company_org_id }
 router.post("/partnerships", async (req, res) => {
   try {
     const { tenant_id, school_org_id, bus_company_org_id } = req.body || {};
@@ -301,7 +304,7 @@ router.delete("/partnerships/:id", async (req, res) => {
 });
 
 /* ============================================================================
-   Users / (directory only here)
+   Users (directory only)
    ========================================================================== */
 
 // GET /api/global/users?q=...
