@@ -1,606 +1,366 @@
+// client/src/pages/Admin/GlobalConsole.jsx
+
 import React, { useEffect, useMemo, useState } from "react";
-import { toast } from "react-toastify";
-import api from "@/services/apiClient";
+import {
+  getMe, setActiveOrg,
+  listTenants, createTenant,
+  listOrgs, createOrg, updateOrg,
+  listPartnerships, createPartnership, deletePartnership,
+} from "../../services/globalService.js";
 
-/** ---------- constants ---------- */
-const ORG_TYPES = [
-  { value: "edu_group", label: "Edu Group (Parent)" },
-  { value: "school", label: "School" },
-  { value: "bus_company", label: "Bus Company" },
-];
-
-/** ---------- helpers ---------- */
-const readErr = (e) =>
-  e?.response?.data?.message || e?.response?.data?.error || e?.message || "Request failed";
-
-/** Small, consistent UI atoms */
-const Card = ({ title, subtitle, right, children }) => (
-  <section className="bg-white border rounded-xl p-4 shadow-sm">
-    <div className="flex items-center justify-between mb-3">
-      <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {subtitle ? <p className="text-xs text-gray-500">{subtitle}</p> : null}
-      </div>
-      {right}
-    </div>
-    {children}
-  </section>
+// tiny helper
+const Btn = ({ children, loading, ...rest }) => (
+  <button
+    {...rest}
+    disabled={rest.disabled || loading}
+    className={`px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 ${rest.className||""}`}
+  >
+    {loading ? "..." : children}
+  </button>
 );
 
-const Input = (props) => (
-  <input
-    {...props}
-    className={
-      "border rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 " +
-      (props.className || "")
-    }
-  />
-);
-const Select = ({ className = "", ...props }) => (
-  <select
-    {...props}
-    className={
-      "border rounded-lg px-3 py-2 w-full text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 " +
-      className
-    }
-  />
-);
-const Button = ({ variant = "primary", className = "", ...props }) => {
-  const variants = {
-    primary:
-      "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
-    ghost: "bg-white text-gray-700 border hover:bg-gray-50",
-    danger:
-      "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed",
-  };
-  return (
-    <button
-      {...props}
-      className={
-        "rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 " +
-        variants[variant] +
-        " " +
-        className
-      }
-    />
-  );
-};
+export default function GlobalConsole() {
+  const [tab, setTab] = useState("orgswitcher");
 
-/** ---------- API wrappers ---------- */
-const apiGlobal = {
-  tenants: {
-    list: () => api.get("/global/tenants").then((r) => r.data),
-    create: (p) => api.post("/global/tenants", p).then((r) => r.data),
-    update: (id, p) => api.patch(`/global/tenants/${id}`, p).then((r) => r.data),
-  },
-  orgs: {
-    list: (tenant_id) => api.get("/global/orgs", { params: { tenant_id } }).then((r) => r.data),
-    create: (p) => api.post("/global/orgs", p).then((r) => r.data),
-    update: (id, p) => api.patch(`/global/orgs/${id}`, p).then((r) => r.data),
-  },
-  partnerships: {
-    list: (tenant_id) =>
-      api.get("/global/partnerships", { params: { tenant_id } }).then((r) => r.data),
-    create: (p) => api.post("/global/partnerships", p).then((r) => r.data),
-    remove: (id) => api.delete(`/global/partnerships/${id}`).then((r) => r.data),
-  },
-  users: {
-    search: (q) => api.get("/global/users", { params: { q: q || "" } }).then((r) => r.data),
-    grants: (id) => api.get(`/global/users/${id}/grants`).then((r) => r.data),
-  },
-};
+  // me / org switcher
+  const [me, setMe] = useState(null);
+  const [switching, setSwitching] = useState(false);
 
-/** ---------- main ---------- */
-export default function GlobalAdminPage() {
+  // tenants
   const [tenants, setTenants] = useState([]);
-  const [activeTenantId, setActiveTenantId] = useState("");
-
-  const [orgs, setOrgs] = useState([]);
-  const [parts, setParts] = useState([]);
-
-  // create forms
   const [tForm, setTForm] = useState({ name: "", slug: "" });
-  const [oForm, setOForm] = useState({
-    tenant_id: "",
-    name: "",
-    type: "school",
-    code: "",
-    parent_org_id: "",
-  });
-  const [pForm, setPForm] = useState({
-    tenant_id: "",
-    school_org_id: "",
-    bus_company_org_id: "",
-  });
+  const [tLoading, setTLoading] = useState(false);
 
-  // inline edit rows
-  const [editTenant, setEditTenant] = useState(null); // { id, name, slug }
-  const [editOrg, setEditOrg] = useState(null); // full org row
+  // orgs
+  const [tenantId, setTenantId] = useState("");
+  const [orgs, setOrgs] = useState([]);
+  const [oForm, setOForm] = useState({ name: "", type: "school", code: "", parent_org_id: "" });
+  const [oLoading, setOLoading] = useState(false);
 
-  /** initial */
-  useEffect(() => {
-    apiGlobal.tenants
-      .list()
-      .then((rows) => {
-        setTenants(rows || []);
-        if (rows?.length && !activeTenantId) setActiveTenantId(rows[0].id);
-      })
-      .catch((e) => toast.error(`Failed to load tenants: ${readErr(e)}`));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // partnerships
+  const [parts, setParts] = useState([]);
+  const [pForm, setPForm] = useState({ school_org_id: "", bus_company_org_id: "" });
+  const [pLoading, setPLoading] = useState(false);
 
-  /** when tenant changes, reload section data & seed forms */
-  useEffect(() => {
-    if (!activeTenantId) return;
-    apiGlobal.orgs
-      .list(activeTenantId)
-      .then(setOrgs)
-      .catch((e) => toast.error(`Failed to load organizations: ${readErr(e)}`));
-    apiGlobal.partnerships
-      .list(activeTenantId)
-      .then(setParts)
-      .catch((e) => toast.error(`Failed to load partnerships: ${readErr(e)}`));
-    setOForm((f) => ({ ...f, tenant_id: activeTenantId }));
-    setPForm((f) => ({ ...f, tenant_id: activeTenantId }));
-  }, [activeTenantId]);
-
-  /** easy groupings */
-  const eduGroups = useMemo(() => orgs.filter((o) => o.type === "edu_group"), [orgs]);
-  const schools = useMemo(() => orgs.filter((o) => o.type === "school"), [orgs]);
-  const companies = useMemo(() => orgs.filter((o) => o.type === "bus_company"), [orgs]);
-
-  /** actions: tenants */
-  async function onCreateTenant(e) {
-    e.preventDefault();
+  // bootstrap
+  useEffect(() => { (async () => {
     try {
-      const created = await apiGlobal.tenants.create(tForm);
-      setTenants((prev) => [created, ...prev]);
+      const meData = await getMe();
+      setMe(meData);
+      const t = await listTenants();
+      setTenants(t);
+      // pick first tenant by default for convenience
+      if (t?.length && !tenantId) setTenantId(t[0].id);
+    } catch (e) {
+      console.error("bootstrap failed:", e);
+    }
+  })(); }, []);
+
+  // load orgs/partnerships when tenant changes
+  useEffect(() => { (async () => {
+    if (!tenantId) { setOrgs([]); setParts([]); return; }
+    try {
+      const [o, p] = await Promise.all([
+        listOrgs(tenantId),
+        listPartnerships(tenantId),
+      ]);
+      setOrgs(o);
+      setParts(p);
+    } catch (e) {
+      console.error("load tenant data failed:", e);
+    }
+  })(); }, [tenantId]);
+
+  const schools = useMemo(() => orgs.filter(o => o.type === "school"), [orgs]);
+  const companies = useMemo(() => orgs.filter(o => o.type === "bus_company"), [orgs]);
+  const parents = useMemo(() => orgs.filter(o => o.type === "parent_org"), [orgs]);
+
+  // ---- handlers
+  const handleSetOrg = async (org_id) => {
+    try {
+      setSwitching(true);
+      await setActiveOrg(org_id);
+      const fresh = await getMe();
+      setMe(fresh);
+      alert("Active organization updated.");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to set active organization.");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const handleCreateTenant = async () => {
+    if (!tForm.name || !tForm.slug) return alert("Name and slug are required.");
+    try {
+      setTLoading(true);
+      const t = await createTenant({ ...tForm });
+      setTenants(prev => [t, ...prev]);
       setTForm({ name: "", slug: "" });
-      setActiveTenantId(created.id);
-      toast.success("Tenant created");
+      alert("Tenant created.");
     } catch (e) {
-      toast.error(`Failed to create tenant: ${readErr(e)}`);
+      console.error(e);
+      alert("Failed to create tenant.");
+    } finally {
+      setTLoading(false);
     }
-  }
-  async function onSaveTenant() {
-    try {
-      const updated = await apiGlobal.tenants.update(editTenant.id, {
-        name: editTenant.name,
-        slug: editTenant.slug,
-      });
-      setTenants((list) => list.map((t) => (t.id === updated.id ? updated : t)));
-      setEditTenant(null);
-      toast.success("Tenant updated");
-    } catch (e) {
-      toast.error(`Failed to update tenant: ${readErr(e)}`);
-    }
-  }
+  };
 
-  /** actions: orgs */
-  async function onCreateOrg(e) {
-    e.preventDefault();
+  const handleCreateOrg = async () => {
+    if (!tenantId) return alert("Pick a tenant first.");
+    if (!oForm.name) return alert("Organization name is required.");
     try {
-      const payload = {
-        ...oForm,
-        code: oForm.code || null,
-        parent_org_id: oForm.type === "school" ? oForm.parent_org_id || null : null,
-      };
-      const created = await apiGlobal.orgs.create(payload);
-      // If created for a different tenant, only show in that tenant’s view
-      if (created.tenant_id === activeTenantId) setOrgs((prev) => [created, ...prev]);
-      setOForm({ tenant_id: activeTenantId, name: "", type: "school", code: "", parent_org_id: "" });
-      toast.success("Organization created");
+      setOLoading(true);
+      const created = await createOrg({ ...oForm, tenant_id: tenantId, parent_org_id: oForm.parent_org_id || null, code: oForm.code || null });
+      setOrgs(prev => [created, ...prev]);
+      setOForm({ name: "", type: "school", code: "", parent_org_id: "" });
+      alert("Organization created.");
     } catch (e) {
-      toast.error(`Failed to create organization: ${readErr(e)}`);
+      console.error(e);
+      alert("Failed to create organization.");
+    } finally {
+      setOLoading(false);
     }
-  }
-  async function onSaveOrg() {
-    try {
-      const { id, name, type, code, parent_org_id } = editOrg;
-      const updated = await apiGlobal.orgs.update(id, {
-        name,
-        type,
-        code: code || null,
-        parent_org_id: type === "school" ? parent_org_id || null : null,
-      });
-      setOrgs((list) => list.map((o) => (o.id === updated.id ? updated : o)));
-      setEditOrg(null);
-      toast.success("Organization updated");
-    } catch (e) {
-      toast.error(`Failed to update organization: ${readErr(e)}`);
-    }
-  }
+  };
 
-  /** actions: partnerships */
-  async function onCreatePartnership(e) {
-    e.preventDefault();
+  const handleCreatePartnership = async () => {
+    if (!tenantId) return alert("Pick a tenant first.");
+    if (!pForm.school_org_id || !pForm.bus_company_org_id) return alert("Pick a school and a bus company.");
     try {
-      const created = await apiGlobal.partnerships.create(pForm);
-      setParts((prev) => [created, ...prev]);
-      setPForm({ tenant_id: activeTenantId, school_org_id: "", bus_company_org_id: "" });
-      toast.success("Partnership created");
+      setPLoading(true);
+      const created = await createPartnership({ tenant_id: tenantId, ...pForm });
+      setParts(prev => [created, ...prev]);
+      setPForm({ school_org_id: "", bus_company_org_id: "" });
+      alert("Partnership created.");
     } catch (e) {
-      toast.error(`Failed to create partnership: ${readErr(e)}`);
+      console.error(e);
+      alert("Failed to create partnership.");
+    } finally {
+      setPLoading(false);
     }
-  }
-  async function onDeletePartnership(id) {
+  };
+
+  const handleDeletePartnership = async (id) => {
+    if (!confirm("Delete this partnership?")) return;
     try {
-      await apiGlobal.partnerships.remove(id);
-      setParts((p) => p.filter((x) => x.id !== id));
-      toast.success("Partnership removed");
+      await deletePartnership(id);
+      setParts(prev => prev.filter(p => p.id !== id));
     } catch (e) {
-      toast.error(`Failed to remove partnership: ${readErr(e)}`);
+      console.error(e);
+      alert("Failed to delete partnership.");
     }
-  }
+  };
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Global Admin</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Active Tenant</span>
-          <Select
-            value={activeTenantId}
-            onChange={(e) => setActiveTenantId(e.target.value)}
-            className="min-w-[220px]"
+    <div className="max-w-6xl mx-auto p-4 space-y-4">
+      <h1 className="text-2xl font-semibold">Global Admin Console</h1>
+
+      {/* tabs */}
+      <div className="flex gap-2">
+        {[
+          ["orgswitcher", "Org Switcher"],
+          ["tenants", "Tenants"],
+          ["orgs", "Organizations"],
+          ["partnerships", "Partnerships"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-3 py-2 rounded ${tab === key ? "bg-gray-900 text-white" : "bg-gray-200 hover:bg-gray-300"}`}
           >
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.slug})
-              </option>
-            ))}
-          </Select>
-        </div>
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Tenants */}
-      <Card title="Tenants" subtitle="Manage tenants: list, edit inline, or create new.">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* list + inline edit */}
-          <div className="lg:col-span-2">
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-2">Name</th>
-                    <th className="text-left p-2">Slug</th>
-                    <th className="text-left p-2">Updated</th>
-                    <th className="text-left p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tenants.map((t) =>
-                    editTenant?.id === t.id ? (
-                      <tr key={t.id} className="border-b">
-                        <td className="p-2">
-                          <Input
-                            value={editTenant.name}
-                            onChange={(e) => setEditTenant({ ...editTenant, name: e.target.value })}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            value={editTenant.slug}
-                            onChange={(e) => setEditTenant({ ...editTenant, slug: e.target.value })}
-                          />
-                        </td>
-                        <td className="p-2 text-gray-500">{new Date(t.updated_at).toLocaleString()}</td>
-                        <td className="p-2 flex gap-2">
-                          <Button onClick={onSaveTenant}>Save</Button>
-                          <Button variant="ghost" onClick={() => setEditTenant(null)}>
-                            Cancel
-                          </Button>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={t.id} className="border-b hover:bg-gray-50">
-                        <td className="p-2">{t.name}</td>
-                        <td className="p-2">{t.slug}</td>
-                        <td className="p-2 text-gray-500">{new Date(t.updated_at).toLocaleString()}</td>
-                        <td className="p-2">
-                          <Button variant="ghost" onClick={() => setEditTenant({ id: t.id, name: t.name, slug: t.slug })}>
-                            Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  )}
-                  {tenants.length === 0 && (
-                    <tr>
-                      <td className="p-3 text-gray-500" colSpan={4}>
-                        No tenants yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* ORG SWITCHER */}
+      {tab === "orgswitcher" && (
+        <div className="bg-white rounded shadow p-4 space-y-4">
+          <h2 className="text-lg font-medium">Active Organization</h2>
+          <p className="text-sm text-gray-600">
+            If a user belongs to multiple schools/companies, they can pick the current one here.
+          </p>
 
-          {/* create tenant */}
-          <div className="border rounded-lg p-3">
-            <h3 className="font-medium mb-2">Add Tenant</h3>
-            <form onSubmit={onCreateTenant} className="space-y-2">
-              <Input
-                placeholder="Tenant Name"
-                value={tForm.name}
-                onChange={(e) => setTForm({ ...tForm, name: e.target.value })}
-                required
-              />
-              <Input
-                placeholder="tenant slug"
-                value={tForm.slug}
-                onChange={(e) => setTForm({ ...tForm, slug: e.target.value })}
-                required
-              />
-              <div className="flex justify-end">
-                <Button type="submit">Create Tenant</Button>
+          <div className="border rounded">
+            <div className="grid grid-cols-3 bg-gray-50 px-3 py-2 text-sm font-medium">
+              <div>Organization</div>
+              <div>Type</div>
+              <div>Action</div>
+            </div>
+            {(me?.orgs || []).map((o) => (
+              <div key={`${o.org_id}-${o.role}`} className="grid grid-cols-3 px-3 py-2 border-t items-center text-sm">
+                <div className="truncate">{o.name}</div>
+                <div className="capitalize">{o.type.replace("_", " ")}</div>
+                <div>
+                  {me?.active_org_id === o.org_id ? (
+                    <span className="text-green-700 font-medium">Active</span>
+                  ) : (
+                    <Btn onClick={() => handleSetOrg(o.org_id)} loading={switching}>Set Active</Btn>
+                  )}
+                </div>
               </div>
-            </form>
+            ))}
+            {!me?.orgs?.length && (
+              <div className="px-3 py-4 text-sm text-gray-600">No organizations for this user.</div>
+            )}
           </div>
         </div>
-      </Card>
+      )}
 
-      {/* Organizations */}
-      <Card
-        title="Organizations"
-        subtitle="View & edit organizations for a tenant. Create new ones on the right."
-        right={
-          <div className="hidden md:flex items-center gap-2 text-sm text-gray-500">
-            <span>Tenant:</span>
-            <Select value={activeTenantId} onChange={(e) => setActiveTenantId(e.target.value)} className="min-w-[220px]">
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.slug})
-                </option>
-              ))}
-            </Select>
+      {/* TENANTS */}
+      {tab === "tenants" && (
+        <div className="bg-white rounded shadow p-4 space-y-4">
+          <h2 className="text-lg font-medium">Tenants</h2>
+
+          <div className="flex gap-2">
+            <input
+              value={tForm.name}
+              onChange={(e) => setTForm((s) => ({ ...s, name: e.target.value }))}
+              placeholder="Name"
+              className="border rounded px-3 py-2 flex-1"
+            />
+            <input
+              value={tForm.slug}
+              onChange={(e) => setTForm((s) => ({ ...s, slug: e.target.value }))}
+              placeholder="slug (unique)"
+              className="border rounded px-3 py-2 w-64"
+            />
+            <Btn onClick={handleCreateTenant} loading={tLoading}>Add</Btn>
           </div>
-        }
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* list + inline edit */}
-          <div className="lg:col-span-2">
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-2">Name</th>
-                    <th className="text-left p-2">Type</th>
-                    <th className="text-left p-2">Code</th>
-                    <th className="text-left p-2">Parent</th>
-                    <th className="text-left p-2">Updated</th>
-                    <th className="text-left p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orgs.map((o) =>
-                    editOrg?.id === o.id ? (
-                      <tr key={o.id} className="border-b">
-                        <td className="p-2">
-                          <Input
-                            value={editOrg.name}
-                            onChange={(e) => setEditOrg({ ...editOrg, name: e.target.value })}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Select
-                            value={editOrg.type}
-                            onChange={(e) => setEditOrg({ ...editOrg, type: e.target.value })}
-                          >
-                            {ORG_TYPES.map((t) => (
-                              <option key={t.value} value={t.value}>
-                                {t.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            value={editOrg.code || ""}
-                            onChange={(e) => setEditOrg({ ...editOrg, code: e.target.value })}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Select
-                            value={editOrg.parent_org_id || ""}
-                            onChange={(e) => setEditOrg({ ...editOrg, parent_org_id: e.target.value })}
-                            disabled={editOrg.type !== "school"}
-                          >
-                            <option value="">—</option>
-                            {eduGroups.map((g) => (
-                              <option key={g.id} value={g.id}>
-                                {g.name}
-                              </option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td className="p-2 text-gray-500">{new Date(o.updated_at).toLocaleString()}</td>
-                        <td className="p-2 flex gap-2">
-                          <Button onClick={onSaveOrg}>Save</Button>
-                          <Button variant="ghost" onClick={() => setEditOrg(null)}>
-                            Cancel
-                          </Button>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={o.id} className="border-b hover:bg-gray-50">
-                        <td className="p-2">{o.name}</td>
-                        <td className="p-2">{o.type}</td>
-                        <td className="p-2">{o.code || "—"}</td>
-                        <td className="p-2">{o.parent?.name || "—"}</td>
-                        <td className="p-2 text-gray-500">{new Date(o.updated_at).toLocaleString()}</td>
-                        <td className="p-2">
-                          <Button variant="ghost" onClick={() => setEditOrg({ ...o })}>
-                            Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  )}
-                  {orgs.length === 0 && (
-                    <tr>
-                      <td className="p-3 text-gray-500" colSpan={6}>
-                        No organizations yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+
+          <div className="border rounded">
+            <div className="grid grid-cols-3 bg-gray-50 px-3 py-2 text-sm font-medium">
+              <div>Name</div><div>Slug</div><div>Created</div>
             </div>
-          </div>
-
-          {/* create org */}
-          <div className="border rounded-lg p-3">
-            <h3 className="font-medium mb-2">Add Organization</h3>
-            <form onSubmit={onCreateOrg} className="space-y-2">
-              <div className="grid grid-cols-1 gap-2">
-                <label className="text-xs text-gray-500">Tenant</label>
-                <Select
-                  value={oForm.tenant_id}
-                  onChange={(e) => setOForm({ ...oForm, tenant_id: e.target.value })}
-                >
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.slug})
-                    </option>
-                  ))}
-                </Select>
+            {tenants.map(t => (
+              <div key={t.id} className="grid grid-cols-3 px-3 py-2 border-t text-sm">
+                <div className="truncate">{t.name}</div>
+                <div>{t.slug}</div>
+                <div>{new Date(t.created_at).toLocaleString()}</div>
               </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                <label className="text-xs text-gray-500">Type</label>
-                <Select value={oForm.type} onChange={(e) => setOForm({ ...oForm, type: e.target.value })}>
-                  {ORG_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <Input
-                placeholder="Organization Name"
-                value={oForm.name}
-                onChange={(e) => setOForm({ ...oForm, name: e.target.value })}
-                required
-              />
-              <Input
-                placeholder="Code (optional)"
-                value={oForm.code}
-                onChange={(e) => setOForm({ ...oForm, code: e.target.value })}
-              />
-
-              <div className="grid grid-cols-1 gap-2">
-                <label className="text-xs text-gray-500">Parent (Edu Group) — optional</label>
-                <Select
-                  value={oForm.parent_org_id}
-                  onChange={(e) => setOForm({ ...oForm, parent_org_id: e.target.value })}
-                  disabled={oForm.type !== "school"}
-                  title={oForm.type !== "school" ? "Parent applies to School only" : ""}
-                >
-                  <option value="">—</option>
-                  {eduGroups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit">Add Organization</Button>
-              </div>
-            </form>
+            ))}
           </div>
         </div>
-      </Card>
+      )}
 
-      {/* Partnerships */}
-      <Card title="Partnerships" subtitle="Link a school to a bus company (per tenant).">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* create */}
-          <div className="border rounded-lg p-3">
-            <h3 className="font-medium mb-2">Add Partnership</h3>
-            <form onSubmit={onCreatePartnership} className="space-y-2">
-              <div>
-                <label className="text-xs text-gray-500">School</label>
-                <Select
-                  value={pForm.school_org_id}
-                  onChange={(e) => setPForm({ ...pForm, school_org_id: e.target.value })}
-                >
-                  <option value="">Select School</option>
-                  {schools.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500">Bus Company</label>
-                <Select
-                  value={pForm.bus_company_org_id}
-                  onChange={(e) => setPForm({ ...pForm, bus_company_org_id: e.target.value })}
-                >
-                  <option value="">Select Bus Company</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="text-xs text-gray-500">
-                one school ↔ one bus company (repeat to add more)
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit">Add Partnership</Button>
-              </div>
-            </form>
+      {/* ORGS */}
+      {tab === "orgs" && (
+        <div className="bg-white rounded shadow p-4 space-y-4">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="text-sm">Tenant</label>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="border rounded px-3 py-2 w-full"
+              >
+                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-sm">Name</label>
+              <input className="border rounded px-3 py-2 w-full" value={oForm.name}
+                onChange={(e)=>setOForm(s=>({...s,name:e.target.value}))}/>
+            </div>
+            <div>
+              <label className="text-sm">Type</label>
+              <select className="border rounded px-3 py-2"
+                value={oForm.type}
+                onChange={(e)=>setOForm(s=>({...s,type:e.target.value}))}>
+                <option value="school">school</option>
+                <option value="bus_company">bus_company</option>
+                <option value="parent_org">parent_org</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm">Code</label>
+              <input className="border rounded px-3 py-2 w-36" value={oForm.code}
+                onChange={(e)=>setOForm(s=>({...s,code:e.target.value}))}/>
+            </div>
+            <div>
+              <label className="text-sm">Parent Org (for schools)</label>
+              <select className="border rounded px-3 py-2 w-56"
+                value={oForm.parent_org_id}
+                onChange={(e)=>setOForm(s=>({...s,parent_org_id:e.target.value}))}>
+                <option value="">(none)</option>
+                {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <Btn onClick={handleCreateOrg} loading={oLoading}>Add</Btn>
           </div>
 
-          {/* list */}
-          <div className="lg:col-span-2">
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-2">School</th>
-                    <th className="text-left p-2">Bus Company</th>
-                    <th className="text-left p-2">Created</th>
-                    <th className="text-left p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parts.map((p) => (
-                    <tr key={p.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{p.school_org?.name || p.school_org_id}</td>
-                      <td className="p-2">{p.bus_company?.name || p.bus_company_org_id}</td>
-                      <td className="p-2 text-gray-500">{new Date(p.created_at).toLocaleString()}</td>
-                      <td className="p-2">
-                        <Button variant="danger" onClick={() => onDeletePartnership(p.id)}>
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {parts.length === 0 && (
-                    <tr>
-                      <td className="p-3 text-gray-500" colSpan={4}>
-                        No partnerships yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <div className="border rounded">
+            <div className="grid grid-cols-5 bg-gray-50 px-3 py-2 text-sm font-medium">
+              <div>Name</div><div>Type</div><div>Code</div><div>Parent</div><div>Updated</div>
             </div>
+            {orgs.map(o => (
+              <div key={o.id} className="grid grid-cols-5 px-3 py-2 border-t text-sm">
+                <div className="truncate">{o.name}</div>
+                <div className="capitalize">{o.type.replace("_"," ")}</div>
+                <div>{o.code || "-"}</div>
+                <div className="truncate">
+                  {o.parent?.name || "-"}
+                </div>
+                <div>{new Date(o.updated_at || o.created_at).toLocaleString()}</div>
+              </div>
+            ))}
           </div>
         </div>
-      </Card>
+      )}
+
+      {/* PARTNERSHIPS */}
+      {tab === "partnerships" && (
+        <div className="bg-white rounded shadow p-4 space-y-4">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="text-sm">Tenant</label>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="border rounded px-3 py-2 w-full"
+              >
+                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-sm">School</label>
+              <select className="border rounded px-3 py-2 w-full"
+                value={pForm.school_org_id}
+                onChange={(e)=>setPForm(s=>({...s,school_org_id:e.target.value}))}>
+                <option value="">(choose)</option>
+                {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-sm">Bus Company</label>
+              <select className="border rounded px-3 py-2 w-full"
+                value={pForm.bus_company_org_id}
+                onChange={(e)=>setPForm(s=>({...s,bus_company_org_id:e.target.value}))}>
+                <option value="">(choose)</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <Btn onClick={handleCreatePartnership} loading={pLoading}>Link</Btn>
+          </div>
+
+          <div className="border rounded">
+            <div className="grid grid-cols-4 bg-gray-50 px-3 py-2 text-sm font-medium">
+              <div>School</div><div>Bus Company</div><div>Created</div><div>Action</div>
+            </div>
+            {parts.map(p => (
+              <div key={p.id} className="grid grid-cols-4 px-3 py-2 border-t text-sm items-center">
+                <div className="truncate">{p.school_org?.name || p.school_org_id}</div>
+                <div className="truncate">{p.bus_company?.name || p.bus_company_org_id}</div>
+                <div>{new Date(p.created_at).toLocaleString()}</div>
+                <div>
+                  <button onClick={() => handleDeletePartnership(p.id)} className="text-red-600 underline">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
