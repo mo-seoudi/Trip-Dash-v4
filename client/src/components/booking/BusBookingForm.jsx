@@ -450,6 +450,7 @@ export default function BusBookingForm({ onSuccess, onCancel }) {
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}
               />
+            </textarea>
             </Field>
           </div>
         </div>
@@ -474,4 +475,3 @@ export default function BusBookingForm({ onSuccess, onCancel }) {
     </form>
   );
 }
-
