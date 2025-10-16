@@ -1,32 +1,17 @@
-// server/routes/globalRolesRoutes.js  (ESM)
+// server/src/routes/globalRolesRoutes.js
 import express from "express";
+import { PrismaClient as PrismaGlobal } from "../prisma-global/index.js"; // <-- fixed path
 
-// Try to reuse the singleton Prisma from globalDb if available.
-// Fall back to a new client generated from prisma/global.schema.prisma.
-let prisma;
-try {
-  // accommodate either named or default export styles in globalDb.js
-  const db = await import("../globalDb.js");
-  prisma = db.prisma ?? db.default?.prisma ?? null;
-} catch {
-  prisma = null;
-}
-
-if (!prisma) {
-  // Generated client from prisma/global.schema.prisma
-  const { PrismaClient } = await import("../src/prisma-global/index.js");
-  prisma = new PrismaClient();
-}
-
+const prisma = new PrismaGlobal();
 const router = express.Router();
 
 // ───────── utilities ─────────
 const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
 
-const orgMustExist = async (id) =>
+const orgMustExist = (id) =>
   prisma.organization.findUnique({ where: { id: String(id) } });
 
-const userMustExist = async (id) =>
+const userMustExist = (id) =>
   prisma.user.findUnique({ where: { id: String(id) } });
 
 // ===================================================================
@@ -44,7 +29,6 @@ router.post("/memberships", async (req, res) => {
     const [user, org] = await Promise.all([userMustExist(userId), orgMustExist(orgId)]);
     if (!user || !org) return bad(res, "Invalid userId or orgId");
 
-    // If setting a default, clear previous defaults for this user (optional policy).
     if (isDefault) {
       await prisma.userOrgMembership.updateMany({
         where: { userId: user.id, isDefault: true },
@@ -137,7 +121,6 @@ router.post("/scopes", async (req, res) => {
     ]);
     if (!user || !org || !school) return bad(res, "Invalid userId/orgId/schoolOrgId");
 
-    // Ensure the scoped school is a school and belongs to the same tenant
     if (school.type !== "school") return bad(res, "schoolOrgId must be type=school");
     if (school.tenantId !== org.tenantId)
       return bad(res, "orgId and schoolOrgId must be under same tenant");
