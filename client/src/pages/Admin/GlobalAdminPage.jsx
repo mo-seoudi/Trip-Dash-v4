@@ -2,8 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 /** ---------- helpers ---------- */
+// Add a base URL so requests hit the API server (not the Vercel static site)
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+const withBase = (url) => (/^https?:\/\//.test(url) ? url : `${API_BASE}${url}`);
+
 async function fetchJSON(url, init = {}) {
-  const res = await fetch(url, {
+  const res = await fetch(withBase(url), {
     ...init,
     headers: { "Content-Type": "application/json", ...(init.headers || {}) },
     credentials: "include",
@@ -14,6 +18,7 @@ async function fetchJSON(url, init = {}) {
   }
   return res.json();
 }
+
 const api = {
   tenants: {
     list: () => fetchJSON("/api/global/tenants"),
@@ -43,8 +48,10 @@ const api = {
     grants: (id) => fetchJSON(`/api/global/users/${id}/grants`),
   },
 };
+
+// Match server’s allowed org types exactly
 const ORG_TYPES = [
-  { value: "parent_org", label: "Edu_Group (Parent)" },
+  { value: "edu_group", label: "Edu Group (Parent)" },
   { value: "school", label: "School" },
   { value: "bus_company", label: "Bus Company" },
 ];
@@ -79,7 +86,8 @@ export default function GlobalAdminPage() {
         if (rows?.length && !activeTenantId) setActiveTenantId(rows[0].id);
       })
       .catch((e) => toast.error(`Failed to load tenants: ${e.message}`));
-  }, []); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // reload orgs/partnerships when tenant changes
   useEffect(() => {
@@ -94,7 +102,8 @@ export default function GlobalAdminPage() {
     setPForm((f) => ({ ...f, tenant_id: activeTenantId }));
   }, [activeTenantId]);
 
-  const eduGroups = useMemo(() => orgs.filter((o) => o.type === "parent_org"), [orgs]);
+  // NOTE: server uses 'edu_group' (not 'parent_org')
+  const eduGroups = useMemo(() => orgs.filter((o) => o.type === "edu_group"), [orgs]);
   const schools   = useMemo(() => orgs.filter((o) => o.type === "school"), [orgs]);
   const companies = useMemo(() => orgs.filter((o) => o.type === "bus_company"), [orgs]);
 
@@ -109,6 +118,7 @@ export default function GlobalAdminPage() {
       toast.error(e.message);
     }
   }
+
   async function onCreateOrg(e) {
     e.preventDefault();
     try {
@@ -124,6 +134,7 @@ export default function GlobalAdminPage() {
       toast.error(e.message);
     }
   }
+
   async function onCreatePartnership(e) {
     e.preventDefault();
     try {
@@ -135,6 +146,7 @@ export default function GlobalAdminPage() {
       toast.error(e.message);
     }
   }
+
   async function onDeletePartnership(id) {
     try {
       await api.partnerships.remove(id);
@@ -226,7 +238,7 @@ export default function GlobalAdminPage() {
             disabled={oForm.type !== "school"}
             title={oForm.type !== "school" ? "Parent applies to School only" : ""}
           >
-            <option value="">Parent (Edu_Group) — optional</option>
+            <option value="">Parent (Edu Group) — optional</option>
             {eduGroups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
