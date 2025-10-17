@@ -28,39 +28,49 @@ function BookingModal({ open, onClose, onSave, context }) {
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      aria-labelledby="bus-booking-title"
+      // overlay can scroll if content is taller than the viewport
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6"
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40" />
+      <div className="fixed inset-0 bg-black/40" />
 
       {/* Modal */}
       <div
-        className="relative z-10 w-full max-w-3xl rounded-xl bg-white p-4 shadow-xl"
+        className="relative z-10 w-full max-w-3xl my-8 rounded-xl bg-white shadow-xl"
         onClick={stopClick}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">New Bus Booking</h3>
-          <button
-            onClick={onClose}
-            className="rounded px-2 py-1 text-sm border border-gray-300 hover:bg-gray-50"
-          >
-            Close
-          </button>
+        {/* Sticky header so Close stays visible */}
+        <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 rounded-t-xl">
+          <div className="flex items-center justify-between">
+            <h3 id="bus-booking-title" className="text-lg font-semibold">
+              New Bus Booking
+            </h3>
+            <button
+              onClick={onClose}
+              className="rounded px-2 py-1 text-sm border border-gray-300 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
-        <BusBookingForm
-          onSuccess={async () => {
-            // Let parent refresh the table
-            if (onSave) await onSave();
-            onClose();
-          }}
-          onCancel={onClose}
-        />
+        {/* Scrollable content area */}
+        <div className="px-4 pb-4 pt-3 max-h-[85vh] overflow-y-auto">
+          <BusBookingForm
+            onSuccess={async () => {
+              if (onSave) await onSave();
+              onClose();
+            }}
+            onCancel={onClose}
+          />
+        </div>
       </div>
     </div>
   );
 }
+
 
 export default function Bookings() {
   const { profile } = useAuth();
