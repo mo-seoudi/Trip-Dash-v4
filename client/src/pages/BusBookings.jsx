@@ -11,65 +11,29 @@ import {
 } from "../services/bookingService";
 import { useAuth } from "../context/AuthContext";
 
-// ⬇️ NEW: import the actual form so the modal can render it
 import BusBookingForm from "../components/booking/BusBookingForm";
+import ModalWrapper from "../components/ModalWrapper";
 
 const EmptyRow = ({ children }) => (
   <div className="px-4 py-10 text-sm text-gray-500 text-center">{children}</div>
 );
 
 // ⬇️ REPLACED the stub with a working modal that mounts the form
-function BookingModal({ open, onClose, onSave, context }) {
+function BookingModal({ open, onClose, onSave }) {
   if (!open) return null;
-
-  const stopClick = (e) => e.stopPropagation();
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bus-booking-title"
-      // overlay can scroll if content is taller than the viewport
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6"
-      onClick={onClose}
-    >
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40" />
-
-      {/* Modal */}
-      <div
-        className="relative z-10 w-full max-w-3xl my-8 rounded-xl bg-white shadow-xl"
-        onClick={stopClick}
-      >
-        {/* Sticky header so Close stays visible */}
-        <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 rounded-t-xl">
-          <div className="flex items-center justify-between">
-            <h3 id="bus-booking-title" className="text-lg font-semibold">
-              New Bus Booking
-            </h3>
-            <button
-              onClick={onClose}
-              className="rounded px-2 py-1 text-sm border border-gray-300 hover:bg-gray-50"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable content area */}
-        <div className="px-4 pb-4 pt-3 max-h-[85vh] overflow-y-auto">
-          <BusBookingForm
-            onSuccess={async () => {
-              if (onSave) await onSave();
-              onClose();
-            }}
-            onCancel={onClose}
-          />
-        </div>
-      </div>
-    </div>
+    <ModalWrapper title="New Bus Booking" onClose={onClose} maxWidth="max-w-3xl">
+      <BusBookingForm
+        onSuccess={async () => {
+          if (onSave) await onSave();
+          onClose();
+        }}
+        onCancel={onClose}
+      />
+    </ModalWrapper>
   );
 }
+
 
 
 export default function Bookings() {
