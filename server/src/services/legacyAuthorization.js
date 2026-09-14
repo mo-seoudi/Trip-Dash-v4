@@ -137,13 +137,33 @@ export function canManagePassengers(user, trip) {
   return Boolean(user?.role === "school_staff" && creatorMatches(user, trip));
 }
 
-export function canReadSubTrips(user, trip) {
+// Bus assignments are first-class resources attached to one Trip. They replace
+// the obsolete SubTrip concept. Operational bus details are managed by the bus
+// operator (or admin), while any role allowed to read the trip may see the
+// non-passenger assignment details.
+export function canReadBusAssignments(user, trip) {
   return canReadTrip(user, trip);
 }
 
-export function canManageSubTrips(user, trip) {
+export function canManageBusAssignments(user, trip) {
   if (!user || !trip) return false;
   return isAdmin(user) || user.role === "bus_operator";
+}
+
+// Passenger allocation is intentionally separate from bus-detail management.
+// The bus operator must not gain passenger-list access merely because it can
+// assign vehicles. Until organization-scoped permissions replace this bridge,
+// the trip's school creator (or admin) controls who is allocated to each bus.
+export function canManagePassengerAllocations(user, trip) {
+  if (!user || !trip) return false;
+  if (isAdmin(user)) return true;
+  return user.role === "school_staff" && creatorMatches(user, trip);
+}
+
+// Historical SubTrip rows may still be read during migration. No new SubTrips
+// may be created or managed; the target domain is Trip -> Bus Assignments.
+export function canReadSubTrips(user, trip) {
+  return canReadTrip(user, trip);
 }
 
 export function canReadBooking(user, booking) {
