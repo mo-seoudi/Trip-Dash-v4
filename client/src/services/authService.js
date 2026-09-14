@@ -5,12 +5,17 @@ import api from "./apiClient";
 // 🔐 Login
 export const login = async (email, password) => {
   const res = await api.post("/auth/login", { email, password });
-  return res.data; // includes token or session
+  return res.data; // { ok, user, token }
 };
 
 // 🚪 Logout
 export const logout = async () => {
-  await api.post("/auth/logout");
+  try {
+    await api.post("/auth/logout");
+  } finally {
+    // Always clear the bearer-token fallback even if the backend is unavailable.
+    localStorage.removeItem("token");
+  }
 };
 
 // 👤 Get current user (session)
