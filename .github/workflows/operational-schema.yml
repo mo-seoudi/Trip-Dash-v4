@@ -1,0 +1,69 @@
+name: Operational PostgreSQL Verification
+
+on:
+  push:
+    branches:
+      - architecture-rebuild
+    paths:
+      - "server/prisma/operational.schema.prisma"
+      - "server/scripts/operational-schema-smoke.mjs"
+      - "server/package.json"
+      - ".github/workflows/operational-schema.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-operational-schema:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tripdash
+          POSTGRES_PASSWORD: tripdash
+          POSTGRES_DB: tripdash_operational_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tripdash -d tripdash_operational_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: server
+
+    env:
+      OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
+      DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
+      DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # package-lock.json is currently known to need reconciliation during the
+      # architecture rebuild. npm install is intentional here so schema
+      # verification can run without falsely implying the stale lockfile is CI-ready.
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Validate operational Prisma schema
+        run: npm run prisma:operational:validate
+
+      - name: Generate operational Prisma client
+        run: npm run prisma:operational:generate
+
+      - name: Apply operational schema to clean PostgreSQL
+        run: npm run prisma:operational:push
+
+      - name: Run operational database invariants
+        run: npm run test:operational:smoke
