@@ -1,33 +1,24 @@
 // server/src/middleware/auth.js
-import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import { normalizeLegacyUser } from "../lib/legacyRoles.js";
-
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is required but missing.");
-}
-
-function readToken(req) {
-  const bearer = req.headers.authorization || "";
-  if (bearer.startsWith("Bearer ")) return bearer.slice(7);
-  return req.cookies?.token || null;
-}
+import { readAuthToken, verifyAuthToken } from "../lib/authTokens.js";
 
 // Compatibility authentication for existing v4 users while the new AppUser/
 // session architecture is built. Authorization must not trust a role embedded
 // in an old JWT; current role/status are reloaded from PostgreSQL on each request.
 export async function requireAuth(req, res, next) {
   try {
-    const token = readToken(req);
+    const token = readAuthToken(req);
     if (!token) return res.status(401).json({ message: "Not logged in" });
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const userId = decoded.id ?? decoded.uid;
-    if (!userId) return res.status(401).json({ message: "Invalid token" });
+    const decoded = verifyAuthToken(token);
+    const userId = Number(decoded.id ?? decoded.sub);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
 
     const storedUser = await prisma.user.findUnique({
-      where: { id: Number(userId) },
+      where: { id: userId },
       select: { id: true, email: true, name: true, role: true, status: true },
     });
 
@@ -43,7 +34,7 @@ export async function requireAuth(req, res, next) {
     req.user = normalizeLegacyUser(storedUser);
     return next();
   } catch (e) {
-    if (e?.name === "JsonWebTokenError" || e?.name === "TokenExpiredError") {
+    if (e?.name === "JsonWebTokenError" || e?.name === "TokenExpiredError" || e?.name === "NotBeforeError") {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
     return next(e);
