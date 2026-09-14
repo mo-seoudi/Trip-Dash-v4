@@ -6,7 +6,9 @@
 // application logic is deliberately absent: Supabase, Neon and generic
 // PostgreSQL all receive the same Prisma client contract.
 
+import { createHash } from "node:crypto";
 import { assertPostgresCompatibleDataSource } from "./operationalDataSource.js";
+import { resolveSecretValue } from "./secretProvider.js";
 
 const clients = new Map();
 let operationalClientModulePromise;
@@ -18,49 +20,25 @@ async function loadOperationalClient() {
   return operationalClientModulePromise;
 }
 
-function resolveEnvironmentSecret(secretRef) {
-  const ref = String(secretRef || "").trim();
-  if (!ref.startsWith("env:")) {
-    const error = new Error("Unsupported database secret reference scheme");
-    error.status = 500;
-    throw error;
-  }
-
-  const envName = ref.slice(4).trim();
-  if (!/^[A-Z][A-Z0-9_]{2,120}$/.test(envName)) {
-    const error = new Error("Invalid database environment secret reference");
-    error.status = 500;
-    throw error;
-  }
-
-  const value = process.env[envName];
-  if (!value) {
-    const error = new Error(`Database secret ${envName} is not configured on the server`);
-    error.status = 500;
-    throw error;
-  }
-  return value;
+function credentialFingerprint(value) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
-export function resolveDatabaseUrl(secretRef) {
-  // Initial implementation deliberately supports environment-backed secrets
-  // only. A managed secret store can replace/extend this without changing the
-  // OperationalDataSource records or route code.
-  return resolveEnvironmentSecret(secretRef);
-}
-
-function cacheKey(dataSource) {
-  return `${dataSource.id}:${dataSource.updatedAt?.toISOString?.() || dataSource.updatedAt || "unknown"}`;
+function cacheKey(dataSource, databaseUrl) {
+  // The URL itself is never used as a Map key/loggable identifier. A short hash
+  // lets a rotated vault secret produce a fresh Prisma client automatically.
+  return `${dataSource.id}:${credentialFingerprint(databaseUrl)}`;
 }
 
 export async function prismaForOperationalDataSource(input) {
   const dataSource = assertPostgresCompatibleDataSource(input);
-  const key = cacheKey(dataSource);
+  const databaseUrl = await resolveSecretValue(dataSource.secretRef);
+  const key = cacheKey(dataSource, databaseUrl);
   const existing = clients.get(key);
   if (existing) return existing;
 
-  // Remove stale cached versions of the same data-source record. This allows a
-  // secret rotation/update to take effect after the control-plane row changes.
+  // Remove stale cached versions of the same data-source record. A secret
+  // rotation is therefore picked up after the secret-provider cache expires.
   for (const [cachedKey, client] of clients.entries()) {
     if (cachedKey.startsWith(`${dataSource.id}:`) && cachedKey !== key) {
       clients.delete(cachedKey);
@@ -69,7 +47,6 @@ export async function prismaForOperationalDataSource(input) {
   }
 
   const { PrismaClient } = await loadOperationalClient();
-  const databaseUrl = resolveDatabaseUrl(dataSource.secretRef);
   const client = new PrismaClient({
     datasources: { db: { url: databaseUrl } },
   });
