@@ -1,6 +1,7 @@
 // server/src/middleware/auth.js
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
+import { normalizeLegacyUser } from "../lib/legacyRoles.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -25,19 +26,21 @@ export async function requireAuth(req, res, next) {
     const userId = decoded.id ?? decoded.uid;
     if (!userId) return res.status(401).json({ message: "Invalid token" });
 
-    const user = await prisma.user.findUnique({
+    const storedUser = await prisma.user.findUnique({
       where: { id: Number(userId) },
       select: { id: true, email: true, name: true, role: true, status: true },
     });
 
-    if (!user) return res.status(401).json({ message: "Not logged in" });
+    if (!storedUser) return res.status(401).json({ message: "Not logged in" });
 
-    const status = String(user.status || "").toLowerCase().trim();
+    const status = String(storedUser.status || "").toLowerCase().trim();
     if (status !== "approved") {
-      return res.status(403).json({ message: "Account is not approved", status: user.status });
+      return res.status(403).json({ message: "Account is not approved", status: storedUser.status });
     }
 
-    req.user = user;
+    // Expose canonical terminology to the rebuilt application without changing
+    // the existing database value before the migration is ready.
+    req.user = normalizeLegacyUser(storedUser);
     return next();
   } catch (e) {
     if (e?.name === "JsonWebTokenError" || e?.name === "TokenExpiredError") {
