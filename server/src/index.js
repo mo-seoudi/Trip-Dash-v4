@@ -17,11 +17,11 @@ import bookingsRoutes from "./routes/bookingsRoutes.js";
 import msRoutes from "./routes/ms.js";
 import authMicrosoftRoutes from "./routes/authMicrosoft.js";
 import accessRoutes from "./routes/accessRoutes.js";
+import accessAdminRoutes from "./routes/accessAdminRoutes.js";
 
 dotenv.config();
 
 const app = express();
-
 app.set("trust proxy", 1);
 
 const DEV_DEFAULT = "http://localhost:5173";
@@ -36,11 +36,7 @@ const regexList = (process.env.ALLOWED_ORIGIN_REGEXES || "")
   .map((s) => s.trim())
   .filter(Boolean)
   .map((pattern) => {
-    try {
-      return new RegExp(pattern);
-    } catch {
-      return null;
-    }
+    try { return new RegExp(pattern); } catch { return null; }
   })
   .filter(Boolean);
 
@@ -63,35 +59,35 @@ app.use(cookieParser());
 app.get("/", (_, res) => res.status(200).json({ ok: true }));
 app.get("/health", (_, res) => res.status(200).json({ ok: true }));
 
-// Legacy global-context endpoint. Authentication is centralized; this remains
-// only while global/control-plane records are migrated to the canonical model.
+// Legacy global-context endpoint retained during migration. New application UI
+// should use /api/access/me instead.
 app.get("/api/me", requireAuth, async (req, res, next) => {
   try {
     const appUser = req.user;
     const gUser =
-      (await prismaGlobal.users.findFirst({
-        where: { legacy_user_id: Number(appUser.id) },
+      (await prismaGlobal.user.findFirst({
+        where: { legacyUserId: Number(appUser.id) },
         select: { id: true },
       })) ||
-      (await prismaGlobal.users.findFirst({
+      (await prismaGlobal.user.findFirst({
         where: { email: appUser.email },
         select: { id: true },
       }));
 
     const roles = gUser
-      ? await prismaGlobal.userRoles.findMany({
-          where: { user_id: gUser.id },
-          include: { organizations: { select: { id: true, name: true, type: true } } },
-          orderBy: { org_id: "asc" },
+      ? await prismaGlobal.userOrgMembership.findMany({
+          where: { userId: gUser.id },
+          include: { org: { select: { id: true, name: true, type: true } } },
+          orderBy: { orgId: "asc" },
         })
       : [];
 
     return res.json({
       user: { id: appUser.id, email: appUser.email, name: appUser.name, role: appUser.role },
       orgs: roles.map((r) => ({
-        org_id: r.org_id,
-        name: r.organizations?.name || r.org_id,
-        type: r.organizations?.type || null,
+        org_id: r.orgId,
+        name: r.org?.name || r.orgId,
+        type: r.org?.type || null,
         role: r.role === "bus_company" ? "bus_operator" : r.role,
       })),
       active_org_id: req.cookies?.td_active_org || null,
@@ -109,22 +105,22 @@ app.post("/api/session/set-org", requireAuth, async (req, res, next) => {
     }
 
     const gUser =
-      (await prismaGlobal.users.findFirst({
-        where: { legacy_user_id: Number(req.user.id) },
+      (await prismaGlobal.user.findFirst({
+        where: { legacyUserId: Number(req.user.id) },
         select: { id: true },
       })) ||
-      (await prismaGlobal.users.findFirst({
+      (await prismaGlobal.user.findFirst({
         where: { email: req.user.email },
         select: { id: true },
       }));
 
     if (!gUser) return res.status(403).json({ message: "No global user" });
 
-    const membership = await prismaGlobal.userRoles.findFirst({
-      where: { user_id: gUser.id, org_id },
-      select: { user_id: true, org_id: true, status: true },
+    const membership = await prismaGlobal.userOrgMembership.findFirst({
+      where: { userId: gUser.id, orgId: org_id },
+      select: { userId: true, orgId: true, status: true },
     });
-    if (!membership || membership.status !== "active") {
+    if (!membership || !["active", "approved"].includes(String(membership.status).toLowerCase())) {
       return res.status(403).json({ message: "No active membership in this organization" });
     }
 
@@ -143,6 +139,7 @@ app.post("/api/session/set-org", requireAuth, async (req, res, next) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/access", accessRoutes);
+app.use("/api/access-admin", accessAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/trips", tripsRouter);
