@@ -13,6 +13,8 @@ import adminRoutes from "./routes/adminRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import tripsRouter from "./routes/trips/index.js";
 import workspaceTripsRoutes from "./routes/workspaceTripsRoutes.js";
+import workspaceTripPassengersRoutes from "./routes/workspaceTripPassengersRoutes.js";
+import workspaceTripBusAssignmentsRoutes from "./routes/workspaceTripBusAssignmentsRoutes.js";
 import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 import bookingsRoutes from "./routes/bookingsRoutes.js";
@@ -131,10 +133,15 @@ app.use("/api/access-admin", accessAdminRoutes);
 app.use("/api/data-sources", dataSourceAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
-// Rebuilt provider-neutral route. The legacy /api/trips route remains mounted
-// separately until frontend migration and runtime verification are complete.
+
+// Rebuilt provider-neutral operational routes. The legacy /api/trips routes
+// remain mounted separately until schema migration, runtime verification and
+// frontend cutover are complete.
+app.use("/api/workspaces/:schoolId/trips/:tripId/passengers", workspaceTripPassengersRoutes);
+app.use("/api/workspaces/:schoolId/trips/:tripId/bus-assignments", workspaceTripBusAssignmentsRoutes);
 app.use("/api/workspaces/:schoolId/trips", workspaceTripsRoutes);
 app.use("/api/trips", tripsRouter);
+
 app.use("/api/global", globalRoutes);
 app.use("/api/global", globalRolesRoutes);
 app.use("/api/bookings", bookingsRoutes);
