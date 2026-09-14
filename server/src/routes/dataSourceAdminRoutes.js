@@ -33,6 +33,12 @@ function providerFromHost(host) {
   return "postgresql";
 }
 
+function defaultHostHint(provider) {
+  if (provider === "neon") return "neon.tech";
+  if (provider === "supabase") return "supabase";
+  return "postgresql";
+}
+
 function dataSourceForRuntime(row) {
   return {
     id: `legacy:${row.id}`,
@@ -90,20 +96,22 @@ router.put("/:schoolId", async (req, res, next) => {
     const secretRef = clean(req.body?.secret_ref, 250, "secret_ref");
     if (secretRef) parseSecretRef(secretRef); // syntax only; never resolves secret during registration
 
+    const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
     const existing = await prismaGlobal.dataConnection.findUnique({
-      where: { orgId_mode: { orgId: school.id, mode: mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS" } },
+      where: { orgId_mode: { orgId: school.id, mode: storedMode } },
     });
     if (!existing && !secretRef) {
       return res.status(400).json({ message: "secret_ref is required when creating a data source" });
     }
 
-    // Preserve the existing host/provider hint on edits unless the admin sends a
-    // replacement. This avoids silently rewriting metadata when the UI keeps the
-    // host hint private/blank during an edit.
+    // Preserve a private existing host hint only while the provider remains the
+    // same. If the admin deliberately changes provider, switch to that provider's
+    // neutral hint unless an explicit replacement host_hint was submitted.
     const requestedHostHint = clean(req.body?.host_hint, 250, "host_hint");
-    const hostHint = requestedHostHint || existing?.dbHost ||
-      (provider === "neon" ? "neon.tech" : provider === "supabase" ? "supabase" : "postgresql");
-    const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
+    const existingProvider = existing ? providerFromHost(existing.dbHost) : null;
+    const hostHint = requestedHostHint ||
+      (existing && existingProvider === provider ? existing.dbHost : null) ||
+      defaultHostHint(provider);
     const activate = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
 
     const row = await prismaGlobal.$transaction(async (tx) => {
