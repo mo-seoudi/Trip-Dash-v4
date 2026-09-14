@@ -1,7 +1,13 @@
 // server/src/routes/trips/trips.core.js
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import jwt from "jsonwebtoken";
+import {
+  canCreateTrip,
+  canDeleteTrip,
+  canReadTrip,
+  canUpdateTrip,
+  creatorWhere,
+} from "../../services/legacyAuthorization.js";
 
 const router = Router();
 
@@ -12,230 +18,198 @@ const TRIP_REL_INCLUDE = {
   subTripDocs: true,
 };
 
-// helper to decode your JWT (from cookie or Authorization)
-function getDecodedUser(req) {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error("JWT_SECRET is required but missing. Set it in your environment.");
-  }
-  try {
-    const bearer = req.headers.authorization || "";
-    const token = bearer.startsWith("Bearer ")
-      ? bearer.slice(7)
-      : req.cookies?.token;
-    if (!token) return null;
-    return jwt.verify(token, secret);
-  } catch {
-    return null;
-  }
+function parseId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseNullableNumber(value, fallback = null) {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function buildTripPatch(body = {}) {
+  const {
+    tripType,
+    destination,
+    origin,
+    date,
+    departureTime,
+    returnDate,
+    returnTime,
+    students,
+    staff,
+    status,
+    price,
+    notes,
+    cancelRequest,
+    busInfo,
+    driverInfo,
+    buses,
+    boosterSeatsRequested,
+    boosterSeatCount,
+  } = body;
+
+  return {
+    ...(tripType !== undefined && { tripType }),
+    ...(destination !== undefined && { destination }),
+    ...(origin !== undefined && { origin }),
+    ...(date !== undefined && { date: date ? new Date(date) : null }),
+    ...(departureTime !== undefined && { departureTime }),
+    ...(returnDate !== undefined && { returnDate: returnDate ? new Date(returnDate) : null }),
+    ...(returnTime !== undefined && { returnTime }),
+    ...(students !== undefined && { students: parseNullableNumber(students) }),
+    ...(staff !== undefined && { staff: parseNullableNumber(staff) }),
+    ...(status !== undefined && { status }),
+    ...(price !== undefined && { price: parseNullableNumber(price, 0) }),
+    ...(notes !== undefined && { notes }),
+    ...(cancelRequest !== undefined && { cancelRequest: Boolean(cancelRequest) }),
+    ...(busInfo !== undefined && { busInfo }),
+    ...(driverInfo !== undefined && { driverInfo }),
+    ...(buses !== undefined && { buses }),
+    ...(boosterSeatsRequested !== undefined && { boosterSeatsRequested: Boolean(boosterSeatsRequested) }),
+    ...(boosterSeatCount !== undefined && { boosterSeatCount: parseNullableNumber(boosterSeatCount, 0) }),
+  };
+}
+
+async function findTrip(id, include = false) {
+  return prisma.trip.findUnique({
+    where: { id },
+    ...(include ? { include: TRIP_REL_INCLUDE } : {}),
+  });
 }
 
 /** GET /api/trips */
 router.get("/", async (req, res, next) => {
   try {
-    const decoded = getDecodedUser(req);
-
-    let currentUser = null;
-    if (decoded?.id) {
-      currentUser = await prisma.user.findUnique({
-        where: { id: Number(decoded.id) },
-        select: { id: true, email: true, role: true, name: true },
-      });
-    }
-
     const { createdBy } = req.query;
     const nameNeedle =
       createdBy && String(createdBy).includes(" ")
         ? String(createdBy).split(" ")[0]
         : createdBy;
 
-    const baseWhere = nameNeedle
-      ? { createdBy: { contains: String(nameNeedle), mode: "insensitive" } }
-      : undefined;
-
-    let where = baseWhere;
-
-    if (currentUser?.role === "school_staff") {
-      where = {
-        AND: [
-          baseWhere || {},
-          {
-            OR: [
-              { createdById: currentUser.id },
-              { createdByEmail: currentUser.email },
-            ],
-          },
-        ],
-      };
+    const filters = [];
+    if (nameNeedle) {
+      filters.push({ createdBy: { contains: String(nameNeedle), mode: "insensitive" } });
     }
 
-    try {
-      const trips = await prisma.trip.findMany({
-        where,
-        orderBy: { id: "desc" },
-        include: TRIP_REL_INCLUDE,
-      });
-      return res.json(trips);
-    } catch {
-      const trips = await prisma.trip.findMany({ where, orderBy: { id: "desc" } });
-      return res.json(trips);
+    // Preserve legacy school-staff visibility while preventing unauthenticated
+    // or unknown-role users from enumerating trips.
+    if (req.user.role === "school_staff") {
+      filters.push(creatorWhere(req.user));
+    } else if (!["admin", "bus_operator", "finance", "trip_manager"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
+
+    const where = filters.length ? { AND: filters } : undefined;
+    const trips = await prisma.trip.findMany({
+      where,
+      orderBy: { id: "desc" },
+      include: TRIP_REL_INCLUDE,
+    });
+
+    return res.json(trips.filter((trip) => canReadTrip(req.user, trip)));
   } catch (e) {
-    next(e);
+    return next(e);
+  }
+});
+
+/** GET /api/trips/:id */
+router.get("/:id", async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid trip id" });
+
+    const trip = await findTrip(id, true);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    if (!canReadTrip(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
+
+    return res.json(trip);
+  } catch (e) {
+    return next(e);
   }
 });
 
 /** POST /api/trips */
 router.post("/", async (req, res, next) => {
   try {
-    const decoded = getDecodedUser(req);
+    if (!canCreateTrip(req.user)) return res.status(403).json({ message: "Forbidden" });
 
-    const {
-      createdById, createdBy, createdByEmail,
-      tripType, destination, origin, date, departureTime,
-      returnDate, returnTime, students, staff, status, price,
-      notes, cancelRequest, busInfo, driverInfo, buses, parentId,
-      boosterSeatsRequested, boosterSeatCount,
-    } = req.body;
-
+    const body = req.body || {};
     const data = {
-      createdById: createdById ?? (decoded?.id ? Number(decoded.id) : null),
-      createdBy: createdBy ?? null,
-      createdByEmail: createdByEmail ?? decoded?.email ?? null,
-
-      tripType: tripType ?? null,
-      destination: destination ?? null,
-      origin: origin ?? null,                                   // NEW
-
-      date: date ? new Date(date) : null,
-      departureTime: departureTime ?? null,
-      returnDate: returnDate ? new Date(returnDate) : null,
-      returnTime: returnTime ?? null,
-
-      students: typeof students === "number" ? students : students ? Number(students) : null,
-      staff: typeof staff === "number" ? staff : staff ? Number(staff) : null,
-
-      status: status ?? "Pending",
-      price: typeof price === "number" ? price : price ? Number(price) : 0,
-      notes: notes ?? null,
-      cancelRequest: !!cancelRequest,
-
-      busInfo: busInfo ?? null,
-      driverInfo: driverInfo ?? null,
-      buses: buses ?? null,
-
-      parentId: parentId ?? null,
-
-      boosterSeatsRequested: !!boosterSeatsRequested,
-      boosterSeatCount: typeof boosterSeatCount === "number"
-        ? boosterSeatCount
-        : boosterSeatCount ? Number(boosterSeatCount) : 0,
+      // Creator identity is server-owned. Never trust client-supplied creator ids/emails.
+      createdById: req.user.id,
+      createdBy: req.user.name ?? null,
+      createdByEmail: req.user.email ?? null,
+      tripType: body.tripType ?? null,
+      destination: body.destination ?? null,
+      origin: body.origin ?? null,
+      date: body.date ? new Date(body.date) : null,
+      departureTime: body.departureTime ?? null,
+      returnDate: body.returnDate ? new Date(body.returnDate) : null,
+      returnTime: body.returnTime ?? null,
+      students: parseNullableNumber(body.students),
+      staff: parseNullableNumber(body.staff),
+      status: "Pending",
+      price: 0,
+      notes: body.notes ?? null,
+      cancelRequest: false,
+      busInfo: null,
+      driverInfo: null,
+      buses: null,
+      parentId: null,
+      boosterSeatsRequested: Boolean(body.boosterSeatsRequested),
+      boosterSeatCount: parseNullableNumber(body.boosterSeatCount, 0),
     };
 
     const created = await prisma.trip.create({ data });
-
-    try {
-      const withRels = await prisma.trip.findUnique({
-        where: { id: created.id },
-        include: TRIP_REL_INCLUDE,
-      });
-      return res.status(201).json(withRels ?? created);
-    } catch {
-      return res.status(201).json(created);
-    }
+    const withRels = await findTrip(created.id, true);
+    return res.status(201).json(withRels ?? created);
   } catch (e) {
-    next(e);
+    return next(e);
   }
 });
 
 /** PATCH /api/trips/:id */
 router.patch("/:id", async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid trip id" });
 
-    // ALLOWLIST ONLY FIELDS THAT EXIST IN THE Trip MODEL
-    const {
-      tripType,
-      destination,
-      origin,           // NEW
-      date,
-      departureTime,
-      returnDate,
-      returnTime,
-      students,
-      staff,
-      status,
-      price,
-      notes,
-      cancelRequest,
-      busInfo,
-      driverInfo,
-      buses,
-      parentId,
-      boosterSeatsRequested,
-      boosterSeatCount,
-    } = req.body || {};
+    const existing = await findTrip(id);
+    if (!existing) return res.status(404).json({ message: "Trip not found" });
 
-    const data = {
-      ...(tripType !== undefined && { tripType }),
-      ...(destination !== undefined && { destination }),
-      ...(origin !== undefined && { origin }),
-      ...(date !== undefined && { date: date ? new Date(date) : null }),
-      ...(departureTime !== undefined && { departureTime }),
-      ...(returnDate !== undefined && { returnDate: returnDate ? new Date(returnDate) : null }),
-      ...(returnTime !== undefined && { returnTime }),
-      ...(students !== undefined && {
-        students:
-          typeof students === "number" ? students :
-          students === "" || students === null ? null : Number(students),
-      }),
-      ...(staff !== undefined && {
-        staff:
-          typeof staff === "number" ? staff :
-          staff === "" || staff === null ? null : Number(staff),
-      }),
-      ...(status !== undefined && { status }),
-      ...(price !== undefined && {
-        price: typeof price === "number" ? price : price ? Number(price) : 0,
-      }),
-      ...(notes !== undefined && { notes }),
-      ...(cancelRequest !== undefined && { cancelRequest: !!cancelRequest }),
-      ...(busInfo !== undefined && { busInfo }),
-      ...(driverInfo !== undefined && { driverInfo }),
-      ...(buses !== undefined && { buses }),
-      ...(parentId !== undefined && { parentId }),
-      ...(boosterSeatsRequested !== undefined && { boosterSeatsRequested: !!boosterSeatsRequested }),
-      ...(boosterSeatCount !== undefined && {
-        boosterSeatCount: typeof boosterSeatCount === "number"
-          ? boosterSeatCount
-          : boosterSeatCount ? Number(boosterSeatCount) : 0
-      }),  
-    };
-
-    const updated = await prisma.trip.update({ where: { id }, data });
-
-    try {
-      const withRels = await prisma.trip.findUnique({
-        where: { id },
-        include: TRIP_REL_INCLUDE,
-      });
-      return res.json(withRels ?? updated);
-    } catch {
-      return res.json(updated);
+    const patch = buildTripPatch(req.body);
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ message: "No supported fields supplied" });
     }
+    if (!canUpdateTrip(req.user, existing, patch)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await prisma.trip.update({ where: { id }, data: patch });
+    const withRels = await findTrip(id, true);
+    return res.json(withRels);
   } catch (e) {
-    next(e);
+    return next(e);
   }
 });
 
 /** DELETE /api/trips/:id */
 router.delete("/:id", async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid trip id" });
+
+    const existing = await findTrip(id);
+    if (!existing) return res.status(404).json({ message: "Trip not found" });
+    if (!canDeleteTrip(req.user, existing)) return res.status(403).json({ message: "Forbidden" });
+
     await prisma.trip.delete({ where: { id } });
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (e) {
-    next(e);
+    return next(e);
   }
 });
 
