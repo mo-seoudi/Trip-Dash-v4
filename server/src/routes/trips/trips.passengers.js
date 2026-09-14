@@ -1,24 +1,11 @@
 // server/src/routes/trips/trips.passengers.js
 import { Router } from "express";
-import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../lib/prisma.js";
 
-const prisma = new PrismaClient();
 const router = Router();
 
-/** Extract JWT from Authorization: Bearer ... or cookie "token" */
-function getDecodedUser(req) {
-  try {
-    const bearer = req.headers.authorization || "";
-    const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : req.cookies?.token;
-    if (!token) return null;
-    return jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    return null;
-  }
-}
-
-/** Allow admin or creator of the trip (by id or email snapshot) */
+// Temporary legacy resource check. Authentication is guaranteed by the parent
+// trip router. This will be replaced by the centralized authorization service.
 async function canAccessTrip(user, tripId) {
   if (!user?.id) return false;
   if (user.role === "admin") return true;
@@ -30,23 +17,18 @@ async function canAccessTrip(user, tripId) {
   if (!trip) return false;
 
   if (trip.createdById && Number(trip.createdById) === Number(user.id)) return true;
-
-  const me = await prisma.user.findUnique({
-    where: { id: Number(user.id) },
-    select: { email: true },
-  });
-
-  return !!(me?.email && trip.createdByEmail && me.email === trip.createdByEmail);
+  return !!(user.email && trip.createdByEmail && user.email === trip.createdByEmail);
 }
 
 /** GET /api/trips/:id/passengers -> TripPassenger[] */
-router.get("/:id/passengers", async (req, res) => {
+router.get("/:id/passengers", async (req, res, next) => {
   try {
-    const user = getDecodedUser(req);
     const tripId = Number(req.params.id);
-    if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return res.status(400).json({ error: "Invalid trip id" });
+    }
 
-    const ok = await canAccessTrip(user, tripId);
+    const ok = await canAccessTrip(req.user, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
     const rows = await prisma.tripPassenger.findMany({
@@ -54,24 +36,21 @@ router.get("/:id/passengers", async (req, res) => {
       orderBy: { id: "desc" },
     });
 
-    res.json(rows);
+    return res.json(rows);
   } catch (e) {
-    console.error("[PASSENGERS] GET error:", e);
-    res.status(500).json({ error: "Failed to load passengers" });
+    return next(e);
   }
 });
 
-/** POST /api/trips/:id/passengers
- * body: { passengers: [{ fullName, guardianName?, guardianPhone?, pickupPoint?, dropoffPoint?, notes?, checkedIn? }] }
- * returns: TripPassenger[] (the newly created rows, newest first)
- */
-router.post("/:id/passengers", async (req, res) => {
+/** POST /api/trips/:id/passengers */
+router.post("/:id/passengers", async (req, res, next) => {
   try {
-    const user = getDecodedUser(req);
     const tripId = Number(req.params.id);
-    if (!tripId) return res.status(400).json({ error: "Invalid trip id" });
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return res.status(400).json({ error: "Invalid trip id" });
+    }
 
-    const ok = await canAccessTrip(user, tripId);
+    const ok = await canAccessTrip(req.user, tripId);
     if (!ok) return res.status(403).json({ error: "Forbidden" });
 
     const list = Array.isArray(req.body?.passengers) ? req.body.passengers : [];
@@ -100,10 +79,9 @@ router.post("/:id/passengers", async (req, res) => {
       take: toCreate.length,
     });
 
-    res.status(201).json(created);
+    return res.status(201).json(created);
   } catch (e) {
-    console.error("[PASSENGERS] POST error:", e);
-    res.status(500).json({ error: "Failed to add passengers" });
+    return next(e);
   }
 });
 
