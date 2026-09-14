@@ -3,6 +3,7 @@ import { FiRefreshCw, FiUsers, FiGrid, FiLink2, FiShield, FiDatabase, FiCheckCir
 import { toast } from "react-toastify";
 import api from "@/services/apiClient";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import UserAccessEditor from "@/components/admin/UserAccessEditor";
 
 const TABS = [
   ["users", "Users", FiUsers],
@@ -207,22 +208,13 @@ function AccessControlPage() {
                       </div>
                       <Pill>{user.is_active ? "Active" : "Inactive"}</Pill>
                     </div>
-                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <div>
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Memberships & roles</div>
-                        <div className="space-y-2">
-                          {memberships.map((m) => <div key={m.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="font-medium">{ROLE_LABELS[m.role] || m.role}</span><span className="text-slate-500"> · {m.organization?.display_name}</span></div>)}
-                          {!memberships.length && <span className="text-sm text-slate-400">No organization memberships</span>}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Restricted school access</div>
-                        <div className="flex flex-wrap gap-2">
-                          {scopes.map((s) => <Pill key={`${s.organization_id}-${s.school_organization_id}-${s.role}`}>{s.school?.abbreviation || s.school?.display_name}</Pill>)}
-                          {!scopes.length && <span className="text-sm text-slate-400">No additional school restriction</span>}
-                        </div>
-                      </div>
-                    </div>
+                    <UserAccessEditor
+                      user={user}
+                      memberships={memberships}
+                      scopes={scopes}
+                      organizations={data.organizations || []}
+                      onChanged={load}
+                    />
                   </article>
                 );
               })}
