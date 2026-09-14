@@ -69,8 +69,9 @@ router.get("/", async (req, res, next) => {
 });
 
 // PUT /api/data-sources/:schoolId
-// Upserts the one active operational connection for a school/mode. secret_ref
-// is accepted on writes but deliberately omitted from every response.
+// Upserts a connection mode. If this row is activated, all other connection
+// modes for the same school are deactivated in the same transaction. That
+// preserves a deterministic school -> one active operational DB invariant.
 router.put("/:schoolId", async (req, res, next) => {
   try {
     const schoolId = clean(req.params.schoolId, 100);
@@ -93,6 +94,7 @@ router.put("/:schoolId", async (req, res, next) => {
     const hostHint = clean(req.body?.host_hint, 250) ||
       (provider === "neon" ? "neon.tech" : provider === "supabase" ? "supabase" : "postgresql");
     const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
+    const activate = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
 
     const existing = await prismaGlobal.dataConnection.findUnique({
       where: { orgId_mode: { orgId: school.id, mode: storedMode } },
@@ -101,25 +103,36 @@ router.put("/:schoolId", async (req, res, next) => {
       return res.status(400).json({ message: "secret_ref is required when creating a data source" });
     }
 
-    const row = existing
-      ? await prismaGlobal.dataConnection.update({
+    const row = await prismaGlobal.$transaction(async (tx) => {
+      if (activate) {
+        await tx.dataConnection.updateMany({
+          where: { orgId: school.id, isActive: true, ...(existing ? { id: { not: existing.id } } : {}) },
+          data: { isActive: false },
+        });
+      }
+
+      if (existing) {
+        return tx.dataConnection.update({
           where: { id: existing.id },
           data: {
             dbHost: hostHint,
-            isActive: req.body?.is_active === undefined ? existing.isActive : Boolean(req.body.is_active),
+            isActive: activate,
             ...(secretRef ? { vaultSecretId: secretRef } : {}),
           },
-        })
-      : await prismaGlobal.dataConnection.create({
-          data: {
-            tenantId: school.tenantId,
-            orgId: school.id,
-            mode: storedMode,
-            dbHost: hostHint,
-            vaultSecretId: secretRef,
-            isActive: req.body?.is_active === undefined ? true : Boolean(req.body.is_active),
-          },
         });
+      }
+
+      return tx.dataConnection.create({
+        data: {
+          tenantId: school.tenantId,
+          orgId: school.id,
+          mode: storedMode,
+          dbHost: hostHint,
+          vaultSecretId: secretRef,
+          isActive: activate,
+        },
+      });
+    });
 
     return res.status(existing ? 200 : 201).json(view(row));
   } catch (error) {
@@ -135,7 +148,16 @@ router.patch("/:id/status", async (req, res, next) => {
     if (!existing) return res.status(404).json({ message: "Data source not found" });
     await assertTenant(req, existing.tenantId);
     if (typeof req.body?.is_active !== "boolean") return res.status(400).json({ message: "is_active must be boolean" });
-    const row = await prismaGlobal.dataConnection.update({ where: { id }, data: { isActive: req.body.is_active } });
+
+    const row = await prismaGlobal.$transaction(async (tx) => {
+      if (req.body.is_active) {
+        await tx.dataConnection.updateMany({
+          where: { orgId: existing.orgId, isActive: true, id: { not: existing.id } },
+          data: { isActive: false },
+        });
+      }
+      return tx.dataConnection.update({ where: { id }, data: { isActive: req.body.is_active } });
+    });
     return res.json(view(row));
   } catch (error) { return next(error); }
 });
