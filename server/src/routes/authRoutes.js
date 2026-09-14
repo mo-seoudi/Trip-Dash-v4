@@ -9,31 +9,25 @@ import { PrismaClient } from "@prisma/client";
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// ✅ Require a real secret – no fallback.
+// Require a real secret – no fallback.
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  // Crash early instead of silently using a weak default.
   throw new Error(
     "JWT_SECRET is required but missing. Set it in your environment (Render env vars and local .env)."
   );
 }
 
-/** Must be "token" – index.js looks for req.cookies.token */
 const COOKIE_NAME = "token";
 
-// In production (HTTPS) cookies must be Secure + SameSite=None.
 const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
   sameSite: isProd ? "none" : "lax",
   path: "/",
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  maxAge: 1000 * 60 * 60 * 24 * 7,
 };
 
-/* =========================
-   REGISTER (keeps approval)
-   ========================= */
 router.post("/register", async (req, res, next) => {
   try {
     const { email, password, name, role } = req.body;
@@ -51,7 +45,7 @@ router.post("/register", async (req, res, next) => {
         email,
         name,
         role: role || "school_staff",
-        status: "pending", // requires admin approval later
+        status: "pending",
         passwordHash,
       },
       select: { id: true, email: true, name: true, role: true, status: true },
@@ -63,9 +57,6 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-/* =========================================
-   LOGIN (blocks unapproved, sets cookie+JWT)
-   ========================================= */
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -82,10 +73,8 @@ router.post("/login", async (req, res, next) => {
       return res.status(403).json({ message: "Account pending approval", status: user.status });
     }
 
-    // ✅ Sign with the required secret
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
-    // set cross-site cookie
     res.cookie(COOKIE_NAME, token, cookieOptions);
 
     const safeUser = {
@@ -102,11 +91,15 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-/* ======================================
-   SESSION (reads cookie, tolerates legacy)
-   ====================================== */
+// Session recovery supports both the original cookie and the bearer-token
+// fallback used by the separately hosted frontend.
 router.get("/session", async (req, res) => {
-  const token = req.cookies?.[COOKIE_NAME];
+  const authHeader = req.get("authorization") || "";
+  const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7).trim()
+    : null;
+  const token = req.cookies?.[COOKIE_NAME] || bearerToken;
+
   if (!token) return res.status(401).json({ user: null });
 
   try {
@@ -124,9 +117,6 @@ router.get("/session", async (req, res) => {
   }
 });
 
-/* =============================
-   LOGOUT (clear matching cookie)
-   ============================= */
 router.post("/logout", (req, res) => {
   res.clearCookie(COOKIE_NAME, {
     path: "/",
