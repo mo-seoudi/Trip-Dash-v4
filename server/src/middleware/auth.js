@@ -1,49 +1,57 @@
 // server/src/middleware/auth.js
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
 
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is required but missing.");
+}
 
-// Read token from either Authorization: Bearer <jwt> or cookie "token"
-export function requireAuth(req, res, next) {
+function readToken(req) {
+  const bearer = req.headers.authorization || "";
+  if (bearer.startsWith("Bearer ")) return bearer.slice(7);
+  return req.cookies?.token || null;
+}
+
+// Compatibility authentication for existing v4 users while the new AppUser/
+// session architecture is built. Authorization must not trust a role embedded
+// in an old JWT; current role/status are reloaded from PostgreSQL on each request.
+export async function requireAuth(req, res, next) {
   try {
-    const bearer = req.headers.authorization || "";
-    const token = bearer.startsWith("Bearer ")
-      ? bearer.slice(7)
-      : req.cookies?.token;
-
+    const token = readToken(req);
     if (!token) return res.status(401).json({ message: "Not logged in" });
 
-    // support legacy { uid } tokens while migrating
     const decoded = jwt.verify(token, JWT_SECRET);
     const userId = decoded.id ?? decoded.uid;
-
     if (!userId) return res.status(401).json({ message: "Invalid token" });
 
-    req.user = { id: Number(userId), email: decoded.email || null, role: decoded.role || null };
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true, email: true, name: true, role: true, status: true },
+    });
+
+    if (!user) return res.status(401).json({ message: "Not logged in" });
+
+    const status = String(user.status || "").toLowerCase().trim();
+    if (status !== "approved") {
+      return res.status(403).json({ message: "Account is not approved", status: user.status });
+    }
+
+    req.user = user;
     return next();
   } catch (e) {
-    return res.status(401).json({ message: "Invalid or expired token" });
+    if (e?.name === "JsonWebTokenError" || e?.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+    return next(e);
   }
 }
 
-export async function requireAdmin(req, res, next) {
-  try {
-    if (!req.user?.id) return res.status(401).json({ message: "Not logged in" });
-
-    const me = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { id: true, role: true },
-    });
-    if (!me) return res.status(401).json({ message: "Not logged in" });
-    if (me.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-
-    req.user.role = me.role;
-    next();
-  } catch (e) {
-    next(e);
-  }
+// Temporary compatibility admin guard. This deliberately checks the current
+// database role, not JWT claims. It will be replaced by permission-based scoped
+// authorization once role assignments are migrated.
+export function requireAdmin(req, res, next) {
+  if (!req.user?.id) return res.status(401).json({ message: "Not logged in" });
+  if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+  return next();
 }
-
-
