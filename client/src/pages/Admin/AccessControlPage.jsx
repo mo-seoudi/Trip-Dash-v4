@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FiRefreshCw, FiUsers, FiGrid, FiShield, FiDatabase } from "react-icons/fi";
+import { FiRefreshCw, FiUsers, FiGrid, FiShield, FiDatabase, FiLink2 } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "@/services/apiClient";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import UserAccessEditor from "@/components/admin/UserAccessEditor";
 import RelationshipEditor from "@/components/admin/RelationshipEditor";
 import DataSourceEditor from "@/components/admin/DataSourceEditor";
+import OrganizationEditor from "@/components/admin/OrganizationEditor";
 
 const TABS = [
   ["users", "Users", FiUsers],
   ["organizations", "Organizations", FiGrid],
-  ["relationships", "Relationships", null],
+  ["relationships", "Relationships", FiLink2],
   ["data-sources", "Data Sources", FiDatabase],
   ["roles", "Roles & Access", FiShield],
 ];
@@ -23,13 +24,6 @@ const ROLE_LABELS = {
   bus_operator: "Bus Operator",
   service_partner: "Service Partner",
   finance: "Finance",
-};
-
-const ORG_LABELS = {
-  SCHOOL_GROUP: "School Group",
-  SCHOOL: "School",
-  BUS_OPERATOR: "Bus Operator",
-  SERVICE_PARTNER: "Service Partner",
 };
 
 function Pill({ children }) {
@@ -105,7 +99,6 @@ function AccessControlPage() {
 
   const q = search.trim().toLowerCase();
   const users = (data?.users || []).filter((u) => !q || `${u.display_name} ${u.email}`.toLowerCase().includes(q));
-  const organizations = (data?.organizations || []).filter((o) => !q || `${o.display_name} ${o.abbreviation || ""} ${o.type}`.toLowerCase().includes(q));
 
   if (!tenantId) {
     return <div className="p-6"><Empty>This account does not yet have a tenant access context. Complete the access migration before managing organizations.</Empty></div>;
@@ -140,7 +133,7 @@ function AccessControlPage() {
         <div className="flex gap-1 overflow-x-auto border-b p-2">
           {TABS.map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)} className={`inline-flex whitespace-nowrap items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}>
-              {Icon ? <Icon /> : null} {label}
+              <Icon /> {label}
             </button>
           ))}
         </div>
@@ -165,18 +158,7 @@ function AccessControlPage() {
           )}
 
           {tab === "organizations" && data && (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {organizations.map((org) => (
-                <article key={org.id} className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div><div className="font-semibold text-slate-900">{org.display_name}</div><div className="mt-1 text-xs text-slate-500">{org.abbreviation || "No abbreviation"}</div></div>
-                    <Pill>{ORG_LABELS[org.type] || org.type}</Pill>
-                  </div>
-                  {org.parent_org_id && <div className="mt-3 text-xs text-slate-500">Part of a parent organization</div>}
-                </article>
-              ))}
-              {!organizations.length && <Empty>No organizations match this search.</Empty>}
-            </div>
+            <OrganizationEditor tenantId={tenantId} organizations={data.organizations || []} search={search} onChanged={load} />
           )}
 
           {tab === "relationships" && data && (
