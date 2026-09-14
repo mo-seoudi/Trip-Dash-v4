@@ -19,7 +19,7 @@ datasource db {
 enum OrganizationType {
   SCHOOL_GROUP
   SCHOOL
-  BUS_COMPANY
+  BUS_OPERATOR
   SERVICE_PARTNER
 }
 
