@@ -73,10 +73,10 @@ export async function authorizeSchoolWorkspace(user, schoolId, requiredPermissio
 export async function resolveWorkspaceDataSource(user, schoolId, requiredPermission = null) {
   const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission);
 
-  // Transitional bridge: legacy data_connections already contains the pieces
-  // needed for BYO PostgreSQL. vaultSecretId now carries an opaque SecretProvider
-  // reference such as infisical://prod/customers/acme-school/DATABASE_URL.
-  const connection = await prismaGlobal.dataConnection.findFirst({
+  // During the legacy bridge the table can technically contain both SAAS and
+  // BYODB rows for one school. Routing must never guess between two active
+  // databases: ambiguous configuration is treated as an administrative error.
+  const connections = await prismaGlobal.dataConnection.findMany({
     where: {
       tenantId: access.tenantId,
       orgId: workspace.schoolId,
@@ -85,14 +85,17 @@ export async function resolveWorkspaceDataSource(user, schoolId, requiredPermiss
     orderBy: { updatedAt: "desc" },
   });
 
-  if (!connection) {
+  if (!connections.length) {
     throw httpError(503, "No active operational database is configured for this school", "DATA_SOURCE_NOT_CONFIGURED");
+  }
+  if (connections.length > 1) {
+    throw httpError(503, "More than one active operational database is configured for this school", "DATA_SOURCE_AMBIGUOUS");
   }
 
   return {
     access,
     workspace,
-    dataSource: legacyConnectionAsDataSource(connection),
+    dataSource: legacyConnectionAsDataSource(connections[0]),
   };
 }
 
