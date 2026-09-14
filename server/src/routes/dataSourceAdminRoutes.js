@@ -5,13 +5,15 @@
 
 import { Router } from "express";
 import { prismaGlobal } from "../lib/prismaGlobal.js";
-import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";
+import { assertCanonicalTenantAccess, requireCanonicalPermission } from "../middleware/canonicalAccess.js";
+import { PERMISSIONS } from "../services/accessCatalog.js";
 import { normalizeDataSourceProvider, publicDataSourceView } from "../services/operationalDataSource.js";
 import { prismaForOperationalDataSource } from "../services/operationalPrismaPool.js";
 import { parseSecretRef } from "../services/secretProvider.js";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireCanonicalPermission(PERMISSIONS.ACCESS_ADMIN));
 
 function clean(value, max = 200, field = "value") {
   const result = String(value ?? "").trim();
@@ -22,22 +24,6 @@ function clean(value, max = 200, field = "value") {
     throw error;
   }
   return result;
-}
-
-async function requestGlobalUser(req) {
-  return (
-    (await prismaGlobal.user.findFirst({ where: { legacyUserId: Number(req.user.id) } })) ||
-    (await prismaGlobal.user.findFirst({ where: { email: req.user.email } }))
-  );
-}
-
-async function assertTenant(req, tenantId) {
-  const user = await requestGlobalUser(req);
-  if (user?.tenantId && user.tenantId !== tenantId) {
-    const error = new Error("Forbidden for this tenant");
-    error.status = 403;
-    throw error;
-  }
 }
 
 function providerFromHost(host) {
@@ -72,7 +58,7 @@ router.get("/", async (req, res, next) => {
   try {
     const tenantId = clean(req.query.tenant_id, 100, "tenant_id");
     if (!tenantId) return res.status(400).json({ message: "tenant_id is required" });
-    await assertTenant(req, tenantId);
+    assertCanonicalTenantAccess(req, tenantId);
     const rows = await prismaGlobal.dataConnection.findMany({
       where: { tenantId },
       orderBy: { updatedAt: "desc" },
@@ -93,7 +79,7 @@ router.put("/:schoolId", async (req, res, next) => {
     if (String(school.type).toLowerCase() !== "school") {
       return res.status(400).json({ message: "Operational data sources can only be assigned to schools" });
     }
-    await assertTenant(req, school.tenantId);
+    assertCanonicalTenantAccess(req, school.tenantId);
 
     const provider = normalizeDataSourceProvider(req.body?.provider || "postgresql");
     const mode = String(req.body?.mode || "HOSTED").toUpperCase();
@@ -101,20 +87,24 @@ router.put("/:schoolId", async (req, res, next) => {
       return res.status(400).json({ message: "Unsupported data-source mode" });
     }
 
-    const secretRef = clean(req.body?.secret_ref, 500, "secret_ref");
+    const secretRef = clean(req.body?.secret_ref, 250, "secret_ref");
     if (secretRef) parseSecretRef(secretRef); // syntax only; never resolves secret during registration
 
-    const hostHint = clean(req.body?.host_hint, 250, "host_hint") ||
-      (provider === "neon" ? "neon.tech" : provider === "supabase" ? "supabase" : "postgresql");
-    const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
-    const activate = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
-
     const existing = await prismaGlobal.dataConnection.findUnique({
-      where: { orgId_mode: { orgId: school.id, mode: storedMode } },
+      where: { orgId_mode: { orgId: school.id, mode: mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS" } },
     });
     if (!existing && !secretRef) {
       return res.status(400).json({ message: "secret_ref is required when creating a data source" });
     }
+
+    // Preserve the existing host/provider hint on edits unless the admin sends a
+    // replacement. This avoids silently rewriting metadata when the UI keeps the
+    // host hint private/blank during an edit.
+    const requestedHostHint = clean(req.body?.host_hint, 250, "host_hint");
+    const hostHint = requestedHostHint || existing?.dbHost ||
+      (provider === "neon" ? "neon.tech" : provider === "supabase" ? "supabase" : "postgresql");
+    const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
+    const activate = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
 
     const row = await prismaGlobal.$transaction(async (tx) => {
       if (activate) {
@@ -159,7 +149,7 @@ router.patch("/:id/status", async (req, res, next) => {
     const id = clean(req.params.id, 100, "data source id");
     const existing = await prismaGlobal.dataConnection.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "Data source not found" });
-    await assertTenant(req, existing.tenantId);
+    assertCanonicalTenantAccess(req, existing.tenantId);
     if (typeof req.body?.is_active !== "boolean") return res.status(400).json({ message: "is_active must be boolean" });
 
     const row = await prismaGlobal.$transaction(async (tx) => {
@@ -185,7 +175,7 @@ router.post("/:id/verify", async (req, res, next) => {
     const id = clean(req.params.id, 100, "data source id");
     const existing = await prismaGlobal.dataConnection.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "Data source not found" });
-    await assertTenant(req, existing.tenantId);
+    assertCanonicalTenantAccess(req, existing.tenantId);
 
     if (!existing.vaultSecretId) {
       return res.status(409).json({
