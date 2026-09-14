@@ -1,25 +1,20 @@
 // server/src/routes/trips/trips.subtrips.js
+//
+// LEGACY READ-ONLY COMPATIBILITY ROUTE.
+// SubTrip was an early representation where each bus could become a child trip.
+// That domain concept has been retired. A trip now remains one Trip and may have
+// multiple TripBusAssignment records. Historical rows are exposed temporarily
+// so old data can be inspected/migrated, but this API must never create new rows.
 
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import { canManageSubTrips, canReadSubTrips } from "../../services/legacyAuthorization.js";
+import { canReadSubTrips } from "../../services/legacyAuthorization.js";
 
 const router = Router();
 
 function parsePositiveId(value) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-function parseOptionalNonNegativeNumber(value, field) {
-  if (value === undefined || value === null || value === "") return null;
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) {
-    const error = new Error(`${field} must be a non-negative number`);
-    error.status = 400;
-    throw error;
-  }
-  return number;
 }
 
 async function loadParentTrip(parentTripId) {
@@ -35,6 +30,7 @@ async function loadParentTrip(parentTripId) {
 }
 
 // GET /api/trips/:id/subtrips
+// Temporary historical-data compatibility only. Remove after migration.
 router.get("/:id/subtrips", async (req, res, next) => {
   try {
     const parentTripId = parsePositiveId(req.params.id);
@@ -54,56 +50,12 @@ router.get("/:id/subtrips", async (req, res, next) => {
   }
 });
 
-// POST /api/trips/:id/subtrips
-router.post("/:id/subtrips", async (req, res, next) => {
-  try {
-    const parentTripId = parsePositiveId(req.params.id);
-    if (!parentTripId) return res.status(400).json({ message: "Invalid trip id" });
-
-    const trip = await loadParentTrip(parentTripId);
-    if (!trip) return res.status(404).json({ message: "Trip not found" });
-    if (!canManageSubTrips(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
-
-    const buses = req.body?.buses;
-    if (buses !== undefined && !Array.isArray(buses)) {
-      return res.status(400).json({ message: "buses must be an array" });
-    }
-
-    if (!buses?.length) {
-      const created = await prisma.subTrip.create({
-        data: { parentTripId, status: "Pending" },
-      });
-      return res.status(201).json([created]);
-    }
-
-    if (buses.length > 100) {
-      return res.status(400).json({ message: "Too many buses in one request" });
-    }
-
-    const normalized = buses.map((bus, index) => {
-      if (!bus || typeof bus !== "object" || Array.isArray(bus)) {
-        const error = new Error(`buses[${index}] must be an object`);
-        error.status = 400;
-        throw error;
-      }
-
-      return {
-        parentTripId,
-        status: "Confirmed",
-        busSeats: parseOptionalNonNegativeNumber(bus.busSeats, `buses[${index}].busSeats`),
-        busType: bus.busType ? String(bus.busType).trim().slice(0, 100) : null,
-        tripPrice: parseOptionalNonNegativeNumber(bus.tripPrice, `buses[${index}].tripPrice`),
-      };
-    });
-
-    const created = await prisma.$transaction(
-      normalized.map((data) => prisma.subTrip.create({ data }))
-    );
-
-    return res.status(201).json(created);
-  } catch (e) {
-    return next(e);
-  }
+// Explicitly fail old clients instead of silently recreating obsolete data.
+router.post("/:id/subtrips", (req, res) => {
+  return res.status(410).json({
+    message: "SubTrips are retired. Use bus assignments for multiple buses on a trip.",
+    code: "SUBTRIPS_RETIRED",
+  });
 });
 
 export default router;
