@@ -2,8 +2,7 @@
 // First-class multi-bus resources for a single Trip.
 //
 // IMPORTANT: this route requires the additive TripBusAssignment schema to be
-// migrated before it can be enabled in a deployed environment. It is mounted
-// only after that migration is available.
+// migrated before it can be enabled in a deployed environment.
 
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
@@ -16,7 +15,7 @@ import {
 const router = Router();
 const ASSIGNMENT_STATUSES = new Set(["assigned", "confirmed", "completed", "cancelled"]);
 
-function parsePositiveId(value, field = "id") {
+function parsePositiveInt(value, field = "id") {
   const id = Number(value);
   if (!Number.isInteger(id) || id <= 0) {
     const error = new Error(`${field} must be a positive integer`);
@@ -24,6 +23,16 @@ function parsePositiveId(value, field = "id") {
     throw error;
   }
   return id;
+}
+
+function parseUuid(value, field = "id") {
+  const text = String(value || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)) {
+    const error = new Error(`${field} must be a valid UUID`);
+    error.status = 400;
+    throw error;
+  }
+  return text;
 }
 
 function optionalString(value, field, max) {
@@ -62,10 +71,11 @@ function optionalMoney(value, field) {
 
 function assignmentPatch(input, { creating = false } = {}) {
   const allowed = new Set([
-    "vehicleLabel",
-    "vehicleRegistration",
+    "sequence",
     "busType",
     "seatCapacity",
+    "vehicleNumber",
+    "plateNumber",
     "driverName",
     "driverPhone",
     "price",
@@ -82,9 +92,9 @@ function assignmentPatch(input, { creating = false } = {}) {
 
   const patch = {};
   const stringFields = [
-    ["vehicleLabel", 120],
-    ["vehicleRegistration", 80],
     ["busType", 100],
+    ["vehicleNumber", 120],
+    ["plateNumber", 80],
     ["driverName", 160],
     ["driverPhone", 50],
     ["notes", 2000],
@@ -95,6 +105,15 @@ function assignmentPatch(input, { creating = false } = {}) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(input, "sequence")) {
+    const sequence = Number(input.sequence);
+    if (!Number.isInteger(sequence) || sequence <= 0 || sequence > 1000) {
+      const error = new Error("sequence must be a positive integer");
+      error.status = 400;
+      throw error;
+    }
+    patch.sequence = sequence;
+  }
   if (Object.prototype.hasOwnProperty.call(input, "seatCapacity")) {
     patch.seatCapacity = optionalNonNegativeInt(input.seatCapacity, "seatCapacity");
   }
@@ -135,13 +154,12 @@ async function loadTrip(tripId) {
       status: true,
       createdById: true,
       createdByEmail: true,
-      transportProviderOrganizationId: true,
     },
   });
 }
 
 async function requireTrip(req, res) {
-  const tripId = parsePositiveId(req.params.id, "trip id");
+  const tripId = parsePositiveInt(req.params.id, "trip id");
   const trip = await loadTrip(tripId);
   if (!trip) {
     res.status(404).json({ message: "Trip not found" });
@@ -153,10 +171,11 @@ async function requireTrip(req, res) {
 const publicAssignmentSelect = {
   id: true,
   tripId: true,
-  vehicleLabel: true,
-  vehicleRegistration: true,
+  sequence: true,
   busType: true,
   seatCapacity: true,
+  vehicleNumber: true,
+  plateNumber: true,
   driverName: true,
   driverPhone: true,
   price: true,
@@ -167,19 +186,16 @@ const publicAssignmentSelect = {
   updatedAt: true,
 };
 
-// GET /api/trips/:id/bus-assignments
 router.get("/:id/bus-assignments", async (req, res, next) => {
   try {
     const trip = await requireTrip(req, res);
     if (!trip) return;
-    if (!canReadBusAssignments(req.user, trip)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+    if (!canReadBusAssignments(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
 
     const rows = await prisma.tripBusAssignment.findMany({
       where: { tripId: trip.id },
       select: publicAssignmentSelect,
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
     });
     return res.json(rows);
   } catch (e) {
@@ -187,22 +203,24 @@ router.get("/:id/bus-assignments", async (req, res, next) => {
   }
 });
 
-// POST /api/trips/:id/bus-assignments
 router.post("/:id/bus-assignments", async (req, res, next) => {
   try {
     const trip = await requireTrip(req, res);
     if (!trip) return;
-    if (!canManageBusAssignments(req.user, trip)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+    if (!canManageBusAssignments(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
 
     const data = assignmentPatch(req.body || {}, { creating: true });
+    if (!data.sequence) {
+      const last = await prisma.tripBusAssignment.findFirst({
+        where: { tripId: trip.id },
+        select: { sequence: true },
+        orderBy: { sequence: "desc" },
+      });
+      data.sequence = (last?.sequence || 0) + 1;
+    }
+
     const created = await prisma.tripBusAssignment.create({
-      data: {
-        tripId: trip.id,
-        transportProviderOrganizationId: trip.transportProviderOrganizationId,
-        ...data,
-      },
+      data: { tripId: trip.id, ...data },
       select: publicAssignmentSelect,
     });
     return res.status(201).json(created);
@@ -211,15 +229,13 @@ router.post("/:id/bus-assignments", async (req, res, next) => {
   }
 });
 
-// PATCH /api/trips/:id/bus-assignments/:assignmentId
 router.patch("/:id/bus-assignments/:assignmentId", async (req, res, next) => {
   try {
     const trip = await requireTrip(req, res);
     if (!trip) return;
-    if (!canManageBusAssignments(req.user, trip)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    const assignmentId = parsePositiveId(req.params.assignmentId, "assignment id");
+    if (!canManageBusAssignments(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
+
+    const assignmentId = parseUuid(req.params.assignmentId, "assignment id");
     const existing = await prisma.tripBusAssignment.findFirst({
       where: { id: assignmentId, tripId: trip.id },
       select: { id: true },
@@ -227,9 +243,8 @@ router.patch("/:id/bus-assignments/:assignmentId", async (req, res, next) => {
     if (!existing) return res.status(404).json({ message: "Bus assignment not found" });
 
     const data = assignmentPatch(req.body || {});
-    if (!Object.keys(data).length) {
-      return res.status(400).json({ message: "No supported fields to update" });
-    }
+    if (!Object.keys(data).length) return res.status(400).json({ message: "No supported fields to update" });
+
     const updated = await prisma.tripBusAssignment.update({
       where: { id: assignmentId },
       data,
@@ -241,15 +256,13 @@ router.patch("/:id/bus-assignments/:assignmentId", async (req, res, next) => {
   }
 });
 
-// DELETE /api/trips/:id/bus-assignments/:assignmentId
 router.delete("/:id/bus-assignments/:assignmentId", async (req, res, next) => {
   try {
     const trip = await requireTrip(req, res);
     if (!trip) return;
-    if (!canManageBusAssignments(req.user, trip)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    const assignmentId = parsePositiveId(req.params.assignmentId, "assignment id");
+    if (!canManageBusAssignments(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
+
+    const assignmentId = parseUuid(req.params.assignmentId, "assignment id");
     const result = await prisma.tripBusAssignment.deleteMany({
       where: { id: assignmentId, tripId: trip.id },
     });
@@ -260,17 +273,13 @@ router.delete("/:id/bus-assignments/:assignmentId", async (req, res, next) => {
   }
 });
 
-// PUT /api/trips/:id/bus-assignments/:assignmentId/passengers
-// Replaces the passenger allocation for one bus atomically. Passenger records
-// must belong to the same trip; cross-trip IDs are rejected.
 router.put("/:id/bus-assignments/:assignmentId/passengers", async (req, res, next) => {
   try {
     const trip = await requireTrip(req, res);
     if (!trip) return;
-    if (!canManagePassengerAllocations(req.user, trip)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    const assignmentId = parsePositiveId(req.params.assignmentId, "assignment id");
+    if (!canManagePassengerAllocations(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
+
+    const assignmentId = parseUuid(req.params.assignmentId, "assignment id");
     const assignment = await prisma.tripBusAssignment.findFirst({
       where: { id: assignmentId, tripId: trip.id },
       select: { id: true, seatCapacity: true },
@@ -278,13 +287,10 @@ router.put("/:id/bus-assignments/:assignmentId/passengers", async (req, res, nex
     if (!assignment) return res.status(404).json({ message: "Bus assignment not found" });
 
     const rawIds = req.body?.passengerIds;
-    if (!Array.isArray(rawIds)) {
-      return res.status(400).json({ message: "passengerIds must be an array" });
-    }
-    if (rawIds.length > 500) {
-      return res.status(400).json({ message: "Too many passengers in one allocation request" });
-    }
-    const passengerIds = [...new Set(rawIds.map((id) => parsePositiveId(id, "passenger id")))];
+    if (!Array.isArray(rawIds)) return res.status(400).json({ message: "passengerIds must be an array" });
+    if (rawIds.length > 500) return res.status(400).json({ message: "Too many passengers in one allocation request" });
+
+    const passengerIds = [...new Set(rawIds.map((id) => parsePositiveInt(id, "passenger id")))];
     if (assignment.seatCapacity != null && passengerIds.length > assignment.seatCapacity) {
       return res.status(409).json({ message: "Passenger allocation exceeds bus seat capacity" });
     }
@@ -296,14 +302,27 @@ router.put("/:id/bus-assignments/:assignmentId/passengers", async (req, res, nex
       return res.status(400).json({ message: "One or more passengers do not belong to this trip" });
     }
 
+    const duplicateElsewhere = passengerIds.length
+      ? await prisma.tripBusPassengerAllocation.findFirst({
+          where: {
+            tripPassengerId: { in: passengerIds },
+            busAssignmentId: { not: assignment.id },
+            busAssignment: { tripId: trip.id },
+          },
+          select: { tripPassengerId: true },
+        })
+      : null;
+    if (duplicateElsewhere) {
+      return res.status(409).json({
+        message: `Passenger ${duplicateElsewhere.tripPassengerId} is already allocated to another bus on this trip`,
+      });
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.tripBusPassengerAllocation.deleteMany({ where: { busAssignmentId: assignment.id } });
       if (passengerIds.length) {
         await tx.tripBusPassengerAllocation.createMany({
-          data: passengerIds.map((tripPassengerId) => ({
-            busAssignmentId: assignment.id,
-            tripPassengerId,
-          })),
+          data: passengerIds.map((tripPassengerId) => ({ busAssignmentId: assignment.id, tripPassengerId })),
         });
       }
     });
