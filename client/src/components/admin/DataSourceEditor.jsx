@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { FiAlertCircle, FiCheckCircle, FiDatabase, FiEdit2, FiPlus, FiRefreshCw } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "@/services/apiClient";
@@ -31,6 +31,7 @@ function providerLabel(value) {
 function DataSourceEditor({ organizations = [], dataSources = [], loading = false, onChanged }) {
   const schools = useMemo(() => organizations.filter((org) => org.type === "SCHOOL"), [organizations]);
   const organizationsById = useMemo(() => new Map(organizations.map((org) => [org.id, org])), [organizations]);
+  const formRef = useRef(null);
 
   const [schoolId, setSchoolId] = useState("");
   const [provider, setProvider] = useState("supabase");
@@ -61,7 +62,7 @@ function DataSourceEditor({ organizations = [], dataSources = [], loading = fals
     setSecretRef("");
     setHostHint("");
     setActive(Boolean(source.isActive));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
   const save = async (event) => {
@@ -116,10 +117,10 @@ function DataSourceEditor({ organizations = [], dataSources = [], loading = fals
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-        Each school resolves to one active operational PostgreSQL database. The browser stores only a secret reference; the actual database credential remains server-side and is never shown here.
+        Each school resolves to one active operational PostgreSQL database. The admin UI submits only a secret reference; the actual database credential remains server-side and is never shown here.
       </div>
 
-      <form onSubmit={save} className="rounded-xl border p-4">
+      <form ref={formRef} onSubmit={save} className="scroll-mt-6 rounded-xl border p-4">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="flex items-start gap-2">
             <FiDatabase className="mt-0.5 text-violet-600" />
@@ -156,7 +157,7 @@ function DataSourceEditor({ organizations = [], dataSources = [], loading = fals
 
           <label className="text-sm text-slate-700">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Secret reference</span>
-            <input value={secretRef} onChange={(e) => setSecretRef(e.target.value)} maxLength={500} placeholder={editingId ? "Leave blank to keep current credential" : "infisical://prod/databases/school-db"} className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-500" />
+            <input value={secretRef} onChange={(e) => setSecretRef(e.target.value)} maxLength={250} placeholder={editingId ? "Leave blank to keep current credential" : "infisical://prod/databases/school-db"} className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-500" />
             <span className="mt-1 block text-xs text-slate-400">Use a vault/environment reference only. Never paste a database password here.</span>
           </label>
 
