@@ -137,6 +137,15 @@ export function canManagePassengers(user, trip) {
   return Boolean(user?.role === "school_staff" && creatorMatches(user, trip));
 }
 
+export function canReadSubTrips(user, trip) {
+  return canReadTrip(user, trip);
+}
+
+export function canManageSubTrips(user, trip) {
+  if (!user || !trip) return false;
+  return isAdmin(user) || user.role === "bus_operator";
+}
+
 export function canReadBooking(user, booking) {
   if (!user || !booking) return false;
   if (isAdmin(user) || user.role === "trip_manager") return true;
