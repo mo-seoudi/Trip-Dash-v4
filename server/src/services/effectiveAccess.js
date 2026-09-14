@@ -6,6 +6,7 @@
 // its data source without changing the client contract.
 
 import { prismaGlobal } from "../lib/prismaGlobal.js";
+import { canonicalOrganizationType, CANONICAL_ORGANIZATION_TYPES } from "../lib/legacyOrganizations.js";
 import { canonicalRoleKey, permissionsForRoles, ROLE_KEYS } from "./accessCatalog.js";
 
 const ACTIVE_MEMBERSHIP_STATUSES = new Set(["active", "approved"]);
@@ -13,19 +14,6 @@ const ACTIVE_RELATIONSHIP_STATUS = "active";
 
 function activeMembership(row) {
   return ACTIVE_MEMBERSHIP_STATUSES.has(String(row?.status || "").toLowerCase());
-}
-
-function canonicalOrganizationType(type) {
-  switch (String(type || "").trim().toLowerCase()) {
-    case "school": return "SCHOOL";
-    case "edu_group":
-    case "school_group":
-    case "group": return "SCHOOL_GROUP";
-    case "bus_company":
-    case "bus_operator": return "BUS_OPERATOR";
-    case "service_partner": return "SERVICE_PARTNER";
-    default: return String(type || "").trim().toUpperCase() || null;
-  }
 }
 
 function organizationView(org) {
@@ -124,11 +112,11 @@ export async function resolveEffectiveAccess(legacyUser) {
     addAccess(accessMap, org, { kind: "direct", role, viaOrganizationId: org.id });
 
     const orgType = canonicalOrganizationType(org.type);
-    if (orgType === "SCHOOL") {
+    if (orgType === CANONICAL_ORGANIZATION_TYPES.SCHOOL) {
       addSchoolRole(org.id, role);
     }
 
-    if (orgType === "SCHOOL_GROUP") {
+    if (orgType === CANONICAL_ORGANIZATION_TYPES.SCHOOL_GROUP) {
       const schools = await prismaGlobal.organization.findMany({
         where: { tenantId: org.tenantId, parentOrgId: org.id, type: "school" },
         orderBy: { name: "asc" },
@@ -144,7 +132,9 @@ export async function resolveEffectiveAccess(legacyUser) {
       }
     }
 
-    if (orgType === "BUS_OPERATOR") {
+    if (orgType === CANONICAL_ORGANIZATION_TYPES.BUS_OPERATOR) {
+      // Partnership field names are legacy database names; the application-facing
+      // relationship remains School -> Bus Operator / TRANSPORT_PROVIDER.
       const links = await prismaGlobal.partnership.findMany({
         where: { busCompanyOrgId: org.id, status: ACTIVE_RELATIONSHIP_STATUS },
         include: { school: true },
@@ -177,7 +167,7 @@ export async function resolveEffectiveAccess(legacyUser) {
     scopedByOrgRole.set(key, set);
   }
 
-  for (const [schoolId, schoolRoles] of [...schoolRoleMap.entries()]) {
+  for (const [schoolId] of [...schoolRoleMap.entries()]) {
     const access = accessMap.get(schoolId);
     if (!access) continue;
     const permittedRoles = new Set();
@@ -199,7 +189,7 @@ export async function resolveEffectiveAccess(legacyUser) {
     .map(({ organization, access }) => ({ ...organization, access }));
 
   const workspaces = organizations
-    .filter((org) => org.type === "SCHOOL")
+    .filter((org) => org.type === CANONICAL_ORGANIZATION_TYPES.SCHOOL)
     .map((school) => {
       const workspaceRoles = [...(schoolRoleMap.get(school.id) || [])].filter(Boolean).sort();
       return {
