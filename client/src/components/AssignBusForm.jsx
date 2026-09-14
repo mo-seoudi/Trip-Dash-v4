@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { updateTrip, createSubTrips } from "../services/tripService";
+import { updateTrip } from "../services/tripService";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import ModalWrapper from "./ModalWrapper";
@@ -83,18 +83,15 @@ const AssignBusForm = ({ trip, onClose, onSubmit }) => {
     const statusToSet = "Confirmed";
 
     try {
+      // A trip can have multiple bus assignments. These buses are resources
+      // assigned to the same trip; they are not sub-trips.
       await updateTrip(trip.id, {
         buses,
         status: statusToSet,
       });
-      console.log("Assigning buses to parent trip ID:", trip.id);
-      
-      // Create sub-trips
-      await createSubTrips(trip.id, buses);
 
       toast.success("Buses assigned successfully!");
 
-      // ✨ Call onSubmit with updated trip
       if (onSubmit) {
         const updatedTrip = { ...trip, buses, status: statusToSet };
         onSubmit(updatedTrip);
