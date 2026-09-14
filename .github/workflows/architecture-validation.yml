@@ -1,0 +1,65 @@
+name: Architecture Validation
+
+on:
+  push:
+    branches:
+      - architecture-rebuild
+    paths:
+      - "server/**"
+      - "client/**"
+      - ".github/workflows/architecture-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  server-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # The server lockfile predates several rebuild dependencies and will be
+      # reconciled separately. Keep this explicit until npm ci becomes a gate.
+      - name: Install server dependencies
+        run: npm install --ignore-scripts
+
+      - name: Validate all Prisma schemas
+        run: npm run prisma:validate
+
+      - name: Generate all Prisma clients
+        run: npm run prisma:generate
+
+  client-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        run: npm ci
+
+      - name: Build React application
+        run: npm run build
