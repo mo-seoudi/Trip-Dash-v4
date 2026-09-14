@@ -12,19 +12,13 @@ The control plane remains authoritative for identity, tenants, organizations, me
 
 Operational trip data may then be routed to the PostgreSQL data source registered for the owning school. `provider` is infrastructure metadata only; authorization and trip business logic must not contain `if Supabase` / `if Neon` branches.
 
+A dedicated `prisma/operational.schema.prisma` now defines the portable operational database contract. It deliberately contains no foreign-key relationships to central users, tenants, organizations, roles, or memberships. Those references are stored as opaque IDs and validated/authorized by the backend control plane before an operational database is selected.
+
 ## Data-source contract
 
-`OperationalDataSource` identifies:
+`OperationalDataSource` identifies tenant, optional organization, mode, provider, region, server-side `secretRef`, and active/verified state. The browser must never receive database credentials or `secretRef`.
 
-- tenant
-- optional organization (school-specific when present)
-- mode (`HOSTED` or `CUSTOMER_POSTGRES`)
-- provider (`supabase`, `neon`, or generic `postgresql`)
-- region
-- server-side `secretRef`
-- active/verified state
-
-The browser must never receive database credentials or `secretRef`. The backend resolves credentials after authorization.
+A school-specific source overrides an explicitly configured tenant-level default. No source may be inferred from the provider name or frontend state.
 
 ## Readiness gates before first Neon organization
 
@@ -33,8 +27,8 @@ The browser must never receive database credentials or `secretRef`. The backend 
 3. Backend effective-access resolution uses the canonical tables and rejects cross-tenant, inactive membership and expired/inactive relationship access.
 4. Workspace-aware trip APIs authorize the requested school on the server before resolving a data source.
 5. Operational data-source registry is available through an admin-only API/UI. Secrets are references, never browser-visible values.
-6. A data-source resolver chooses the school-specific source, falling back only to an explicitly configured tenant default. It never guesses.
-7. Prisma/schema migrations for the operational database are reproducible against a clean PostgreSQL database without Supabase-specific SQL requirements.
+6. A data-source resolver chooses the school-specific source, falling back only to an explicitly configured tenant default. It never guesses. **Code contract implemented; runtime validation pending.**
+7. Prisma/schema migrations for the operational database are reproducible against a clean PostgreSQL database without Supabase-specific SQL requirements. **Portable schema split implemented; validation/migration pending.**
 8. Existing Trip/Passenger/TripBusAssignment behavior and authorization tests pass against the normal test PostgreSQL database.
 9. A provider-contract integration test can run the same operational test suite against two PostgreSQL connection strings.
 10. Only after gates 1-9 do we create a disposable Neon project/database and register one test school against it.
@@ -62,4 +56,24 @@ Acceptance criteria:
 
 ## Current status
 
-Architecture support exists in the additive schema (`OperationalDataSource`) and `server/src/services/operationalDataSource.js` defines the provider-neutral validation/public-view contract. The current application still uses one runtime Prisma connection for operational routes, so **we are not yet at the Neon execution gate**. The next work is canonical access migration/backfill, workspace-aware server authorization, and the data-source resolver/client registry.
+Implemented on the architecture branch:
+
+- additive central `OperationalDataSource` registry
+- provider-neutral data-source validation/public-view contract
+- separate provider-neutral operational Prisma schema
+- generated-client build/validation scripts for central, legacy-global and operational schemas
+- environment-backed secret-reference resolver (`env:NAME`)
+- dynamic operational Prisma client pool
+- school-specific data-source resolver with explicit tenant-default fallback
+- graceful shutdown of dynamic clients
+
+Still required before Neon execution:
+
+- validate/generate all Prisma schemas in a real Node environment
+- canonical access migration/backfill and `BUS_OPERATOR` cutover
+- move effective-access resolution from the legacy global bridge to canonical access tables
+- make trip/passenger/bus-assignment routes workspace-aware and route them through the operational resolver
+- expose safe data-source administration in Access Control
+- provider-contract tests against two PostgreSQL URLs
+
+Therefore **we are closer, but not yet at the Neon execution gate**.
