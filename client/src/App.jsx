@@ -46,7 +46,7 @@ function AppRoutes() {
             <Route
               path="/"
               element={
-                <ProtectedRoute allowedRoles={["school_staff", "bus_company", "trip_manager", "admin"]}>
+                <ProtectedRoute allowedRoles={["school_staff", "bus_operator", "trip_manager", "admin"]}>
                   <Dashboard />
                 </ProtectedRoute>
               }
@@ -64,7 +64,7 @@ function AppRoutes() {
             <Route
               path="/trips"
               element={
-                <ProtectedRoute allowedRoles={["admin","trip_manager","school_staff","bus_company","finance"]}>
+                <ProtectedRoute allowedRoles={["admin","trip_manager","school_staff","bus_operator","finance"]}>
                   <AllTrips />
                 </ProtectedRoute>
               }
@@ -116,18 +116,14 @@ function AppRoutes() {
               }
             />
 
-            {/* ✅ Settings page (now accessible and contains the MS365 panel) */}
             <Route
               path="/settings"
               element={
-                <ProtectedRoute allowedRoles={["school_staff","bus_company","trip_manager","admin","finance"]}>
+                <ProtectedRoute allowedRoles={["school_staff","bus_operator","trip_manager","admin","finance"]}>
                   <Settings />
                 </ProtectedRoute>
               }
             />
-
-            {/* If you want a dedicated 404 inside the layout, you can also add: */}
-            {/* <Route path="*" element={<NotFound />} /> */}
           </Route>
         )}
 
