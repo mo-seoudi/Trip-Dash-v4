@@ -3,9 +3,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import { PrismaClient as PrismaGlobal } from "./prisma-global/index.js";
 
 import { prisma } from "./lib/prisma.js";
+import { prismaGlobal } from "./lib/prismaGlobal.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -20,9 +20,6 @@ import authMicrosoftRoutes from "./routes/authMicrosoft.js";
 dotenv.config();
 
 const app = express();
-// Temporary second client for the legacy global/control database only. It will
-// disappear after that data is migrated into the canonical access model.
-const prismaGlobal = new PrismaGlobal();
 
 app.set("trust proxy", 1);
 
@@ -65,8 +62,8 @@ app.use(cookieParser());
 app.get("/", (_, res) => res.status(200).json({ ok: true }));
 app.get("/health", (_, res) => res.status(200).json({ ok: true }));
 
-// Legacy global-context endpoint. Authentication is now centralized; this
-// endpoint no longer decodes or trusts JWTs independently.
+// Legacy global-context endpoint. Authentication is centralized; this remains
+// only while global/control-plane records are migrated to the canonical model.
 app.get("/api/me", requireAuth, async (req, res, next) => {
   try {
     const appUser = req.user;
@@ -94,7 +91,7 @@ app.get("/api/me", requireAuth, async (req, res, next) => {
         org_id: r.org_id,
         name: r.organizations?.name || r.org_id,
         type: r.organizations?.type || null,
-        role: r.role,
+        role: r.role === "bus_company" ? "bus_operator" : r.role,
       })),
       active_org_id: req.cookies?.td_active_org || null,
     });
@@ -106,7 +103,9 @@ app.get("/api/me", requireAuth, async (req, res, next) => {
 app.post("/api/session/set-org", requireAuth, async (req, res, next) => {
   try {
     const { org_id } = req.body || {};
-    if (!org_id) return res.status(400).json({ message: "org_id required" });
+    if (!org_id || typeof org_id !== "string" || org_id.length > 100) {
+      return res.status(400).json({ message: "valid org_id required" });
+    }
 
     const gUser =
       (await prismaGlobal.users.findFirst({
@@ -122,10 +121,10 @@ app.post("/api/session/set-org", requireAuth, async (req, res, next) => {
 
     const membership = await prismaGlobal.userRoles.findFirst({
       where: { user_id: gUser.id, org_id },
-      select: { user_id: true, org_id: true },
+      select: { user_id: true, org_id: true, status: true },
     });
-    if (!membership) {
-      return res.status(403).json({ message: "Not a member of this organization" });
+    if (!membership || membership.status !== "active") {
+      return res.status(403).json({ message: "No active membership in this organization" });
     }
 
     const isProd = process.env.NODE_ENV === "production";
