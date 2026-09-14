@@ -10,37 +10,355 @@ datasource db {
   directUrl = env("DIRECT_URL")    // direct (5432) for migrations
 }
 
-// USERS
+// -----------------------------------------------------------------------------
+// NEW PLATFORM / ACCESS DOMAIN
+// -----------------------------------------------------------------------------
+// These models are additive during the rebuild. The legacy User model remains
+// temporarily so existing v4 users and trip records can be migrated safely.
+
+enum OrganizationType {
+  SCHOOL_GROUP
+  SCHOOL
+  BUS_COMPANY
+  SERVICE_PARTNER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum RelationshipType {
+  BELONGS_TO_GROUP
+  TRANSPORT_PROVIDER
+  TRIP_MANAGER
+  WORKS_WITH_TRANSPORT_PROVIDER
+}
+
+enum AccessScopeType {
+  PLATFORM
+  TENANT
+  ORGANIZATION
+}
+
+enum IdentityProvider {
+  LOCAL
+  MICROSOFT_ENTRA
+  GOOGLE
+  OIDC
+  SAML
+}
+
+enum DataSourceMode {
+  HOSTED
+  CUSTOMER_POSTGRES
+}
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  status      String   @default("active")
+  timezone    String   @default("Asia/Dubai")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organizations          Organization[]
+  roleAssignments        RoleAssignment[]
+  trips                  Trip[]
+  bookings               BusBooking[]
+  auditEvents             AuditEvent[]
+  operationalDataSources OperationalDataSource[]
+
+  @@map("tenants_v2")
+}
+
+model AppUser {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String   @map("display_name")
+  status      String   @default("active")
+  legacyUserId Int?    @unique @map("legacy_user_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  identities      AuthenticationIdentity[]
+  memberships     OrganizationMembership[]
+  roleAssignments RoleAssignment[]
+  createdTrips    Trip[]       @relation("TripCreatedByAppUser")
+  createdBookings BusBooking[] @relation("BookingCreatedByAppUser")
+  auditEvents     AuditEvent[]  @relation("AuditActor")
+  sessions        AuthSession[]
+
+  @@map("app_users")
+}
+
+model AuthenticationIdentity {
+  id                String           @id @default(uuid())
+  userId            String           @map("user_id")
+  provider          IdentityProvider
+  providerSubject   String           @map("provider_subject")
+  passwordHash      String?          @map("password_hash")
+  emailAtProvider   String?          @map("email_at_provider")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+  @@map("authentication_identities")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz(6)
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model Organization {
+  id           String           @id @default(uuid())
+  tenantId     String           @map("tenant_id")
+  type         OrganizationType
+  displayName  String           @map("display_name")
+  fullName     String?          @map("full_name")
+  legalName    String?          @map("legal_name")
+  abbreviation String?
+  slug         String           @unique
+  status       String           @default("active")
+  parentId     String?          @map("parent_id")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  parent Organization?  @relation("OrganizationHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Organization[] @relation("OrganizationHierarchy")
+
+  memberships     OrganizationMembership[]
+  roleAssignments RoleAssignment[]
+
+  relationshipsFrom OrganizationRelationship[] @relation("RelationshipFrom")
+  relationshipsTo   OrganizationRelationship[] @relation("RelationshipTo")
+
+  ownedTrips             Trip[] @relation("TripOwningSchool")
+  managedTrips           Trip[] @relation("TripManagingOrganization")
+  transportTrips         Trip[] @relation("TripTransportProvider")
+  ownedBookings          BusBooking[] @relation("BookingOwningSchool")
+  managedBookings        BusBooking[] @relation("BookingManagingOrganization")
+  bookingTransportTrips  BusBooking[] @relation("BookingTransportProvider")
+
+  operationalDataSources OperationalDataSource[]
+  auditEvents             AuditEvent[]
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([parentId])
+  @@map("organizations_v2")
+}
+
+model OrganizationRelationship {
+  id                 String           @id @default(uuid())
+  fromOrganizationId String           @map("from_organization_id")
+  toOrganizationId   String           @map("to_organization_id")
+  type               RelationshipType
+  isPrimary          Boolean          @default(false) @map("is_primary")
+  status             String           @default("active")
+  validFrom          DateTime?        @map("valid_from") @db.Timestamptz(6)
+  validUntil         DateTime?        @map("valid_until") @db.Timestamptz(6)
+  notes              String?
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  fromOrganization Organization @relation("RelationshipFrom", fields: [fromOrganizationId], references: [id], onDelete: Cascade)
+  toOrganization   Organization @relation("RelationshipTo", fields: [toOrganizationId], references: [id], onDelete: Cascade)
+
+  @@unique([fromOrganizationId, toOrganizationId, type])
+  @@index([fromOrganizationId, type, status])
+  @@index([toOrganizationId, type, status])
+  @@map("organization_relationships_v2")
+}
+
+model OrganizationMembership {
+  id             String           @id @default(uuid())
+  userId         String           @map("user_id")
+  organizationId String           @map("organization_id")
+  status         MembershipStatus @default(PENDING)
+  isPrimary      Boolean          @default(false) @map("is_primary")
+  jobTitle       String?          @map("job_title")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         AppUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, status])
+  @@map("organization_memberships")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(true) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  permissions RolePermission[]
+  assignments RoleAssignment[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model RoleAssignment {
+  id             String          @id @default(uuid())
+  userId         String          @map("user_id")
+  roleId         String          @map("role_id")
+  scopeType      AccessScopeType @map("scope_type")
+  tenantId       String?         @map("tenant_id")
+  organizationId String?         @map("organization_id")
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, scopeType, tenantId, organizationId])
+  @@index([userId, isActive])
+  @@index([tenantId])
+  @@index([organizationId])
+  @@map("role_assignments")
+}
+
+model OperationalDataSource {
+  id             String         @id @default(uuid())
+  tenantId       String         @map("tenant_id")
+  organizationId String?        @map("organization_id")
+  mode           DataSourceMode @default(HOSTED)
+  provider       String         @default("postgresql")
+  region         String?
+  secretRef      String?        @map("secret_ref")
+  isActive       Boolean        @default(true) @map("is_active")
+  lastVerifiedAt DateTime?      @map("last_verified_at") @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([organizationId])
+  @@map("operational_data_sources")
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid())
+  tenantId       String?  @map("tenant_id")
+  organizationId String?  @map("organization_id")
+  actorUserId    String?  @map("actor_user_id")
+  action         String
+  resourceType   String?  @map("resource_type")
+  resourceId     String?  @map("resource_id")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actor        AppUser?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_events")
+}
+
+// -----------------------------------------------------------------------------
+// LEGACY V4 USER - retained during migration
+// -----------------------------------------------------------------------------
 model User {
   id              Int          @id @default(autoincrement())
   name            String
   email           String       @unique
   passwordHash    String?
-  role            String       @default("school_staff") // e.g. "admin", "finance", ...
-  status          String       @default("pending")      // "approved" | "pending" | "blocked"
+  role            String       @default("school_staff")
+  status          String       @default("pending")
   createdAt       DateTime     @default(now())
   createdBookings BusBooking[] @relation("BookingCreator")
-
-  // Trips created by this user
-  trips Trip[] @relation("TripsByUser")
+  trips           Trip[]       @relation("TripsByUser")
 
   @@map("User")
 }
 
-// TRIPS
+// -----------------------------------------------------------------------------
+// OPERATIONAL DOMAIN
+// -----------------------------------------------------------------------------
 model Trip {
-  id           Int      @id @default(autoincrement())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // creator info (stored snapshot on doc)
-  createdBy       String?
-  createdByEmail  String?
-  createdById     Int?
-  createdByUser   User?    @relation("TripsByUser", fields: [createdById], references: [id])
+  // Legacy creator fields retained during migration.
+  createdBy      String?
+  createdByEmail String?
+  createdById    Int?
+  createdByUser  User?   @relation("TripsByUser", fields: [createdById], references: [id])
 
-  // main trip fields (UI)
-  origin        String?   // NEW: starting point (e.g. "School")
+  // New canonical identity / organizational context.
+  createdByAppUserId            String? @map("created_by_app_user_id")
+  tenantId                      String? @map("tenant_id_v2")
+  owningSchoolOrganizationId    String? @map("owning_school_organization_id")
+  managingOrganizationId        String? @map("managing_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
+
+  createdByAppUser         AppUser?      @relation("TripCreatedByAppUser", fields: [createdByAppUserId], references: [id], onDelete: SetNull)
+  tenant                   Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owningSchoolOrganization Organization? @relation("TripOwningSchool", fields: [owningSchoolOrganizationId], references: [id], onDelete: Restrict)
+  managingOrganization     Organization? @relation("TripManagingOrganization", fields: [managingOrganizationId], references: [id], onDelete: SetNull)
+  transportProvider        Organization? @relation("TripTransportProvider", fields: [transportProviderOrganizationId], references: [id], onDelete: SetNull)
+
+  origin        String?
   tripType      String?
   destination   String?
   date          DateTime?
@@ -48,135 +366,141 @@ model Trip {
   returnDate    DateTime?
   returnTime    String?
   students      Int?
-  staff         Int?      // number of staff
+  staff         Int?
   status        String?
   price         Float?
   notes         String?
-  boosterSeatsRequested  Boolean   @default(false) @map("booster_seats_requested")
-  boosterSeatCount       Int       @default(0)     @map("booster_seat_count")
-  cancelRequest  Boolean? @default(false)
+  boosterSeatsRequested Boolean  @default(false) @map("booster_seats_requested")
+  boosterSeatCount      Int      @default(0) @map("booster_seat_count")
+  cancelRequest         Boolean? @default(false)
 
-  // flexible JSON
   busInfo    Json?
   driverInfo Json?
   buses      Json?
 
-  // self-relation
   parentId Int?
-  parent   Trip?   @relation("TripSelf", fields: [parentId], references: [id])
-  children Trip[]  @relation("TripSelf")
+  parent   Trip?  @relation("TripSelf", fields: [parentId], references: [id])
+  children Trip[] @relation("TripSelf")
 
-  // back-relation to SubTrip
   subTripDocs    SubTrip[]       @relation("TripToSubTrip")
-  // back-relation to TripPassenger rows
   tripPassengers TripPassenger[]
 
   @@index([createdAt])
   @@index([status])
   @@index([createdBy])
   @@index([destination])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([managingOrganizationId])
+  @@index([transportProviderOrganizationId])
+  @@index([createdByAppUserId])
   @@map("Trip")
 }
 
-// Roster rows scoped to a single trip
 model TripPassenger {
-  id            Int       @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   tripId        Int
-  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
   fullName      String
   guardianName  String?
   guardianPhone String?
   pickupPoint   String?
   dropoffPoint  String?
   notes         String?
-  checkedIn     Boolean   @default(false)
+  checkedIn     Boolean  @default(false)
 
-  payments      TripPassengerPayment[]
+  payments TripPassengerPayment[]
 
   @@index([tripId])
   @@map("TripPassenger")
 }
 
-// Optional payments (keep if you’ll need it)
 model TripPassengerPayment {
-  id               Int            @id @default(autoincrement())
-  tripPassengerId  Int
-  passenger        TripPassenger  @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
+  id              Int           @id @default(autoincrement())
+  tripPassengerId Int
+  passenger       TripPassenger @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
 
-  createdAt        DateTime       @default(now())
-  amountDue        Float
-  amountPaid       Float?         @default(0)
-  status           String?
-  method           String?
-  reference        String?
-  currency         String?        @default("USD")
+  createdAt   DateTime @default(now())
+  amountDue   Float
+  amountPaid  Float?   @default(0)
+  status      String?
+  method      String?
+  reference   String?
+  currency    String?  @default("USD")
 
   @@index([tripPassengerId])
   @@map("TripPassengerPayment")
 }
 
-// SUBTRIPS
 model SubTrip {
   id           Int      @id @default(autoincrement())
   parentTripId Int
   parent       Trip     @relation("TripToSubTrip", fields: [parentTripId], references: [id])
 
-  createdAt    DateTime @default(now())
-  status       String?
-  tripPrice    Float?
-  busSeats     Int?
-  busType      String?
+  createdAt DateTime @default(now())
+  status    String?
+  tripPrice Float?
+  busSeats  Int?
+  busType   String?
 
   @@index([parentTripId])
   @@map("SubTrip")
 }
 
-// ── BUS BOOKING (stand-alone, not tied to trips) ──────────────────────────────
 model BusBooking {
-  id               Int       @id @default(autoincrement())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // who created this booking (optional)
-  createdById      Int?
-  creator          User?     @relation("BookingCreator", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  // Legacy creator fields retained during migration.
+  createdById    Int?
+  creator        User?   @relation("BookingCreator", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdBy      String?
+  createdByEmail String?
 
-  // redundant metadata you like to store for auditing
-  createdBy        String?
-  createdByEmail   String?
+  // Legacy loosely-typed scoping retained until backfill/cutover.
+  tenant_id     String?
+  school_org_id String?
 
-  // multi-tenant/org scoping used by UI filters
-  tenant_id        String?   // <-- added to match UI
-  school_org_id    String?   // <-- added to match UI
+  // New canonical identity / organizational context.
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
 
-  // basics
-  title            String?
-  purpose          String?
+  createdByAppUser         AppUser?      @relation("BookingCreatedByAppUser", fields: [createdByAppUserId], references: [id], onDelete: SetNull)
+  tenant                   Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owningSchoolOrganization Organization? @relation("BookingOwningSchool", fields: [owningSchoolOrganizationId], references: [id], onDelete: Restrict)
+  managingOrganization     Organization? @relation("BookingManagingOrganization", fields: [managingOrganizationId], references: [id], onDelete: SetNull)
+  transportProvider        Organization? @relation("BookingTransportProvider", fields: [transportProviderOrganizationId], references: [id], onDelete: SetNull)
 
-  // schedule (match UI field names)
-  date_start       DateTime? // <-- renamed from date/startTime
-  date_end         DateTime? // <-- renamed from endDate/endTime
+  title   String?
+  purpose String?
 
-  // passengers (match UI names)
-  passengers_students Int     @default(0)
-  passengers_adults   Int     @default(0)
+  date_start DateTime?
+  date_end   DateTime?
+
+  passengers_students Int @default(0)
+  passengers_adults   Int @default(0)
   totalPassengers     Int?
 
-  // logistics (match UI names/shape)
-  pickup           Json?      // [{ name, address, notes }]
-  dropoff          Json?      // [{ name, address, notes }]
-  busesRequested   Int?
-  busType          String?
-
-  notes            String?
-
-  // status values used in UI: "requested" | "approved" | "cancelled"
-  status           String     @default("requested")
+  pickup         Json?
+  dropoff        Json?
+  busesRequested Int?
+  busType        String?
+  notes          String?
+  status         String @default("requested")
 
   @@index([tenant_id])
   @@index([school_org_id])
   @@index([status])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([managingOrganizationId])
+  @@index([transportProviderOrganizationId])
+  @@index([createdByAppUserId])
   @@map("BusBooking")
 }
