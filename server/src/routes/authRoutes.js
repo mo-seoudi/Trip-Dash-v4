@@ -1,53 +1,69 @@
 // server/src/routes/authRoutes.js
 import express from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
+import { normalizeLegacyUser } from "../lib/legacyRoles.js";
+import {
+  AUTH_COOKIE_NAME,
+  authCookieClearOptions,
+  authCookieOptions,
+  signAuthToken,
+} from "../lib/authTokens.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is required but missing.");
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
-const COOKIE_NAME = "token";
-const isProd = process.env.NODE_ENV === "production";
-const cookieOptions = {
-  httpOnly: true,
-  secure: isProd,
-  sameSite: isProd ? "none" : "lax",
-  path: "/",
-  maxAge: 1000 * 60 * 60 * 24 * 7,
-};
+function validateRegistration({ name, email, password }) {
+  const normalizedName = String(name || "").trim();
+  const normalizedEmail = normalizeEmail(email);
 
-// Legacy registration is preserved during migration. New onboarding will later
-// create AppUser, identity, membership, and scoped role records transactionally.
+  if (!normalizedName || !normalizedEmail || !password) {
+    return { error: "name, email and password are required" };
+  }
+  if (normalizedName.length > 120) return { error: "name is too long" };
+  if (normalizedEmail.length > 254 || !EMAIL_RE.test(normalizedEmail)) {
+    return { error: "A valid email is required" };
+  }
+  if (typeof password !== "string" || password.length < 10 || password.length > 128) {
+    return { error: "Password must be between 10 and 128 characters" };
+  }
+
+  return { normalizedName, normalizedEmail };
+}
+
+// Public registration can request access, but it cannot self-assign a privileged
+// role. Admins will approve/assign the appropriate role during onboarding.
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, name, role } = req.body || {};
-    if (!email || !password || !name) {
-      return res.status(400).json({ message: "name, email and password are required" });
-    }
+    const validation = validateRegistration(req.body || {});
+    if (validation.error) return res.status(400).json({ message: validation.error });
 
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const { normalizedName, normalizedEmail } = validation;
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) return res.status(409).json({ message: "Email already registered" });
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(req.body.password, 12);
     const user = await prisma.user.create({
       data: {
         email: normalizedEmail,
-        name: String(name).trim(),
-        role: role || "school_staff",
+        name: normalizedName,
+        role: "school_staff",
         status: "pending",
         passwordHash,
       },
       select: { id: true, email: true, name: true, role: true, status: true },
     });
 
-    return res.status(201).json({ user });
+    return res.status(201).json({ user: normalizeLegacyUser(user) });
   } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Email already registered" });
+    }
     return next(err);
   }
 });
@@ -55,11 +71,14 @@ router.post("/register", async (req, res, next) => {
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
-    if (!email || !password) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail || typeof password !== "string" || !password) {
       return res.status(400).json({ message: "email and password are required" });
     }
+    if (normalizedEmail.length > 254 || password.length > 128) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user?.passwordHash) return res.status(401).json({ message: "Invalid credentials" });
 
@@ -71,20 +90,20 @@ router.post("/login", async (req, res, next) => {
       return res.status(403).json({ message: "Account pending approval", status: user.status });
     }
 
-    // Keep legacy token compatibility while authorization is migrated. Role is
-    // deliberately not trusted from the token by requireAuth.
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-    res.cookie(COOKIE_NAME, token, cookieOptions);
+    const token = signAuthToken(user);
+    res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
 
     return res.json({
       ok: true,
-      user: {
+      user: normalizeLegacyUser({
         id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
         status: user.status,
-      },
+      }),
+      // Transitional compatibility for the existing frontend. The rebuilt
+      // client should move to cookie-only auth, after which this can be removed.
       token,
     });
   } catch (err) {
@@ -92,38 +111,14 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-router.get("/session", async (req, res) => {
-  const authHeader = req.get("authorization") || "";
-  const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : null;
-  const token = req.cookies?.[COOKIE_NAME] || bearerToken;
-
-  if (!token) return res.status(401).json({ user: null });
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const userId = decoded.id ?? decoded.uid;
-    const user = await prisma.user.findUnique({
-      where: { id: Number(userId) },
-      select: { id: true, email: true, name: true, role: true, status: true },
-    });
-
-    if (!user || String(user.status || "").toLowerCase().trim() !== "approved") {
-      return res.status(401).json({ user: null });
-    }
-    return res.json({ user });
-  } catch {
-    return res.status(401).json({ user: null });
-  }
+// Session validation now uses exactly the same authentication path as protected
+// API routes instead of maintaining a second JWT implementation.
+router.get("/session", requireAuth, async (req, res) => {
+  return res.json({ user: req.user });
 });
 
-router.post("/logout", (req, res) => {
-  res.clearCookie(COOKIE_NAME, {
-    path: "/",
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-  });
+router.post("/logout", (_req, res) => {
+  res.clearCookie(AUTH_COOKIE_NAME, authCookieClearOptions());
   return res.json({ ok: true });
 });
 
