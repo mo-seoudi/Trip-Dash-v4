@@ -35,7 +35,7 @@ function providerFromConnection(connection) {
   return "postgresql";
 }
 
-function legacyConnectionAsDataSource(connection) {
+export function legacyConnectionAsDataSource(connection) {
   const secretRef = String(connection.vaultSecretId || "").trim();
   if (!secretRef) {
     throw httpError(503, "This school's operational database credential is not configured", "DATA_SOURCE_SECRET_MISSING");
@@ -55,18 +55,48 @@ function legacyConnectionAsDataSource(connection) {
   };
 }
 
-export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null) {
+export function workspaceFromAccess(access, schoolId, requiredPermission = null) {
   const requestedSchoolId = String(schoolId || "").trim();
   if (!requestedSchoolId) throw httpError(400, "A school workspace is required", "SCHOOL_WORKSPACE_REQUIRED");
 
-  const access = await resolveEffectiveAccess(user);
-  const workspace = (access.workspaces || []).find((item) => item.schoolId === requestedSchoolId);
+  const workspace = (access?.workspaces || []).find((item) => item.schoolId === requestedSchoolId);
   if (!workspace) throw httpError(403, "You do not have access to this school workspace", "SCHOOL_WORKSPACE_FORBIDDEN");
 
   if (requiredPermission && !(workspace.permissions || []).includes(requiredPermission)) {
     throw httpError(403, "You do not have permission for this action in this school workspace", "WORKSPACE_PERMISSION_FORBIDDEN");
   }
 
+  if (!access?.tenantId) {
+    throw httpError(403, "This workspace is not attached to an authorized tenant", "WORKSPACE_TENANT_FORBIDDEN");
+  }
+
+  return workspace;
+}
+
+export function activeWorkspaceConnectionWhere(access, workspace) {
+  if (!access?.tenantId || !workspace?.schoolId) {
+    throw httpError(403, "Workspace routing context is incomplete", "WORKSPACE_ROUTING_FORBIDDEN");
+  }
+  return {
+    tenantId: access.tenantId,
+    orgId: workspace.schoolId,
+    isActive: true,
+  };
+}
+
+export function singleActiveWorkspaceConnection(connections = []) {
+  if (!connections.length) {
+    throw httpError(503, "No active operational database is configured for this school", "DATA_SOURCE_NOT_CONFIGURED");
+  }
+  if (connections.length > 1) {
+    throw httpError(503, "More than one active operational database is configured for this school", "DATA_SOURCE_AMBIGUOUS");
+  }
+  return connections[0];
+}
+
+export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null) {
+  const access = await resolveEffectiveAccess(user);
+  const workspace = workspaceFromAccess(access, schoolId, requiredPermission);
   return { access, workspace };
 }
 
@@ -77,25 +107,14 @@ export async function resolveWorkspaceDataSource(user, schoolId, requiredPermiss
   // BYODB rows for one school. Routing must never guess between two active
   // databases: ambiguous configuration is treated as an administrative error.
   const connections = await prismaGlobal.dataConnection.findMany({
-    where: {
-      tenantId: access.tenantId,
-      orgId: workspace.schoolId,
-      isActive: true,
-    },
+    where: activeWorkspaceConnectionWhere(access, workspace),
     orderBy: { updatedAt: "desc" },
   });
-
-  if (!connections.length) {
-    throw httpError(503, "No active operational database is configured for this school", "DATA_SOURCE_NOT_CONFIGURED");
-  }
-  if (connections.length > 1) {
-    throw httpError(503, "More than one active operational database is configured for this school", "DATA_SOURCE_AMBIGUOUS");
-  }
 
   return {
     access,
     workspace,
-    dataSource: legacyConnectionAsDataSource(connections[0]),
+    dataSource: legacyConnectionAsDataSource(singleActiveWorkspaceConnection(connections)),
   };
 }
 
