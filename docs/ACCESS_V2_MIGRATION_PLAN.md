@@ -2,7 +2,25 @@
 
 Status: planning and validation only. **Do not run against production yet.**
 
-The goal is to move identity, organizations, memberships, roles, relationships and operational data-source metadata from the transitional global/control-plane structures into the canonical v2 tables already defined in `server/prisma/schema.prisma`, without changing live v4 behavior during the migration.
+The goal is to move identity, organizations, memberships, roles, relationships and operational data-source metadata from the transitional global/control-plane structures into the canonical v2 control plane, without changing live v4 behavior during the migration.
+
+## Settled database boundary
+
+Canonical access v2 lives in a **dedicated central control-plane PostgreSQL database**, represented by `server/prisma/control.schema.prisma` and configured through `CONTROL_DATABASE_URL`.
+
+This is an architectural boundary, not a provider commitment. The control plane may itself be hosted on any suitable PostgreSQL provider. It is separate from each school's operational PostgreSQL database and separate from the live v4 operational schema during the rebuild.
+
+The control plane owns:
+- AppUser and authentication identities/sessions
+- Tenant and Organization
+- memberships, roles, permissions and role assignments
+- organization relationships
+- operational data-source metadata and secret references
+- audit events
+
+School operational databases own trip, passenger, bus-assignment and booking data. They do not become the source of truth for identity or authorization.
+
+The older canonical-v2 models that were added to `server/prisma/schema.prisma` are now transitional duplicates. They must not be treated as the production destination for the access-v2 backfill. They can be removed from the primary schema only after route/model dependencies are disentangled and the dedicated control-plane client is in use.
 
 ## Safety principles
 
@@ -13,6 +31,7 @@ The goal is to move identity, organizations, memberships, roles, relationships a
 5. Canonical application vocabulary is used in v2 (`BUS_OPERATOR`, `bus_operator`). `bus_company` remains legacy-storage compatibility only.
 6. Database credentials are not copied into migration reports. Data sources move by secret reference only.
 7. Production backfill must be rerunnable/idempotent and execute in transactions by phase.
+8. A migration runner must name its source and destination clients explicitly: legacy global control plane -> canonical control plane. It must never infer the destination from `DATABASE_URL`.
 
 ## Legacy -> canonical mapping
 
@@ -40,7 +59,7 @@ When legacy rows contain multiple roles for one user/organization, canonical Org
 
 ## Role and permission seed
 
-Before role assignments are inserted, seed the canonical Role, Permission and RolePermission tables from `server/src/services/accessCatalog.js`. Keys must match the code catalog exactly. The seed is an upsert and must not create duplicate semantic roles.
+Before role assignments are inserted, seed the canonical Role, Permission and RolePermission tables from `server/src/services/accessCatalog.js`. `server/src/services/controlPlaneSeed.js` is the deterministic seed contract. Keys must match the code catalog exactly. The seed uses upserts and replaces system-role permission joins so reruns cannot accumulate obsolete permissions.
 
 ## Proposed execution phases
 
@@ -50,7 +69,7 @@ Read legacy/global data, build a migration plan with `accessV2BackfillPlan.js`, 
 
 ### Phase 1 - canonical reference data
 
-Upsert Tenant, AppUser, Organization, Role, Permission and RolePermission. Preserve compatible UUIDs. Do not switch reads.
+Upsert Tenant, AppUser, Organization, Role, Permission and RolePermission into the dedicated canonical control-plane database. Preserve compatible UUIDs. Do not switch reads.
 
 ### Phase 2 - access graph
 
@@ -81,14 +100,10 @@ Keep legacy effective access authoritative, calculate canonical access in parall
 
 Switch effective access and Access Admin to canonical tables behind a configuration flag. Keep legacy tables read-only for rollback during an agreed observation period. No production legacy table deletion in this phase.
 
-## Data-source routing caveat
-
-The current canonical models live in the primary Prisma schema while the transitional access/control data is represented by `global.schema.prisma`. Before production execution we must confirm whether canonical control-plane tables are being created in the same PostgreSQL database that currently holds the v4 `User`/Trip data or in the dedicated control-plane database. The migration runner must use the database that actually contains the canonical tables; it must not silently read one database and write another based on similarly named environment variables.
-
 ## Required gates before production execution
 
 - all server contract tests green
-- Prisma canonical schema validated/generated
+- canonical control-plane Prisma schema validated/generated
 - migration/backfill planner tests green
 - role/permission seed tested
 - dry-run report on a non-production snapshot
@@ -99,4 +114,4 @@ The current canonical models live in the primary Prisma schema while the transit
 
 ## Current implementation state
 
-`server/src/services/accessV2BackfillPlan.js` is intentionally pure and write-free. It establishes deterministic mapping and validation rules. It is safe to run in tests but is **not** a production migration runner.
+`server/src/services/accessV2BackfillPlan.js` is intentionally pure and write-free. It establishes deterministic mapping and validation rules. `server/src/services/controlPlaneSeed.js` establishes the canonical role/permission seed. Neither is a production migration runner.
