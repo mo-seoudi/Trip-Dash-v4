@@ -19,7 +19,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
       DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      CONTROL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=public
       OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      JWT_SECRET: architecture-validation-only-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
