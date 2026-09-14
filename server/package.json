@@ -10,6 +10,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "generate": "npm run prisma:generate",
+    "test": "node --test test/*.test.mjs",
+    "test:access": "node --test test/accessCatalog.test.mjs",
     "prisma:generate": "prisma generate && prisma generate --schema=prisma/global.schema.prisma && prisma generate --schema=prisma/operational.schema.prisma",
     "prisma:validate": "prisma validate && prisma validate --schema=prisma/global.schema.prisma && prisma validate --schema=prisma/operational.schema.prisma",
     "prisma:operational:generate": "prisma generate --schema=prisma/operational.schema.prisma",
