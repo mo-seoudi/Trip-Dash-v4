@@ -346,10 +346,10 @@ model Trip {
   createdByUser  User?   @relation("TripsByUser", fields: [createdById], references: [id])
 
   // New canonical identity / organizational context.
-  createdByAppUserId            String? @map("created_by_app_user_id")
-  tenantId                      String? @map("tenant_id_v2")
-  owningSchoolOrganizationId    String? @map("owning_school_organization_id")
-  managingOrganizationId        String? @map("managing_organization_id")
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
   transportProviderOrganizationId String? @map("transport_provider_organization_id")
 
   createdByAppUser         AppUser?      @relation("TripCreatedByAppUser", fields: [createdByAppUserId], references: [id], onDelete: SetNull)
@@ -374,6 +374,7 @@ model Trip {
   boosterSeatCount      Int      @default(0) @map("booster_seat_count")
   cancelRequest         Boolean? @default(false)
 
+  // Legacy assignment snapshots retained only for compatibility/backfill.
   busInfo    Json?
   driverInfo Json?
   buses      Json?
@@ -382,8 +383,10 @@ model Trip {
   parent   Trip?  @relation("TripSelf", fields: [parentId], references: [id])
   children Trip[] @relation("TripSelf")
 
-  subTripDocs    SubTrip[]       @relation("TripToSubTrip")
+  // SubTrip is legacy-only. New multi-bus operations use busAssignments.
+  subTripDocs    SubTrip[]          @relation("TripToSubTrip")
   tripPassengers TripPassenger[]
+  busAssignments TripBusAssignment[]
 
   @@index([createdAt])
   @@index([status])
@@ -395,6 +398,38 @@ model Trip {
   @@index([transportProviderOrganizationId])
   @@index([createdByAppUserId])
   @@map("Trip")
+}
+
+model TripBusAssignment {
+  id       String @id @default(uuid())
+  tripId   Int    @map("trip_id")
+  trip     Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  // Stable sequence used for display (Bus 1, Bus 2, ...) without making the
+  // sequence itself the record identity.
+  sequence Int @default(1)
+
+  busType       String? @map("bus_type")
+  seatCapacity  Int?    @map("seat_capacity")
+  vehicleNumber String? @map("vehicle_number")
+  plateNumber   String? @map("plate_number")
+
+  driverName  String? @map("driver_name")
+  driverPhone String? @map("driver_phone")
+
+  price    Decimal? @db.Decimal(12, 2)
+  currency String   @default("AED") @db.VarChar(3)
+  status   String   @default("assigned")
+  notes    String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  passengerAllocations TripBusPassengerAllocation[]
+
+  @@unique([tripId, sequence])
+  @@index([tripId, status])
+  @@map("trip_bus_assignments")
 }
 
 model TripPassenger {
@@ -411,10 +446,23 @@ model TripPassenger {
   notes         String?
   checkedIn     Boolean  @default(false)
 
-  payments TripPassengerPayment[]
+  payments       TripPassengerPayment[]
+  busAllocations TripBusPassengerAllocation[]
 
   @@index([tripId])
   @@map("TripPassenger")
+}
+
+model TripBusPassengerAllocation {
+  busAssignmentId String            @map("bus_assignment_id")
+  tripPassengerId Int               @map("trip_passenger_id")
+  busAssignment   TripBusAssignment @relation(fields: [busAssignmentId], references: [id], onDelete: Cascade)
+  passenger       TripPassenger     @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([busAssignmentId, tripPassengerId])
+  @@index([tripPassengerId])
+  @@map("trip_bus_passenger_allocations")
 }
 
 model TripPassengerPayment {
@@ -434,6 +482,8 @@ model TripPassengerPayment {
   @@map("TripPassengerPayment")
 }
 
+// LEGACY ONLY: retained so historical rows can be inspected/backfilled into
+// TripBusAssignment before this table is removed in a later migration.
 model SubTrip {
   id           Int      @id @default(autoincrement())
   parentTripId Int
