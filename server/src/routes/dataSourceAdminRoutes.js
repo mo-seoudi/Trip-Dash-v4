@@ -7,14 +7,21 @@ import { Router } from "express";
 import { prismaGlobal } from "../lib/prismaGlobal.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { normalizeDataSourceProvider, publicDataSourceView } from "../services/operationalDataSource.js";
+import { prismaForOperationalDataSource } from "../services/operationalPrismaPool.js";
 import { parseSecretRef } from "../services/secretProvider.js";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
-function clean(value, max = 200) {
+function clean(value, max = 200, field = "value") {
   const result = String(value ?? "").trim();
-  return result ? result.slice(0, max) : null;
+  if (!result) return null;
+  if (result.length > max) {
+    const error = new Error(`${field} must be ${max} characters or fewer`);
+    error.status = 400;
+    throw error;
+  }
+  return result;
 }
 
 async function requestGlobalUser(req) {
@@ -40,24 +47,30 @@ function providerFromHost(host) {
   return "postgresql";
 }
 
-function view(row) {
-  const result = publicDataSourceView({
-    id: row.id,
+function dataSourceForRuntime(row) {
+  return {
+    id: `legacy:${row.id}`,
     tenantId: row.tenantId,
     organizationId: row.orgId,
     mode: String(row.mode).toUpperCase() === "BYODB" ? "CUSTOMER_POSTGRES" : "HOSTED",
     provider: providerFromHost(row.dbHost),
     region: null,
-    isActive: row.isActive,
-    lastVerifiedAt: row.lastVerifiedAt,
-  });
+    secretRef: row.vaultSecretId,
+    isActive: Boolean(row.isActive),
+    lastVerifiedAt: row.lastVerifiedAt || null,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function view(row) {
+  const result = publicDataSourceView(dataSourceForRuntime(row));
   return { ...result, secretConfigured: Boolean(row.vaultSecretId) };
 }
 
 // GET /api/data-sources?tenant_id=...
 router.get("/", async (req, res, next) => {
   try {
-    const tenantId = clean(req.query.tenant_id, 100);
+    const tenantId = clean(req.query.tenant_id, 100, "tenant_id");
     if (!tenantId) return res.status(400).json({ message: "tenant_id is required" });
     await assertTenant(req, tenantId);
     const rows = await prismaGlobal.dataConnection.findMany({
@@ -74,7 +87,7 @@ router.get("/", async (req, res, next) => {
 // preserves a deterministic school -> one active operational DB invariant.
 router.put("/:schoolId", async (req, res, next) => {
   try {
-    const schoolId = clean(req.params.schoolId, 100);
+    const schoolId = clean(req.params.schoolId, 100, "schoolId");
     const school = await prismaGlobal.organization.findUnique({ where: { id: schoolId } });
     if (!school) return res.status(404).json({ message: "School not found" });
     if (String(school.type).toLowerCase() !== "school") {
@@ -88,10 +101,10 @@ router.put("/:schoolId", async (req, res, next) => {
       return res.status(400).json({ message: "Unsupported data-source mode" });
     }
 
-    const secretRef = clean(req.body?.secret_ref, 500);
+    const secretRef = clean(req.body?.secret_ref, 500, "secret_ref");
     if (secretRef) parseSecretRef(secretRef); // syntax only; never resolves secret during registration
 
-    const hostHint = clean(req.body?.host_hint, 250) ||
+    const hostHint = clean(req.body?.host_hint, 250, "host_hint") ||
       (provider === "neon" ? "neon.tech" : provider === "supabase" ? "supabase" : "postgresql");
     const storedMode = mode === "CUSTOMER_POSTGRES" ? "BYODB" : "SAAS";
     const activate = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
@@ -143,7 +156,7 @@ router.put("/:schoolId", async (req, res, next) => {
 
 router.patch("/:id/status", async (req, res, next) => {
   try {
-    const id = clean(req.params.id, 100);
+    const id = clean(req.params.id, 100, "data source id");
     const existing = await prismaGlobal.dataConnection.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "Data source not found" });
     await assertTenant(req, existing.tenantId);
@@ -159,6 +172,58 @@ router.patch("/:id/status", async (req, res, next) => {
       return tx.dataConnection.update({ where: { id }, data: { isActive: req.body.is_active } });
     });
     return res.json(view(row));
+  } catch (error) { return next(error); }
+});
+
+// POST /api/data-sources/:id/verify
+// Resolves the configured secret only on the server, opens the same
+// provider-neutral Prisma client used by workspace routes, and performs a
+// harmless connectivity query. Secret values and raw database errors are never
+// returned to the browser.
+router.post("/:id/verify", async (req, res, next) => {
+  try {
+    const id = clean(req.params.id, 100, "data source id");
+    const existing = await prismaGlobal.dataConnection.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ message: "Data source not found" });
+    await assertTenant(req, existing.tenantId);
+
+    if (!existing.vaultSecretId) {
+      return res.status(409).json({
+        message: "This data source has no configured database credential",
+        code: "DATA_SOURCE_SECRET_MISSING",
+      });
+    }
+
+    const runtimeSource = dataSourceForRuntime(existing);
+    let prisma;
+    try {
+      prisma = await prismaForOperationalDataSource(runtimeSource);
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (error) {
+      console.error("Operational data-source verification failed", {
+        dataSourceId: existing.id,
+        organizationId: existing.orgId,
+        provider: runtimeSource.provider,
+        errorCode: error?.code || null,
+      });
+      return res.status(422).json({
+        ok: false,
+        code: "DATA_SOURCE_VERIFICATION_FAILED",
+        message: "The operational database connection could not be verified. Check the configured credential, database availability, and network/SSL settings.",
+      });
+    }
+
+    const verifiedAt = new Date();
+    const updated = await prismaGlobal.dataConnection.update({
+      where: { id: existing.id },
+      data: { lastVerifiedAt: verifiedAt },
+    });
+
+    return res.json({
+      ok: true,
+      verifiedAt: updated.lastVerifiedAt,
+      dataSource: view(updated),
+    });
   } catch (error) { return next(error); }
 });
 
