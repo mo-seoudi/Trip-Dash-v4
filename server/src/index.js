@@ -19,6 +19,7 @@ import msRoutes from "./routes/ms.js";
 import authMicrosoftRoutes from "./routes/authMicrosoft.js";
 import accessRoutes from "./routes/accessRoutes.js";
 import accessAdminRoutes from "./routes/accessAdminRoutes.js";
+import dataSourceAdminRoutes from "./routes/dataSourceAdminRoutes.js";
 
 dotenv.config();
 
@@ -126,6 +127,7 @@ app.post("/api/session/set-org", requireAuth, async (req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/access", accessRoutes);
 app.use("/api/access-admin", accessAdminRoutes);
+app.use("/api/data-sources", dataSourceAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/trips", tripsRouter);
