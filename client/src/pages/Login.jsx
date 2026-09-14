@@ -25,19 +25,19 @@ const Login = () => {
     setError("");
     setInfo("");
     try {
-      // ⬇️ Keep your existing service call
+      // authService.login() already returns res.data, so the token is top-level.
       const resp = await apiLogin(email, password);
 
-      // ⬇️ NEW: if server returns a token, keep it for header auth
-      if (resp?.data?.token) {
-        localStorage.setItem("token", resp.data.token);
+      // Keep the JWT as a bearer-token fallback for cross-origin deployments.
+      if (resp?.token) {
+        localStorage.setItem("token", resp.token);
       }
 
       await refreshSession();
       navigate("/");
     } catch (err) {
       console.error(err);
-      setError("Login failed. Please try again.");
+      setError(err?.response?.data?.message || "Login failed. Please try again.");
     }
   }
 
