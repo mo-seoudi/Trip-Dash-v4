@@ -97,6 +97,7 @@ model TripBusAssignment {
 
   passengerAllocations TripBusPassengerAllocation[]
 
+  @@unique([id, tripId])
   @@unique([tripId, sequence])
   @@index([tripId, status])
   @@map("trip_bus_assignments")
@@ -118,19 +119,28 @@ model TripPassenger {
   payments       TripPassengerPayment[]
   busAllocations TripBusPassengerAllocation[]
 
+  @@unique([id, tripId])
   @@index([tripId])
   @@map("TripPassenger")
 }
 
 model TripBusPassengerAllocation {
-  busAssignmentId String            @map("bus_assignment_id")
-  tripPassengerId Int               @map("trip_passenger_id")
-  busAssignment   TripBusAssignment @relation(fields: [busAssignmentId], references: [id], onDelete: Cascade)
-  passenger       TripPassenger     @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  busAssignmentId String @map("bus_assignment_id")
+  tripPassengerId Int    @map("trip_passenger_id")
+  tripId          Int    @map("trip_id")
+
+  // Carry tripId on the allocation itself and use composite foreign keys so a
+  // bus assignment and passenger can never be joined across different trips.
+  busAssignment TripBusAssignment @relation(fields: [busAssignmentId, tripId], references: [id, tripId], onDelete: Cascade)
+  passenger     TripPassenger     @relation(fields: [tripPassengerId, tripId], references: [id, tripId], onDelete: Cascade)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@id([busAssignmentId, tripPassengerId])
+  // A passenger may appear on only one bus within a trip. This is enforced by
+  // PostgreSQL rather than relying only on an application-level duplicate check.
+  @@unique([tripId, tripPassengerId])
   @@index([tripPassengerId])
+  @@index([tripId])
   @@map("trip_bus_passenger_allocations")
 }
 
