@@ -12,6 +12,11 @@
     "generate": "npm run prisma:generate",
     "prisma:generate": "prisma generate && prisma generate --schema=prisma/global.schema.prisma && prisma generate --schema=prisma/operational.schema.prisma",
     "prisma:validate": "prisma validate && prisma validate --schema=prisma/global.schema.prisma && prisma validate --schema=prisma/operational.schema.prisma",
+    "prisma:operational:generate": "prisma generate --schema=prisma/operational.schema.prisma",
+    "prisma:operational:validate": "prisma validate --schema=prisma/operational.schema.prisma",
+    "prisma:operational:push": "prisma db push --schema=prisma/operational.schema.prisma --skip-generate",
+    "test:operational:smoke": "node scripts/operational-schema-smoke.mjs",
+    "verify:operational": "npm run prisma:operational:validate && npm run prisma:operational:generate && npm run prisma:operational:push && npm run test:operational:smoke",
     "migrate:deploy": "prisma migrate deploy",
     "postinstall": "npm run prisma:generate",
     "seed": "node prisma/seed.js"
