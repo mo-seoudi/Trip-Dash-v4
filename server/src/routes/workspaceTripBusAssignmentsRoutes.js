@@ -193,20 +193,27 @@ router.put("/:assignmentId/passengers", async (req, res, next) => {
       const count = passengerIds.length ? await tx.tripPassenger.count({ where: { tripId, id: { in: passengerIds } } }) : 0;
       if (count !== passengerIds.length) { const e = new Error("One or more passengers do not belong to this trip"); e.status = 400; throw e; }
 
-      // The duplicate check and replacement now share the same transaction,
-      // closing the obvious race window in the legacy implementation.
+      // Keep the friendly application check, while the operational schema also
+      // enforces one bus per passenger per trip at the database level.
       const duplicate = passengerIds.length ? await tx.tripBusPassengerAllocation.findFirst({
-        where: { tripPassengerId: { in: passengerIds }, busAssignmentId: { not: assignmentId }, busAssignment: { tripId } },
+        where: { tripPassengerId: { in: passengerIds }, tripId, busAssignmentId: { not: assignmentId } },
         select: { tripPassengerId: true },
       }) : null;
       if (duplicate) { const e = new Error(`Passenger ${duplicate.tripPassengerId} is already allocated to another bus on this trip`); e.status = 409; throw e; }
 
-      await tx.tripBusPassengerAllocation.deleteMany({ where: { busAssignmentId: assignmentId } });
-      if (passengerIds.length) await tx.tripBusPassengerAllocation.createMany({ data: passengerIds.map((tripPassengerId) => ({ busAssignmentId: assignmentId, tripPassengerId })) });
+      await tx.tripBusPassengerAllocation.deleteMany({ where: { busAssignmentId: assignmentId, tripId } });
+      if (passengerIds.length) {
+        await tx.tripBusPassengerAllocation.createMany({
+          data: passengerIds.map((tripPassengerId) => ({ busAssignmentId: assignmentId, tripPassengerId, tripId })),
+        });
+      }
     });
 
     return res.json({ assignmentId, passengerIds });
-  } catch (error) { return next(error); }
+  } catch (error) {
+    if (error?.code === "P2002") return res.status(409).json({ message: "One or more passengers are already allocated to another bus on this trip" });
+    return next(error);
+  }
 });
 
 export default router;
