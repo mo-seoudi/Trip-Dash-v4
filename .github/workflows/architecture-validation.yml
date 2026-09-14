@@ -42,6 +42,9 @@ jobs:
       - name: Generate all Prisma clients
         run: npm run prisma:generate
 
+      - name: Test canonical access policy
+        run: npm run test:access
+
   client-build:
     runs-on: ubuntu-latest
     defaults:
