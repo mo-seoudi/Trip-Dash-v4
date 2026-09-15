@@ -13,10 +13,20 @@ function nonNegativeInt(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-function money(value) {
+// Canonical money is represented as a two-decimal string in migration plans.
+// Prisma accepts this for Decimal columns without first round-tripping through a
+// binary floating-point value. Invalid or negative legacy money fails closed.
+export function normalizeLegacyMoney(value) {
   if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : null;
+  const raw = String(value).trim();
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
+  const [whole, fraction = ""] = raw.split(".");
+  const third = Number(fraction[2] || "0");
+  let cents = BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2));
+  if (third >= 5) cents += 1n;
+  const units = cents / 100n;
+  const remainder = String(cents % 100n).padStart(2, "0");
+  return `${units}.${remainder}`;
 }
 
 function normalizeStatus(value, fallback = "assigned") {
@@ -31,7 +41,7 @@ function assignmentShape(source) {
     plateNumber: text(source?.plateNumber),
     driverName: text(source?.driverName),
     driverPhone: text(source?.driverPhone),
-    price: money(source?.tripPrice ?? source?.price),
+    price: normalizeLegacyMoney(source?.tripPrice ?? source?.price),
     currency: text(source?.currency)?.toUpperCase() || "AED",
     status: normalizeStatus(source?.status),
     notes: text(source?.notes),
@@ -47,10 +57,6 @@ export function planLegacyBusAssignments(trip) {
   return trip.buses.map((bus, index) => ({ legacyTripId: trip.id, sequence: index + 1, ...assignmentShape(bus) }));
 }
 
-// Reconcile the two historical bus representations without guessing. Exact
-// duplicates are collapsed. Distinct SubTrip rows are appended as assignments.
-// If a SubTrip partially resembles a JSON bus but disagrees on populated fields,
-// the trip is flagged for review rather than silently duplicating/overwriting it.
 export function reconcileLegacyBusAssignments(trip, subTrips = []) {
   const jsonRows = Array.isArray(trip?.buses) ? trip.buses : [];
   const legacySubTrips = Array.isArray(subTrips) ? subTrips.filter((row) => Number(row?.parentTripId) === Number(trip?.id)) : [];
@@ -64,7 +70,6 @@ export function reconcileLegacyBusAssignments(trip, subTrips = []) {
       warnings.push({ code: "LEGACY_BUS_DUPLICATE_COLLAPSED", legacySubTripId: subTrip.id ?? null });
       continue;
     }
-
     const populated = Object.entries(candidate).filter(([key, value]) => !["currency", "status"].includes(key) && value !== null);
     const conflictingIndex = assignments.findIndex((row) => {
       const comparable = populated.filter(([key]) => row[key] !== null);
@@ -79,12 +84,7 @@ export function reconcileLegacyBusAssignments(trip, subTrips = []) {
     }
     assignments.push(candidate);
   }
-
-  return {
-    assignments: assignments.map((row, index) => ({ legacyTripId: trip.id, sequence: index + 1, ...row })),
-    warnings,
-    conflicts,
-  };
+  return { assignments: assignments.map((row, index) => ({ legacyTripId: trip.id, sequence: index + 1, ...row })), warnings, conflicts };
 }
 
 export function planOperationalTrip(trip, context = {}) {
@@ -102,39 +102,36 @@ export function planOperationalTrip(trip, context = {}) {
     error.conflicts = reconciliation.conflicts;
     throw error;
   }
+  const tripPrice = normalizeLegacyMoney(trip.price);
+  if (trip.price !== null && trip.price !== undefined && trip.price !== "" && tripPrice === null) {
+    const error = new Error(`Trip ${trip.id} has invalid legacy price`);
+    error.code = "OPERATIONAL_MIGRATION_INVALID_MONEY";
+    throw error;
+  }
 
   return {
     trip: {
-      id: Number(trip.id),
-      createdAt: trip.createdAt || undefined,
-      createdByAppUserId: text(context.createdByAppUserId ?? trip.createdByAppUserId),
-      tenantId: text(context.tenantId ?? trip.tenantId),
-      owningSchoolOrganizationId,
-      managingOrganizationId: text(context.managingOrganizationId ?? trip.managingOrganizationId),
+      id: Number(trip.id), createdAt: trip.createdAt || undefined,
+      createdByAppUserId: text(context.createdByAppUserId ?? trip.createdByAppUserId), tenantId: text(context.tenantId ?? trip.tenantId),
+      owningSchoolOrganizationId, managingOrganizationId: text(context.managingOrganizationId ?? trip.managingOrganizationId),
       transportProviderOrganizationId: text(context.transportProviderOrganizationId ?? trip.transportProviderOrganizationId),
-      createdBy: text(trip.createdBy),
-      createdByEmail: text(trip.createdByEmail),
+      createdBy: text(trip.createdBy), createdByEmail: text(trip.createdByEmail),
       createdById: Number.isInteger(Number(trip.createdById)) ? Number(trip.createdById) : null,
-      origin: text(trip.origin), tripType: text(trip.tripType), destination: text(trip.destination),
-      date: trip.date || null, departureTime: text(trip.departureTime), returnDate: trip.returnDate || null,
-      returnTime: text(trip.returnTime), students: nonNegativeInt(trip.students), staff: nonNegativeInt(trip.staff),
-      status: text(trip.status), price: trip.price == null ? null : Number(trip.price), notes: text(trip.notes),
+      origin: text(trip.origin), tripType: text(trip.tripType), destination: text(trip.destination), date: trip.date || null,
+      departureTime: text(trip.departureTime), returnDate: trip.returnDate || null, returnTime: text(trip.returnTime),
+      students: nonNegativeInt(trip.students), staff: nonNegativeInt(trip.staff), status: text(trip.status), price: tripPrice, notes: text(trip.notes),
       boosterSeatsRequested: Boolean(trip.boosterSeatsRequested), boosterSeatCount: nonNegativeInt(trip.boosterSeatCount) || 0,
-      cancelRequest: Boolean(trip.cancelRequest),
-      buses: Array.isArray(trip.buses) ? trip.buses : null,
+      cancelRequest: Boolean(trip.cancelRequest), buses: Array.isArray(trip.buses) ? trip.buses : null,
       busInfo: trip.busInfo ?? null, driverInfo: trip.driverInfo ?? null,
     },
-    busAssignments: reconciliation.assignments,
-    migrationWarnings: reconciliation.warnings,
+    busAssignments: reconciliation.assignments, migrationWarnings: reconciliation.warnings,
   };
 }
 
 export function buildOperationalMigrationPlan(trips, resolveContext) {
   if (!Array.isArray(trips)) throw new TypeError("trips must be an array");
   if (typeof resolveContext !== "function") throw new TypeError("resolveContext is required");
-  const rows = [];
-  const errors = [];
-  const warnings = [];
+  const rows = [], errors = [], warnings = [];
   for (const trip of trips) {
     try {
       const row = planOperationalTrip(trip, resolveContext(trip) || {});
@@ -146,10 +143,6 @@ export function buildOperationalMigrationPlan(trips, resolveContext) {
   }
   return {
     mode: "READ_ONLY_OPERATIONAL_MIGRATION_PLAN", writesPerformed: false, rows, errors, warnings,
-    counts: {
-      sourceTrips: trips.length, plannedTrips: rows.length,
-      busAssignments: rows.reduce((sum, row) => sum + row.busAssignments.length, 0),
-      warnings: warnings.length, errors: errors.length,
-    },
+    counts: { sourceTrips: trips.length, plannedTrips: rows.length, busAssignments: rows.reduce((sum, row) => sum + row.busAssignments.length, 0), warnings: warnings.length, errors: errors.length },
   };
 }
