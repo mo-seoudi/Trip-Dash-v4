@@ -65,14 +65,20 @@ test("empty comparison set can never be declared cutover-ready", () => {
 test("cutover assertion distinguishes expansion from safe mismatch", () => {
   assert.throws(
     () => assertAccessParityCutoverReady([
-      row(access({ workspaces: [workspace("s1")] }), access({ workspaces: [workspace("s1"), workspace("s2")]) }),
+      row(
+        access({ workspaces: [workspace("s1")] }),
+        access({ workspaces: [workspace("s1"), workspace("s2")] }),
+      ),
     ]),
     (error) => error.code === "ACCESS_PARITY_SECURITY_EXPANSION",
   );
 
   assert.throws(
     () => assertAccessParityCutoverReady([
-      row(access({ workspaces: [workspace("s1"), workspace("s2")] }), access({ workspaces: [workspace("s1")]) }),
+      row(
+        access({ workspaces: [workspace("s1"), workspace("s2")] }),
+        access({ workspaces: [workspace("s1")] }),
+      ),
     ]),
     (error) => error.code === "ACCESS_PARITY_NOT_EXACT",
   );
