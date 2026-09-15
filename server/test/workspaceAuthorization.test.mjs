@@ -5,13 +5,35 @@ import {
   canAllocateWorkspacePassengers,
   canManageWorkspaceBusAssignments,
   canManageWorkspacePassengers,
+  canReadWorkspaceTrip,
   canUpdateWorkspaceTrip,
+  workspaceTripReadWhere,
 } from "../src/services/workspaceAuthorization.js";
 
 const access = { user: { appUserId: "user-1" } };
 const ownTrip = { createdByAppUserId: "user-1", status: "Pending" };
 const otherTrip = { createdByAppUserId: "user-2", status: "Pending" };
 const workspace = (...permissions) => ({ schoolId: "school-1", permissions });
+
+test("ordinary trip read permission is creator-scoped", () => {
+  const ws = workspace(PERMISSIONS.TRIP_READ);
+  assert.deepEqual(workspaceTripReadWhere({ access, workspace: ws }), { createdByAppUserId: "user-1" });
+  assert.equal(canReadWorkspaceTrip({ access, workspace: ws, trip: ownTrip }), true);
+  assert.equal(canReadWorkspaceTrip({ access, workspace: ws, trip: otherTrip }), false);
+});
+
+test("workspace-wide trip read requires explicit read-all permission", () => {
+  const ws = workspace(PERMISSIONS.TRIP_READ, PERMISSIONS.TRIP_READ_ALL);
+  assert.deepEqual(workspaceTripReadWhere({ access, workspace: ws }), {});
+  assert.equal(canReadWorkspaceTrip({ access, workspace: ws, trip: ownTrip }), true);
+  assert.equal(canReadWorkspaceTrip({ access, workspace: ws, trip: otherTrip }), true);
+});
+
+test("trip read fails closed without a canonical app user identity", () => {
+  const ws = workspace(PERMISSIONS.TRIP_READ);
+  assert.equal(workspaceTripReadWhere({ access: { user: {} }, workspace: ws }), null);
+  assert.equal(canReadWorkspaceTrip({ access: { user: {} }, workspace: ws, trip: ownTrip }), false);
+});
 
 test("school edit permission remains creator-scoped", () => {
   const ws = workspace(PERMISSIONS.TRIP_EDIT_REQUEST);
