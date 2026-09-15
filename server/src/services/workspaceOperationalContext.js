@@ -71,16 +71,17 @@ export function singleActiveWorkspaceConnection(connections = []) {
   return connections[0];
 }
 
-export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null) {
-  const access = await resolveRuntimeAccess({ user });
+export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null, resolveAccess = resolveRuntimeAccess) {
+  const access = await resolveAccess({ user });
   const workspace = workspaceFromAccess(access, schoolId, requiredPermission);
   return { access, workspace };
 }
 
 export async function resolveWorkspaceDataSource(user, schoolId, requiredPermission = null, {
   runtimeMode = accessRuntimeMode(), legacyPrisma = prismaGlobal, controlPrisma = prismaControl,
+  resolveAccess = resolveRuntimeAccess,
 } = {}) {
-  const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission);
+  const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission, resolveAccess);
 
   if (runtimeMode === "canonical") {
     const rows = await controlPrisma.operationalDataSource.findMany({
