@@ -19,4 +19,8 @@ export function canReadWorkspacePassengers({access,workspace,trip}){return has(w
 export function canManageWorkspacePassengers({access,workspace,trip}){return has(workspace,PERMISSIONS.PASSENGER_MANAGE)&&createdByCaller(access,trip);}
 export function canReadWorkspaceBusAssignments({access,workspace,trip}){return has(workspace,PERMISSIONS.BUS_ASSIGNMENT_READ)&&canReadWorkspaceTrip({access,workspace,trip});}
 export function canManageWorkspaceBusAssignments({workspace}){return has(workspace,PERMISSIONS.BUS_ASSIGNMENT_MANAGE);}
+// Commercial bus-assignment fields are deliberately separate from operational
+// bus management. Operators can assign/operate buses without gaining authority
+// to set prices or currency.
+export function canManageWorkspaceBusAssignmentCommercials({workspace}){return hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.FINANCE_MANAGE_PRICE);}
 export function canAllocateWorkspacePassengers({access,workspace,trip}){return has(workspace,PERMISSIONS.PASSENGER_ALLOCATE)&&createdByCaller(access,trip);}
