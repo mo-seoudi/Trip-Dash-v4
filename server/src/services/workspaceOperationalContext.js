@@ -1,13 +1,14 @@
 // Authorized workspace -> operational PostgreSQL context.
 //
-// This is the boundary that prevents a caller from selecting an arbitrary
-// customer database. The requested school is first resolved through the same
-// legacy-authoritative runtime access engine used by the UI. Canonical v2 may
-// shadow that decision but cannot select or authorize an operational database.
+// The caller never selects a database directly. Authorization first resolves a
+// school workspace. In legacy/shadow runtime modes, routing remains on the
+// legacy DataConnection table. In canonical runtime mode, routing metadata is
+// read from the dedicated Control Plane OperationalDataSource table.
 
 import { prismaGlobal } from "../lib/prismaGlobal.js";
-import { resolveRuntimeAccess } from "./accessRuntime.js";
-import { normalizeDataSourceProvider } from "./operationalDataSource.js";
+import { prismaControl } from "../lib/prismaControl.js";
+import { accessRuntimeMode, resolveRuntimeAccess } from "./accessRuntime.js";
+import { assertPostgresCompatibleDataSource, normalizeDataSourceProvider } from "./operationalDataSource.js";
 import { prismaForOperationalDataSource } from "./operationalPrismaPool.js";
 
 function httpError(status, message, code) {
@@ -34,20 +35,11 @@ function providerFromConnection(connection) {
 
 export function legacyConnectionAsDataSource(connection) {
   const secretRef = String(connection.vaultSecretId || "").trim();
-  if (!secretRef) {
-    throw httpError(503, "This school's operational database credential is not configured", "DATA_SOURCE_SECRET_MISSING");
-  }
+  if (!secretRef) throw httpError(503, "This school's operational database credential is not configured", "DATA_SOURCE_SECRET_MISSING");
   return {
-    id: `legacy:${connection.id}`,
-    tenantId: connection.tenantId,
-    organizationId: connection.orgId,
-    mode: canonicalMode(connection.mode),
-    provider: providerFromConnection(connection),
-    region: null,
-    secretRef,
-    isActive: Boolean(connection.isActive),
-    lastVerifiedAt: connection.lastVerifiedAt || null,
-    updatedAt: connection.updatedAt,
+    id: `legacy:${connection.id}`, tenantId: connection.tenantId, organizationId: connection.orgId,
+    mode: canonicalMode(connection.mode), provider: providerFromConnection(connection), region: null,
+    secretRef, isActive: Boolean(connection.isActive), lastVerifiedAt: connection.lastVerifiedAt || null, updatedAt: connection.updatedAt,
   };
 }
 
@@ -59,26 +51,23 @@ export function workspaceFromAccess(access, schoolId, requiredPermission = null)
   if (requiredPermission && !(workspace.permissions || []).includes(requiredPermission)) {
     throw httpError(403, "You do not have permission for this action in this school workspace", "WORKSPACE_PERMISSION_FORBIDDEN");
   }
-  if (!access?.tenantId) {
-    throw httpError(403, "This workspace is not attached to an authorized tenant", "WORKSPACE_TENANT_FORBIDDEN");
-  }
+  if (!access?.tenantId) throw httpError(403, "This workspace is not attached to an authorized tenant", "WORKSPACE_TENANT_FORBIDDEN");
   return workspace;
 }
 
 export function activeWorkspaceConnectionWhere(access, workspace) {
-  if (!access?.tenantId || !workspace?.schoolId) {
-    throw httpError(403, "Workspace routing context is incomplete", "WORKSPACE_ROUTING_FORBIDDEN");
-  }
+  if (!access?.tenantId || !workspace?.schoolId) throw httpError(403, "Workspace routing context is incomplete", "WORKSPACE_ROUTING_FORBIDDEN");
   return { tenantId: access.tenantId, orgId: workspace.schoolId, isActive: true };
 }
 
+export function activeCanonicalDataSourceWhere(access, workspace) {
+  if (!access?.tenantId || !workspace?.schoolId) throw httpError(403, "Workspace routing context is incomplete", "WORKSPACE_ROUTING_FORBIDDEN");
+  return { tenantId: access.tenantId, organizationId: workspace.schoolId, isActive: true };
+}
+
 export function singleActiveWorkspaceConnection(connections = []) {
-  if (!connections.length) {
-    throw httpError(503, "No active operational database is configured for this school", "DATA_SOURCE_NOT_CONFIGURED");
-  }
-  if (connections.length > 1) {
-    throw httpError(503, "More than one active operational database is configured for this school", "DATA_SOURCE_AMBIGUOUS");
-  }
+  if (!connections.length) throw httpError(503, "No active operational database is configured for this school", "DATA_SOURCE_NOT_CONFIGURED");
+  if (connections.length > 1) throw httpError(503, "More than one active operational database is configured for this school", "DATA_SOURCE_AMBIGUOUS");
   return connections[0];
 }
 
@@ -88,17 +77,28 @@ export async function authorizeSchoolWorkspace(user, schoolId, requiredPermissio
   return { access, workspace };
 }
 
-export async function resolveWorkspaceDataSource(user, schoolId, requiredPermission = null) {
+export async function resolveWorkspaceDataSource(user, schoolId, requiredPermission = null, {
+  runtimeMode = accessRuntimeMode(), legacyPrisma = prismaGlobal, controlPrisma = prismaControl,
+} = {}) {
   const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission);
-  const connections = await prismaGlobal.dataConnection.findMany({
-    where: activeWorkspaceConnectionWhere(access, workspace),
-    orderBy: { updatedAt: "desc" },
+
+  if (runtimeMode === "canonical") {
+    const rows = await controlPrisma.operationalDataSource.findMany({
+      where: activeCanonicalDataSourceWhere(access, workspace), orderBy: { updatedAt: "desc" },
+    });
+    const dataSource = singleActiveWorkspaceConnection(rows);
+    try {
+      return { access, workspace, dataSource: assertPostgresCompatibleDataSource(dataSource) };
+    } catch (error) {
+      if (!error.code) error.code = "CANONICAL_DATA_SOURCE_INVALID";
+      throw error;
+    }
+  }
+
+  const connections = await legacyPrisma.dataConnection.findMany({
+    where: activeWorkspaceConnectionWhere(access, workspace), orderBy: { updatedAt: "desc" },
   });
-  return {
-    access,
-    workspace,
-    dataSource: legacyConnectionAsDataSource(singleActiveWorkspaceConnection(connections)),
-  };
+  return { access, workspace, dataSource: legacyConnectionAsDataSource(singleActiveWorkspaceConnection(connections)) };
 }
 
 export async function operationalPrismaForWorkspace(user, schoolId, requiredPermission = null) {
