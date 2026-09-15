@@ -1,6 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildOperationalMigrationPlan, planLegacyBusAssignments, planOperationalTrip, reconcileLegacyBusAssignments } from "../src/services/operationalMigrationPlan.js";
+import { buildOperationalMigrationPlan, normalizeLegacyMoney, planLegacyBusAssignments, planOperationalTrip, reconcileLegacyBusAssignments } from "../src/services/operationalMigrationPlan.js";
+
+test("legacy money normalizes deterministically to two decimal places", () => {
+  assert.equal(normalizeLegacyMoney(550), "550.00");
+  assert.equal(normalizeLegacyMoney("325.5"), "325.50");
+  assert.equal(normalizeLegacyMoney("10.004"), "10.00");
+  assert.equal(normalizeLegacyMoney("10.005"), "10.01");
+  assert.equal(normalizeLegacyMoney("0.009"), "0.01");
+  assert.equal(normalizeLegacyMoney("-1"), null);
+  assert.equal(normalizeLegacyMoney("AED 50"), null);
+});
+
+test("trip price migration uses fixed precision and rejects invalid legacy money", () => {
+  const planned = planOperationalTrip({ id: 10, price: "1234.567" }, { owningSchoolOrganizationId: "school-a" });
+  assert.equal(planned.trip.price, "1234.57");
+  assert.throws(
+    () => planOperationalTrip({ id: 11, price: "not-a-price" }, { owningSchoolOrganizationId: "school-a" }),
+    (error) => error.code === "OPERATIONAL_MIGRATION_INVALID_MONEY",
+  );
+});
 
 test("legacy buses JSON becomes normalized assignments on one trip", () => {
   const trip = { id: 41, destination: "Museum", buses: [
@@ -12,6 +31,7 @@ test("legacy buses JSON becomes normalized assignments on one trip", () => {
   assert.deepEqual(assignments.map((row) => row.sequence), [1, 2]);
   assert.ok(assignments.every((row) => row.legacyTripId === 41));
   assert.equal(assignments[0].seatCapacity, 30);
+  assert.equal(assignments[0].price, "550.00");
   assert.equal(assignments[1].price, "325.50");
 });
 
