@@ -4,14 +4,19 @@
 
 import { compareEffectiveAccessParity } from "./accessParity.js";
 
+function reportIdentity(identity) {
+  const result = { id: String(identity?.id || "") };
+  // Email is useful for an interactive rehearsal when explicitly supplied, but
+  // post-write verification deliberately passes opaque identities only.
+  if (identity?.email) result.email = identity.email;
+  return result;
+}
+
 export function buildAccessParityReport(rows = []) {
   const users = rows.map(({ identity, legacyAccess, canonicalAccess }) => {
     const parity = compareEffectiveAccessParity(legacyAccess, canonicalAccess);
     return {
-      identity: {
-        id: String(identity?.id || ""),
-        email: identity?.email || null,
-      },
+      identity: reportIdentity(identity),
       safe: parity.safe,
       exact: parity.exact,
       counts: parity.counts,
