@@ -23,7 +23,7 @@ async function reset(prisma) {
   ]);
 }
 
-test("legacy buses become normalized assignments and verify exactly in real PostgreSQL", { skip: !enabled }, async () => {
+test("JSON buses plus historical SubTrips reconcile, write, and verify exactly in PostgreSQL", { skip: !enabled }, async () => {
   assertDisposableUrl(process.env.OPERATIONAL_DATABASE_URL);
   const prisma = new PrismaOperational();
   try {
@@ -35,16 +35,55 @@ test("legacy buses become normalized assignments and verify exactly in real Post
         { busType: "White Bus", busSeats: 20, tripPrice: "450.50", driverName: "Driver Two", driverPhone: "0500000002" },
       ],
     }];
-    const plan = buildOperationalMigrationPlan(legacyTrips, () => ({ owningSchoolOrganizationId: "school-smoke", tenantId: "tenant-smoke" }));
+    const subTrips = [
+      // Exact duplicate of JSON bus 2: must collapse, not create a third copy.
+      { id: 7001, parentTripId: 501, busType: "White Bus", busSeats: 20, tripPrice: "450.50", driverName: "Driver Two", driverPhone: "0500000002" },
+      // Distinct historical vehicle: must become assignment 3 on the same Trip.
+      { id: 7002, parentTripId: 501, busType: "Mini Bus", busSeats: 14, tripPrice: 250 },
+    ];
+    const plan = buildOperationalMigrationPlan(legacyTrips, () => ({
+      owningSchoolOrganizationId: "school-smoke", tenantId: "tenant-smoke", subTrips,
+    }));
     assert.deepEqual(plan.errors, []);
+    assert.equal(plan.warnings.length, 1);
+    assert.equal(plan.warnings[0].code, "LEGACY_BUS_DUPLICATE_COLLAPSED");
+    assert.equal(plan.counts.busAssignments, 3);
+
     const result = await writeOperationalMigration(prisma, plan, { allowWrite: true, environment: "ci-smoke" });
-    assert.deepEqual(result.counts, { trips: 1, busAssignments: 2 });
+    assert.deepEqual(result.counts, { trips: 1, busAssignments: 3 });
     const verification = await assertOperationalMigrationVerified(prisma, plan);
     assert.equal(verification.exact, true);
     assert.deepEqual(verification.issues, []);
+
+    const stored = await prisma.trip.findUnique({ where: { id: 501 }, include: { busAssignments: { orderBy: { sequence: "asc" } } } });
+    assert.equal(stored.busAssignments.length, 3);
+    assert.deepEqual(stored.busAssignments.map((row) => row.busType), ["Internal Yellow Bus", "White Bus", "Mini Bus"]);
     assert.equal(await prisma.trip.count(), 1);
   } finally {
     await reset(prisma).catch(() => {});
+    await prisma.$disconnect();
+  }
+});
+
+test("conflicting SubTrip source blocks PostgreSQL migration before writes", { skip: !enabled }, async () => {
+  assertDisposableUrl(process.env.OPERATIONAL_DATABASE_URL);
+  const prisma = new PrismaOperational();
+  try {
+    await reset(prisma);
+    const legacyTrips = [{ id: 503, buses: [{ busType: "White Bus", busSeats: 20, tripPrice: 400 }] }];
+    const plan = buildOperationalMigrationPlan(legacyTrips, () => ({
+      owningSchoolOrganizationId: "school-smoke",
+      subTrips: [{ id: 7003, parentTripId: 503, busType: "White Bus", busSeats: 35, tripPrice: 400 }],
+    }));
+    assert.equal(plan.errors.length, 1);
+    assert.equal(plan.errors[0].code, "OPERATIONAL_MIGRATION_BUS_SOURCE_CONFLICT");
+    await assert.rejects(
+      writeOperationalMigration(prisma, plan, { allowWrite: true, environment: "ci-smoke" }),
+      (error) => error?.code === "OPERATIONAL_MIGRATION_PLAN_HAS_ERRORS",
+    );
+    assert.equal(await prisma.trip.count(), 0);
+    assert.equal(await prisma.tripBusAssignment.count(), 0);
+  } finally {
     await prisma.$disconnect();
   }
 });
