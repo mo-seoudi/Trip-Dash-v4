@@ -27,11 +27,18 @@ function createdByCaller(access, trip) {
   return Boolean(appUserId && trip?.createdByAppUserId && String(trip.createdByAppUserId) === appUserId);
 }
 
+function hasAdministrativeOverride(workspace) {
+  // ACCESS_ADMIN is the explicit authority boundary for tenant/super admins.
+  // Do not infer broad edit power from a narrower destructive permission such
+  // as trip.delete; permissions should remain independently meaningful.
+  return has(workspace, PERMISSIONS.ACCESS_ADMIN);
+}
+
 function statusTransitionAllowed(workspace, trip, patch) {
   if (!Object.prototype.hasOwnProperty.call(patch || {}, "status") || patch.status === trip?.status) return true;
   const from = trip?.status;
   const to = patch.status;
-  if (has(workspace, PERMISSIONS.TRIP_DELETE)) return true;
+  if (hasAdministrativeOverride(workspace)) return true;
   if (has(workspace, PERMISSIONS.TRIP_RESPOND)) {
     return (
       (from === "Pending" && ["Accepted", "Rejected"].includes(to)) ||
@@ -59,7 +66,7 @@ export function canUpdateWorkspaceTrip({ access, workspace, trip, patch }) {
   if (!workspace || !trip || !patch) return false;
   const fields = Object.keys(patch);
   if (!fields.length) return false;
-  if (has(workspace, PERMISSIONS.TRIP_DELETE)) return true;
+  if (hasAdministrativeOverride(workspace)) return true;
   if (has(workspace, PERMISSIONS.FINANCE_MANAGE_PRICE) && fieldsWithin(patch, FINANCE_EDIT_FIELDS)) return true;
   if (has(workspace, PERMISSIONS.TRIP_RESPOND) && fieldsWithin(patch, OPERATOR_EDIT_FIELDS)) {
     return statusTransitionAllowed(workspace, trip, patch);
