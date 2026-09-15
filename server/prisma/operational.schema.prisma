@@ -21,15 +21,12 @@ model Trip {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Canonical control-plane references. These are opaque ids in an operational
-  // database; authorization remains the responsibility of the central backend.
   createdByAppUserId              String? @map("created_by_app_user_id")
   tenantId                        String? @map("tenant_id_v2")
   owningSchoolOrganizationId      String? @map("owning_school_organization_id")
   managingOrganizationId          String? @map("managing_organization_id")
   transportProviderOrganizationId String? @map("transport_provider_organization_id")
 
-  // Legacy creator fields retained while existing v4 data is migrated.
   createdBy      String?
   createdByEmail String?
   createdById    Int?
@@ -44,22 +41,19 @@ model Trip {
   students      Int?
   staff         Int?
   status        String?
-  price         Float?
+  // Currency values use fixed precision in the canonical operational schema.
+  // Legacy Float values are converted explicitly by the migration planner.
+  price         Decimal? @db.Decimal(12, 2)
   notes         String?
 
   boosterSeatsRequested Boolean  @default(false) @map("booster_seats_requested")
   boosterSeatCount      Int      @default(0) @map("booster_seat_count")
   cancelRequest         Boolean? @default(false)
 
-  // Compatibility snapshots only. Normalized assignments are authoritative
-  // after migration. These fields can be removed after migration verification.
   busInfo    Json?
   driverInfo Json?
   buses      Json?
 
-  // There is deliberately no parent/child Trip hierarchy in the canonical
-  // operational model. Legacy SubTrip/parentId data is migration input only:
-  // one journey remains one Trip and multiple vehicles are TripBusAssignments.
   passengers     TripPassenger[]
   busAssignments TripBusAssignment[]
 
@@ -128,15 +122,11 @@ model TripBusPassengerAllocation {
   tripPassengerId Int    @map("trip_passenger_id")
   tripId          Int    @map("trip_id")
 
-  // Carry tripId on the allocation itself and use composite foreign keys so a
-  // bus assignment and passenger can never be joined across different trips.
   busAssignment TripBusAssignment @relation(fields: [busAssignmentId, tripId], references: [id, tripId], onDelete: Cascade)
   passenger     TripPassenger     @relation(fields: [tripPassengerId, tripId], references: [id, tripId], onDelete: Cascade)
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@id([busAssignmentId, tripPassengerId])
-  // A passenger may appear on only one bus within a trip. This is enforced by
-  // PostgreSQL rather than relying only on an application-level duplicate check.
   @@unique([tripId, tripPassengerId])
   @@index([tripPassengerId])
   @@index([tripId])
@@ -148,12 +138,12 @@ model TripPassengerPayment {
   tripPassengerId Int
   passenger       TripPassenger @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
   createdAt       DateTime      @default(now())
-  amountDue       Float
-  amountPaid      Float?        @default(0)
+  amountDue       Decimal       @db.Decimal(12, 2)
+  amountPaid      Decimal?      @default(0) @db.Decimal(12, 2)
   status          String?
   method          String?
   reference       String?
-  currency        String?       @default("AED")
+  currency        String        @default("AED") @db.VarChar(3)
 
   @@index([tripPassengerId])
   @@map("TripPassengerPayment")
@@ -170,7 +160,6 @@ model BusBooking {
   managingOrganizationId          String? @map("managing_organization_id")
   transportProviderOrganizationId String? @map("transport_provider_organization_id")
 
-  // Legacy compatibility fields.
   createdById    Int?
   createdBy      String?
   createdByEmail String?
