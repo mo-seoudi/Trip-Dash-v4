@@ -31,6 +31,23 @@ function nullableNumber(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function nullableMoney(value, fallback = null) {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const raw = String(value).trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) {
+    const error = new Error("price must be a non-negative amount with at most two decimal places");
+    error.status = 400;
+    throw error;
+  }
+  const [whole, fraction = ""] = raw.split(".");
+  if (whole.length > 10 || (whole.length === 10 && BigInt(whole) > 9999999999n)) {
+    const error = new Error("price exceeds the supported amount");
+    error.status = 400;
+    throw error;
+  }
+  return `${BigInt(whole)}.${fraction.padEnd(2, "0")}`;
+}
+
 function nullableDate(value, field) {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = new Date(value);
@@ -54,7 +71,7 @@ function buildTripPatch(body = {}) {
     if (body[key] === undefined) continue;
     if (key === "date" || key === "returnDate") patch[key] = nullableDate(body[key], key);
     else if (["students", "staff"].includes(key)) patch[key] = nullableNumber(body[key]);
-    else if (key === "price") patch[key] = nullableNumber(body[key], 0);
+    else if (key === "price") patch[key] = nullableMoney(body[key], "0.00");
     else if (key === "boosterSeatCount") patch[key] = nullableNumber(body[key], 0);
     else if (["cancelRequest", "boosterSeatsRequested"].includes(key)) patch[key] = Boolean(body[key]);
     else patch[key] = body[key];
@@ -80,70 +97,39 @@ async function findSchoolTrip(prisma, schoolId, id) {
   return prisma.trip.findFirst({ where: { id, owningSchoolOrganizationId: schoolId } });
 }
 
-// GET /api/workspaces/:schoolId/trips
 router.get("/", async (req, res, next) => {
   try {
-    const { prisma, workspace } = await operationalPrismaForWorkspace(
-      req.user,
-      req.params.schoolId,
-      PERMISSIONS.TRIP_READ,
-    );
-
+    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
     const filters = [];
     const createdBy = String(req.query?.createdBy || "").trim();
     if (createdBy) {
       const needle = createdBy.includes(" ") ? createdBy.split(" ")[0] : createdBy;
       filters.push({ createdBy: { contains: needle, mode: "insensitive" } });
     }
-
-    // Keep the legacy creator restriction during migration. The workspace/data
-    // source boundary is additional protection, not a silent behavior change.
     if (req.user.role === "school_staff") filters.push(creatorWhere(req.user));
-
     const extra = filters.length ? { AND: filters } : null;
-    const trips = await prisma.trip.findMany({
-      where: schoolTripWhere(workspace.schoolId, extra),
-      orderBy: { id: "desc" },
-    });
-
+    const trips = await prisma.trip.findMany({ where: schoolTripWhere(workspace.schoolId, extra), orderBy: { id: "desc" } });
     return res.json(trips.filter((trip) => canReadTrip(req.user, trip)));
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 });
 
-// GET /api/workspaces/:schoolId/trips/:id
 router.get("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid trip id" });
-
-    const { prisma, workspace } = await operationalPrismaForWorkspace(
-      req.user,
-      req.params.schoolId,
-      PERMISSIONS.TRIP_READ,
-    );
+    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
     const trip = await findSchoolTrip(prisma, workspace.schoolId, id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     if (!canReadTrip(req.user, trip)) return res.status(403).json({ message: "Forbidden" });
     return res.json(trip);
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 });
 
-// POST /api/workspaces/:schoolId/trips
 router.post("/", async (req, res, next) => {
   try {
     if (!canCreateTrip(req.user)) return res.status(403).json({ message: "Forbidden" });
-
-    const { prisma, access, workspace } = await operationalPrismaForWorkspace(
-      req.user,
-      req.params.schoolId,
-      PERMISSIONS.TRIP_CREATE,
-    );
+    const { prisma, access, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_CREATE);
     const body = req.body || {};
-
     const created = await prisma.trip.create({
       data: {
         createdByAppUserId: access.user?.appUserId || null,
@@ -164,68 +150,46 @@ router.post("/", async (req, res, next) => {
         students: nullableNumber(body.students),
         staff: nullableNumber(body.staff),
         status: "Pending",
-        price: 0,
+        price: "0.00",
         notes: body.notes ?? null,
         cancelRequest: false,
         busInfo: null,
         driverInfo: null,
         buses: null,
-        parentId: null,
         boosterSeatsRequested: Boolean(body.boosterSeatsRequested),
         boosterSeatCount: nullableNumber(body.boosterSeatCount, 0),
       },
     });
-
     return res.status(201).json(created);
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 });
 
-// PATCH /api/workspaces/:schoolId/trips/:id
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid trip id" });
     const patch = buildTripPatch(req.body || {});
     if (!Object.keys(patch).length) return res.status(400).json({ message: "No supported fields supplied" });
-
-    const { prisma, workspace } = await operationalPrismaForWorkspace(
-      req.user,
-      req.params.schoolId,
-      patchPermission(patch),
-    );
+    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, patchPermission(patch));
     const existing = await findSchoolTrip(prisma, workspace.schoolId, id);
     if (!existing) return res.status(404).json({ message: "Trip not found" });
     if (!canUpdateTrip(req.user, existing, patch)) return res.status(403).json({ message: "Forbidden" });
-
     const updated = await prisma.trip.update({ where: { id }, data: patch });
     return res.json(updated);
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 });
 
-// DELETE /api/workspaces/:schoolId/trips/:id
 router.delete("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid trip id" });
-
-    const { prisma, workspace } = await operationalPrismaForWorkspace(
-      req.user,
-      req.params.schoolId,
-      PERMISSIONS.TRIP_DELETE,
-    );
+    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_DELETE);
     const existing = await findSchoolTrip(prisma, workspace.schoolId, id);
     if (!existing) return res.status(404).json({ message: "Trip not found" });
     if (!canDeleteTrip(req.user, existing)) return res.status(403).json({ message: "Forbidden" });
-
     await prisma.trip.delete({ where: { id } });
     return res.json({ ok: true });
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 });
 
 export default router;
