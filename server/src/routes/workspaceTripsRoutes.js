@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { PERMISSIONS } from "../services/accessCatalog.js";
 import { operationalPrismaForWorkspace } from "../services/workspaceOperationalContext.js";
 import {
-  canCreateWorkspaceTrip, canDeleteWorkspaceTrip, canReadWorkspaceTrip, canUpdateWorkspaceTrip,
+  canCreateWorkspaceTrip, canDeleteWorkspaceTrip, canReadWorkspaceTrip, canUpdateWorkspaceTrip, workspaceTripReadWhere,
 } from "../services/workspaceAuthorization.js";
 
 const router = Router({ mergeParams: true });
@@ -44,17 +44,18 @@ function patchPermission(patch) {
   if (fields.some((field) => ["status", "busInfo", "driverInfo", "buses"].includes(field))) return PERMISSIONS.TRIP_RESPOND;
   return PERMISSIONS.TRIP_EDIT_REQUEST;
 }
-function schoolTripWhere(schoolId, extra = null) { const base = { owningSchoolOrganizationId: schoolId }; return extra ? { AND: [base, extra] } : base; }
+function schoolTripWhere(schoolId, extra = null) { const base = { owningSchoolOrganizationId: schoolId }; return extra && Object.keys(extra).length ? { AND: [base, extra] } : base; }
 async function findSchoolTrip(prisma, schoolId, id) { return prisma.trip.findFirst({ where: { id, owningSchoolOrganizationId: schoolId } }); }
 
 router.get("/", async (req, res, next) => {
   try {
-    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
-    if (!canReadWorkspaceTrip({ workspace })) return res.status(403).json({ message: "Forbidden" });
-    const filters = [];
+    const { prisma, access, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
+    const readScope = workspaceTripReadWhere({ access, workspace });
+    if (!readScope) return res.status(403).json({ message: "Forbidden" });
+    const filters = [readScope];
     const createdBy = String(req.query?.createdBy || "").trim();
     if (createdBy) { const needle = createdBy.includes(" ") ? createdBy.split(" ")[0] : createdBy; filters.push({ createdBy: { contains: needle, mode: "insensitive" } }); }
-    const extra = filters.length ? { AND: filters } : null;
+    const extra = filters.length === 1 ? filters[0] : { AND: filters };
     const trips = await prisma.trip.findMany({ where: schoolTripWhere(workspace.schoolId, extra), orderBy: { id: "desc" } });
     return res.json(trips);
   } catch (error) { return next(error); }
@@ -63,9 +64,9 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id); if (!id) return res.status(400).json({ message: "Invalid trip id" });
-    const { prisma, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
-    if (!canReadWorkspaceTrip({ workspace })) return res.status(403).json({ message: "Forbidden" });
+    const { prisma, access, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, PERMISSIONS.TRIP_READ);
     const trip = await findSchoolTrip(prisma, workspace.schoolId, id); if (!trip) return res.status(404).json({ message: "Trip not found" });
+    if (!canReadWorkspaceTrip({ access, workspace, trip })) return res.status(403).json({ message: "Forbidden" });
     return res.json(trip);
   } catch (error) { return next(error); }
 });
