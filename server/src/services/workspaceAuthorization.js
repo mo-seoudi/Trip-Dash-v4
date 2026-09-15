@@ -22,15 +22,16 @@ function fieldsWithin(patch, allowed) {
   return Object.keys(patch || {}).every((field) => allowed.has(field));
 }
 
+function callerAppUserId(access) {
+  return String(access?.user?.appUserId || "").trim();
+}
+
 function createdByCaller(access, trip) {
-  const appUserId = String(access?.user?.appUserId || "").trim();
+  const appUserId = callerAppUserId(access);
   return Boolean(appUserId && trip?.createdByAppUserId && String(trip.createdByAppUserId) === appUserId);
 }
 
 function hasAdministrativeOverride(workspace) {
-  // ACCESS_ADMIN is the explicit authority boundary for tenant/super admins.
-  // Do not infer broad edit power from a narrower destructive permission such
-  // as trip.delete; permissions should remain independently meaningful.
   return has(workspace, PERMISSIONS.ACCESS_ADMIN);
 }
 
@@ -54,8 +55,17 @@ function statusTransitionAllowed(workspace, trip, patch) {
   return false;
 }
 
-export function canReadWorkspaceTrip({ workspace }) {
-  return has(workspace, PERMISSIONS.TRIP_READ);
+export function workspaceTripReadWhere({ access, workspace }) {
+  if (!has(workspace, PERMISSIONS.TRIP_READ)) return null;
+  if (has(workspace, PERMISSIONS.TRIP_READ_ALL)) return {};
+  const appUserId = callerAppUserId(access);
+  return appUserId ? { createdByAppUserId: appUserId } : null;
+}
+
+export function canReadWorkspaceTrip({ access, workspace, trip = null }) {
+  if (!has(workspace, PERMISSIONS.TRIP_READ)) return false;
+  if (has(workspace, PERMISSIONS.TRIP_READ_ALL)) return true;
+  return trip ? createdByCaller(access, trip) : Boolean(callerAppUserId(access));
 }
 
 export function canCreateWorkspaceTrip({ workspace }) {
@@ -68,37 +78,16 @@ export function canUpdateWorkspaceTrip({ access, workspace, trip, patch }) {
   if (!fields.length) return false;
   if (hasAdministrativeOverride(workspace)) return true;
   if (has(workspace, PERMISSIONS.FINANCE_MANAGE_PRICE) && fieldsWithin(patch, FINANCE_EDIT_FIELDS)) return true;
-  if (has(workspace, PERMISSIONS.TRIP_RESPOND) && fieldsWithin(patch, OPERATOR_EDIT_FIELDS)) {
-    return statusTransitionAllowed(workspace, trip, patch);
-  }
+  if (has(workspace, PERMISSIONS.TRIP_RESPOND) && fieldsWithin(patch, OPERATOR_EDIT_FIELDS)) return statusTransitionAllowed(workspace, trip, patch);
   if (has(workspace, PERMISSIONS.TRIP_EDIT_REQUEST) && fieldsWithin(patch, SCHOOL_EDIT_FIELDS)) {
-    // Preserve creator ownership for ordinary school-side editing until a
-    // separate school-wide trip-edit permission is deliberately introduced.
     return createdByCaller(access, trip) && statusTransitionAllowed(workspace, trip, patch);
   }
   return false;
 }
 
-export function canDeleteWorkspaceTrip({ workspace }) {
-  return has(workspace, PERMISSIONS.TRIP_DELETE);
-}
-
-export function canReadWorkspacePassengers({ workspace }) {
-  return has(workspace, PERMISSIONS.PASSENGER_READ);
-}
-
-export function canManageWorkspacePassengers({ access, workspace, trip }) {
-  return has(workspace, PERMISSIONS.PASSENGER_MANAGE) && createdByCaller(access, trip);
-}
-
-export function canReadWorkspaceBusAssignments({ workspace }) {
-  return has(workspace, PERMISSIONS.BUS_ASSIGNMENT_READ);
-}
-
-export function canManageWorkspaceBusAssignments({ workspace }) {
-  return has(workspace, PERMISSIONS.BUS_ASSIGNMENT_MANAGE);
-}
-
-export function canAllocateWorkspacePassengers({ access, workspace, trip }) {
-  return has(workspace, PERMISSIONS.PASSENGER_ALLOCATE) && createdByCaller(access, trip);
-}
+export function canDeleteWorkspaceTrip({ workspace }) { return has(workspace, PERMISSIONS.TRIP_DELETE); }
+export function canReadWorkspacePassengers({ workspace }) { return has(workspace, PERMISSIONS.PASSENGER_READ); }
+export function canManageWorkspacePassengers({ access, workspace, trip }) { return has(workspace, PERMISSIONS.PASSENGER_MANAGE) && createdByCaller(access, trip); }
+export function canReadWorkspaceBusAssignments({ workspace }) { return has(workspace, PERMISSIONS.BUS_ASSIGNMENT_READ); }
+export function canManageWorkspaceBusAssignments({ workspace }) { return has(workspace, PERMISSIONS.BUS_ASSIGNMENT_MANAGE); }
+export function canAllocateWorkspacePassengers({ access, workspace, trip }) { return has(workspace, PERMISSIONS.PASSENGER_ALLOCATE) && createdByCaller(access, trip); }
