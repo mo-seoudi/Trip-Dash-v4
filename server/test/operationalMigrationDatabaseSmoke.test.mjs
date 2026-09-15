@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PrismaClient as PrismaOperational } from "../src/prisma-operational/index.js";
 import { buildOperationalMigrationPlan } from "../src/services/operationalMigrationPlan.js";
 import { writeOperationalMigration } from "../src/services/operationalMigrationWriter.js";
+import { assertOperationalMigrationVerified } from "../src/services/operationalMigrationVerification.js";
 
 const enabled = process.env.OPERATIONAL_DATABASE_SMOKE === "true";
 
@@ -22,7 +23,7 @@ async function reset(prisma) {
   ]);
 }
 
-test("legacy buses become normalized assignments in real PostgreSQL", { skip: !enabled }, async () => {
+test("legacy buses become normalized assignments and verify exactly in real PostgreSQL", { skip: !enabled }, async () => {
   assertDisposableUrl(process.env.OPERATIONAL_DATABASE_URL);
   const prisma = new PrismaOperational();
   try {
@@ -38,18 +39,25 @@ test("legacy buses become normalized assignments in real PostgreSQL", { skip: !e
     assert.deepEqual(plan.errors, []);
     const result = await writeOperationalMigration(prisma, plan, { allowWrite: true, environment: "ci-smoke" });
     assert.deepEqual(result.counts, { trips: 1, busAssignments: 2 });
-
-    const stored = await prisma.trip.findUnique({ where: { id: 501 }, include: { busAssignments: { orderBy: { sequence: "asc" } } } });
-    assert.equal(stored.destination, "Expo City");
-    assert.equal(stored.owningSchoolOrganizationId, "school-smoke");
-    assert.equal(stored.busAssignments.length, 2);
-    assert.equal(stored.busAssignments[0].sequence, 1);
-    assert.equal(stored.busAssignments[0].seatCapacity, 30);
-    assert.equal(stored.busAssignments[0].price.toString(), "500");
-    assert.equal(stored.busAssignments[1].sequence, 2);
-    assert.equal(stored.busAssignments[1].busType, "White Bus");
-    assert.equal(stored.busAssignments[1].price.toString(), "450.5");
+    const verification = await assertOperationalMigrationVerified(prisma, plan);
+    assert.equal(verification.exact, true);
+    assert.deepEqual(verification.issues, []);
     assert.equal(await prisma.trip.count(), 1);
+  } finally {
+    await reset(prisma).catch(() => {});
+    await prisma.$disconnect();
+  }
+});
+
+test("verification catches post-write assignment drift", { skip: !enabled }, async () => {
+  assertDisposableUrl(process.env.OPERATIONAL_DATABASE_URL);
+  const prisma = new PrismaOperational();
+  try {
+    await reset(prisma);
+    const plan = buildOperationalMigrationPlan([{ id: 502, buses: [{ busType: "White Bus", busSeats: 20, tripPrice: 400 }] }], () => ({ owningSchoolOrganizationId: "school-smoke" }));
+    await writeOperationalMigration(prisma, plan, { allowWrite: true, environment: "ci-smoke" });
+    await prisma.tripBusAssignment.updateMany({ where: { tripId: 502 }, data: { seatCapacity: 99 } });
+    await assert.rejects(assertOperationalMigrationVerified(prisma, plan), (error) => error?.code === "OPERATIONAL_MIGRATION_VERIFICATION_FAILED" && error.verification.issues.some((issue) => issue.code === "BUS_ASSIGNMENT_DATA_MISMATCH"));
   } finally {
     await reset(prisma).catch(() => {});
     await prisma.$disconnect();
