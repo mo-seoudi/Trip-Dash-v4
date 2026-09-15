@@ -27,6 +27,33 @@ test("canonical routing reads Control Plane data source and never legacy DataCon
   assert.equal(result.dataSource.secretRef, "vault://school-1");
 });
 
+test("authorization resolver receives the exact routing runtime mode", async () => {
+  for (const runtimeMode of ["legacy", "shadow", "canonical"]) {
+    let received;
+    const modeAwareResolver = async (args) => { received = args; return access; };
+    const common = { runtimeMode, resolveAccess: modeAwareResolver };
+    if (runtimeMode === "canonical") {
+      await resolveWorkspaceDataSource({ id: 42 }, "school-1", "trip.read", {
+        ...common,
+        legacyPrisma: { dataConnection: { findMany: async () => { throw new Error("legacy must not run"); } } },
+        controlPrisma: { operationalDataSource: { findMany: async () => [{
+          id: "ds-mode", tenantId: "tenant-1", organizationId: "school-1", mode: "HOSTED", provider: "postgresql", secretRef: "vault://mode", isActive: true,
+        }] } },
+      });
+    } else {
+      await resolveWorkspaceDataSource({ id: 42 }, "school-1", "trip.read", {
+        ...common,
+        controlPrisma: { operationalDataSource: { findMany: async () => { throw new Error("canonical must not run"); } } },
+        legacyPrisma: { dataConnection: { findMany: async () => [{
+          id: "legacy-mode", tenantId: "tenant-1", orgId: "school-1", mode: "HOSTED", provider: "postgresql", vaultSecretId: "vault://mode", isActive: true,
+        }] } },
+      });
+    }
+    assert.equal(received.user.id, 42);
+    assert.equal(received.mode, runtimeMode);
+  }
+});
+
 test("legacy and shadow routing do not read canonical data-source metadata", async () => {
   for (const runtimeMode of ["legacy", "shadow"]) {
     let controlCalls = 0;
