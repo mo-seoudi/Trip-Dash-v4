@@ -1,52 +1,60 @@
 // src/components/actions/ActionsCell.jsx
 import React from "react";
 import { universalActions, tripLifecycle } from "../../config/trips/tripLifecycleLogic";
-import { tripPermissions } from "../../config/trips/tripPermissions";
 import { useAuth } from "../../context/AuthContext";
+
+const P = {
+  TRIP_READ: "trip.read",
+  TRIP_EDIT_REQUEST: "trip.edit_request",
+  TRIP_RESPOND: "trip.respond",
+  TRIP_DELETE: "trip.delete",
+  BUS_ASSIGNMENT_MANAGE: "bus_assignment.manage",
+  ACCESS_ADMIN: "access.admin",
+};
 
 const ActionsCell = ({
   trip,
-  // callbacks
   onStatusChange,
   onView,
   onAssignBus,
   onConfirmAction,
   onEdit,
   onSoftDelete,
-  // new controls
-  role: roleProp,         // optional override for role (defaults to Auth role)
-  hideView = false,       // NEW: hide the "View" button (use in TripDetails modal)
+  hideView = false,
 }) => {
-  const { profile } = useAuth();
-  const role = roleProp ?? profile?.role;
+  const { activeWorkspace } = useAuth();
+  const permissions = new Set(activeWorkspace?.permissions || []);
+  const isAdmin = permissions.has(P.ACCESS_ADMIN);
+  const canRespond = permissions.has(P.TRIP_RESPOND);
+  const canEditRequest = permissions.has(P.TRIP_EDIT_REQUEST);
 
   const currentLifecycle = tripLifecycle[trip.status] || {};
-  const statusActions = currentLifecycle.actions || [];
-  const allActions = [...universalActions, ...statusActions];
-  const permissions = tripPermissions[role] || {};
+  const allActions = [...universalActions, ...(currentLifecycle.actions || [])];
 
   const isAllowed = (action) => {
-    // Suppress "View" when requested (e.g., inside the details modal)
     if (hideView && action.label === "View") return false;
 
-    if (!action.roles?.includes?.(role)) return false;
-
     switch (action.label) {
+      case "View":
+        return permissions.has(P.TRIP_READ);
+      case "Edit":
+        // Backend ownership/status policy remains authoritative. The client only
+        // uses the workspace permission to avoid presenting impossible actions.
+        return isAdmin || canEditRequest;
       case "Accept":
       case "Reject":
-        return !!permissions.canAcceptReject;
-      case "Assign Bus":
-        return !!permissions.canAssignBus;
       case "Complete":
-        return !!permissions.canCompleteTrip;
+      case "Approve Cancel":
+      case "Decline Request":
+        return isAdmin || canRespond;
+      case "Assign Bus":
+        return isAdmin || permissions.has(P.BUS_ASSIGNMENT_MANAGE);
       case "Cancel":
-        return !!permissions.canCancelTrip;
+        return isAdmin || (canEditRequest && trip.status === "Pending");
+      case "Request Cancel":
+        return isAdmin || (canEditRequest && ["Accepted", "Confirmed"].includes(trip.status));
       case "Delete":
-        return !!permissions.canDeleteIfCancelled;
-      case "View":
-        return !!permissions.canViewAll;
-      case "Edit":
-        return Array.isArray(permissions.canEditWhen) && permissions.canEditWhen.includes(trip.status);
+        return permissions.has(P.TRIP_DELETE);
       default:
         return false;
     }
@@ -63,12 +71,10 @@ const ActionsCell = ({
       case "editTrip":
         return onEdit?.(trip);
       default:
-        if (action.nextStatus && ["Reject", "Cancel", "Complete"].includes(action.label)) {
+        if (action.nextStatus && ["Reject", "Cancel", "Complete", "Approve Cancel", "Decline Request", "Request Cancel"].includes(action.label)) {
           return onConfirmAction?.(trip, action.label, action.nextStatus);
         }
-        if (action.nextStatus) {
-          return onStatusChange?.(trip, action.nextStatus);
-        }
+        if (action.nextStatus) return onStatusChange?.(trip, action.nextStatus);
     }
   };
 
@@ -79,9 +85,7 @@ const ActionsCell = ({
           key={`${action.label}-${idx}`}
           type="button"
           onClick={() => handleClick(action)}
-          className={`flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 ${
-            action.color || "text-gray-700 hover:text-gray-900"
-          }`}
+          className={`flex items-center px-2 py-1 border rounded text-sm font-semibold transition-colors duration-200 ${action.color || "text-gray-700 hover:text-gray-900"}`}
         >
           {action.icon && <action.icon className="mr-1" />}
           {action.label}
