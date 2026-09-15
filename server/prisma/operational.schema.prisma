@@ -16,6 +16,53 @@ datasource db {
   url      = env("OPERATIONAL_DATABASE_URL")
 }
 
+// A recurring request is represented by one TripSeries plus ordinary Trip
+// occurrences. The occurrences remain independent operational trips: buses,
+// passengers, status and other operational details can diverge per occurrence.
+// This deliberately does not reintroduce the legacy parent/child or SubTrip model.
+model TripSeries {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
+
+  // The series carries the same request-level information used to create a
+  // normal trip. Generated occurrences copy these values at creation time.
+  origin        String?
+  tripType      String? @map("trip_type")
+  destination   String?
+  departureTime String? @map("departure_time")
+  returnTime    String? @map("return_time")
+  students      Int?
+  staff         Int?
+  notes         String?
+
+  boosterSeatsRequested Boolean @default(false) @map("booster_seats_requested")
+  boosterSeatCount      Int     @default(0) @map("booster_seat_count")
+
+  // Recurrence is intentionally generic and unrelated to trip purpose.
+  // Initial supported patterns are daily, weekdays, selected weekdays and weekly.
+  recurrenceType String   @map("recurrence_type")
+  interval       Int      @default(1)
+  daysOfWeek     Int[]    @default([]) @map("days_of_week")
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  status         String   @default("active")
+
+  trips Trip[]
+
+  @@index([createdByAppUserId])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([status, startDate, endDate])
+  @@map("trip_series")
+}
+
 model Trip {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
@@ -26,6 +73,12 @@ model Trip {
   owningSchoolOrganizationId      String? @map("owning_school_organization_id")
   managingOrganizationId          String? @map("managing_organization_id")
   transportProviderOrganizationId String? @map("transport_provider_organization_id")
+
+  // Optional link to the recurring request that generated this normal Trip.
+  // A series is scheduling metadata, not a Trip hierarchy.
+  tripSeriesId       String?     @map("trip_series_id")
+  tripSeries         TripSeries? @relation(fields: [tripSeriesId], references: [id], onDelete: SetNull)
+  seriesOccurrenceDate DateTime? @map("series_occurrence_date") @db.Date
 
   createdBy      String?
   createdByEmail String?
@@ -64,6 +117,8 @@ model Trip {
   @@index([owningSchoolOrganizationId])
   @@index([managingOrganizationId])
   @@index([transportProviderOrganizationId])
+  @@index([tripSeriesId])
+  @@unique([tripSeriesId, seriesOccurrenceDate])
   @@map("Trip")
 }
 
