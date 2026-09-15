@@ -1,6 +1,13 @@
 // src/pages/AdminRoles.jsx
 import React, { useState, useEffect } from "react";
 
+// LEGACY UI ONLY.
+// This matrix is browser-local presentation state and is NOT an authorization
+// source. Backend authorization comes from the canonical role/permission model.
+// Keep this page only as a behavioural reference until the administration UI is
+// rebuilt against the Control Plane APIs.
+const LEGACY_ROLE_STORAGE_KEY = "roles";
+
 const defaultRoles = {
   school_staff: {
     canRequestTrips: true,
@@ -38,7 +45,7 @@ function AdminRoles() {
   const [newRole, setNewRole] = useState("");
 
   useEffect(() => {
-    const savedRoles = localStorage.getItem("roles");
+    const savedRoles = localStorage.getItem(LEGACY_ROLE_STORAGE_KEY);
     if (savedRoles) {
       setRoles(JSON.parse(savedRoles));
     } else {
@@ -57,8 +64,8 @@ function AdminRoles() {
   };
 
   const handleSave = () => {
-    localStorage.setItem("roles", JSON.stringify(roles));
-    alert("Roles saved locally.");
+    localStorage.setItem(LEGACY_ROLE_STORAGE_KEY, JSON.stringify(roles));
+    alert("Legacy role reference saved locally. This does not change server permissions.");
   };
 
   const handleAddRole = () => {
@@ -84,21 +91,23 @@ function AdminRoles() {
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Role Permissions</h1>
-      <p className="text-gray-600">Manage what each role can access and do in the system.</p>
+      <p className="text-gray-600">
+        Legacy role reference only. Changes on this page are stored in this browser and do not change server permissions.
+      </p>
 
       <div className="flex items-center gap-3">
         <input
           type="text"
           value={newRole}
           onChange={(e) => setNewRole(e.target.value)}
-          placeholder="Add new role (e.g., Trip Coordinator)"
+          placeholder="Add reference role (e.g., Trip Coordinator)"
           className="border px-3 py-2 rounded w-64"
         />
         <button
           onClick={handleAddRole}
           className="bg-green-600 text-white px-4 py-2 rounded"
         >
-          Add Role
+          Add Reference Role
         </button>
       </div>
 
@@ -139,7 +148,7 @@ function AdminRoles() {
         onClick={handleSave}
         className="bg-blue-600 text-white px-4 py-2 rounded"
       >
-        Save Changes
+        Save Local Reference
       </button>
     </div>
   );
