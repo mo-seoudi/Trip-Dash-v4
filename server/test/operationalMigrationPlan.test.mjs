@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildOperationalMigrationPlan, planLegacyBusAssignments, planOperationalTrip } from "../src/services/operationalMigrationPlan.js";
+import { buildOperationalMigrationPlan, planLegacyBusAssignments, planOperationalTrip, reconcileLegacyBusAssignments } from "../src/services/operationalMigrationPlan.js";
 
 test("legacy buses JSON becomes normalized assignments on one trip", () => {
   const trip = { id: 41, destination: "Museum", buses: [
@@ -15,6 +15,29 @@ test("legacy buses JSON becomes normalized assignments on one trip", () => {
   assert.equal(assignments[1].price, "325.50");
 });
 
+test("exact SubTrip duplicate is collapsed rather than creating another bus", () => {
+  const trip = { id: 50, buses: [{ busType: "White Bus", busSeats: 20, tripPrice: 400, status: "Assigned" }] };
+  const result = reconcileLegacyBusAssignments(trip, [{ id: 7, parentTripId: 50, busType: "White Bus", busSeats: 20, tripPrice: 400, status: "Assigned" }]);
+  assert.equal(result.assignments.length, 1);
+  assert.deepEqual(result.warnings, [{ code: "LEGACY_BUS_DUPLICATE_COLLAPSED", legacySubTripId: 7 }]);
+  assert.deepEqual(result.conflicts, []);
+});
+
+test("distinct historical SubTrip becomes another assignment on the same Trip", () => {
+  const trip = { id: 51, buses: [{ busType: "Yellow Bus", busSeats: 30, tripPrice: 500 }] };
+  const result = reconcileLegacyBusAssignments(trip, [{ id: 8, parentTripId: 51, busType: "White Bus", busSeats: 20, tripPrice: 350 }]);
+  assert.equal(result.assignments.length, 2);
+  assert.deepEqual(result.assignments.map((row) => row.sequence), [1, 2]);
+});
+
+test("conflicting legacy bus sources stop migration instead of guessing", () => {
+  const trip = { id: 52, buses: [{ busType: "White Bus", busSeats: 20, tripPrice: 400 }] };
+  assert.throws(
+    () => planOperationalTrip(trip, { owningSchoolOrganizationId: "school-a", subTrips: [{ id: 9, parentTripId: 52, busType: "White Bus", busSeats: 35, tripPrice: 400 }] }),
+    (error) => error.code === "OPERATIONAL_MIGRATION_BUS_SOURCE_CONFLICT" && error.conflicts.length === 1,
+  );
+});
+
 test("trip migration preserves id and requires resolved owning school", () => {
   const planned = planOperationalTrip({ id: 12, students: 20, staff: 3, status: "Confirmed" }, { tenantId: "t1", owningSchoolOrganizationId: "school-1", createdByAppUserId: "u1" });
   assert.equal(planned.trip.id, 12);
@@ -26,8 +49,9 @@ test("trip migration preserves id and requires resolved owning school", () => {
 test("bulk planner fails individual unresolved trips without guessing school ownership", () => {
   const result = buildOperationalMigrationPlan([{ id: 1, buses: [{ busSeats: 20 }] }, { id: 2, buses: [] }], (trip) => trip.id === 1 ? { owningSchoolOrganizationId: "school-a", tenantId: "t1" } : {});
   assert.equal(result.writesPerformed, false);
-  assert.deepEqual(result.counts, { sourceTrips: 2, plannedTrips: 1, busAssignments: 1, errors: 1 });
-  assert.deepEqual(result.errors, [{ legacyTripId: 2, code: "OPERATIONAL_MIGRATION_MISSING_SCHOOL" }]);
+  assert.deepEqual(result.counts, { sourceTrips: 2, plannedTrips: 1, busAssignments: 1, warnings: 0, errors: 1 });
+  assert.equal(result.errors[0].legacyTripId, 2);
+  assert.equal(result.errors[0].code, "OPERATIONAL_MIGRATION_MISSING_SCHOOL");
 });
 
 test("same legacy trip remains one trip regardless of bus count", () => {
