@@ -6,72 +6,236 @@
 // stored as identifiers only; there are deliberately no cross-database foreign
 // keys back to Tenant, Organization, AppUser, Role, or Membership tables.
 
-generator client { provider = "prisma-client-js"; output = "../src/prisma-operational" }
-datasource db { provider = "postgresql"; url = env("OPERATIONAL_DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/prisma-operational"
+}
 
+datasource db {
+  provider = "postgresql"
+  url      = env("OPERATIONAL_DATABASE_URL")
+}
+
+// A recurring request is represented by one TripSeries plus ordinary Trip
+// occurrences. The occurrences remain independent operational trips: buses,
+// passengers, status and other operational details can diverge per occurrence.
+// This deliberately does not reintroduce the legacy parent/child or SubTrip model.
 model TripSeries {
-  id String @id @default(uuid())
+  id        String   @id @default(uuid())
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-  createdByAppUserId String? @map("created_by_app_user_id")
-  tenantId String? @map("tenant_id_v2")
-  owningSchoolOrganizationId String? @map("owning_school_organization_id")
-  managingOrganizationId String? @map("managing_organization_id")
+
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
   transportProviderOrganizationId String? @map("transport_provider_organization_id")
-  origin String?
-  tripType String? @map("trip_type")
-  destination String?
+
+  origin        String?
+  tripType      String? @map("trip_type")
+  destination   String?
   departureTime String? @map("departure_time")
-  returnTime String? @map("return_time")
-  students Int?
-  staff Int?
-  notes String?
+  returnTime    String? @map("return_time")
+  students      Int?
+  staff         Int?
+  notes         String?
+
   boosterSeatsRequested Boolean @default(false) @map("booster_seats_requested")
-  boosterSeatCount Int @default(0) @map("booster_seat_count")
-  recurrenceType String @map("recurrence_type")
-  interval Int @default(1)
-  daysOfWeek Int[] @default([]) @map("days_of_week")
-  startDate DateTime @map("start_date") @db.Date
-  endDate DateTime @map("end_date") @db.Date
-  status String @default("active")
+  boosterSeatCount      Int     @default(0) @map("booster_seat_count")
+
+  recurrenceType String   @map("recurrence_type")
+  interval       Int      @default(1)
+  daysOfWeek     Int[]    @default([]) @map("days_of_week")
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  status         String   @default("active")
+
   trips Trip[]
-  @@index([createdByAppUserId]); @@index([tenantId]); @@index([owningSchoolOrganizationId]); @@index([status, startDate, endDate]); @@map("trip_series")
+
+  @@index([createdByAppUserId])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([status, startDate, endDate])
+  @@map("trip_series")
 }
+
 model Trip {
-  id Int @id @default(autoincrement()); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt
-  createdByAppUserId String? @map("created_by_app_user_id"); tenantId String? @map("tenant_id_v2"); owningSchoolOrganizationId String? @map("owning_school_organization_id"); managingOrganizationId String? @map("managing_organization_id"); transportProviderOrganizationId String? @map("transport_provider_organization_id")
-  tripSeriesId String? @map("trip_series_id"); tripSeries TripSeries? @relation(fields: [tripSeriesId], references: [id], onDelete: SetNull); seriesOccurrenceDate DateTime? @map("series_occurrence_date") @db.Date
-  createdBy String?; createdByEmail String?; createdById Int?; origin String?; tripType String?; destination String?; date DateTime?; departureTime String?; returnDate DateTime?; returnTime String?; students Int?; staff Int?; status String?; price Decimal? @db.Decimal(12, 2); notes String?
-  boosterSeatsRequested Boolean @default(false) @map("booster_seats_requested"); boosterSeatCount Int @default(0) @map("booster_seat_count"); cancelRequest Boolean? @default(false); busInfo Json?; driverInfo Json?; buses Json?
-  passengers TripPassenger[]; busAssignments TripBusAssignment[]
-  @@index([createdAt]); @@index([status]); @@index([createdByAppUserId]); @@index([tenantId]); @@index([owningSchoolOrganizationId]); @@index([managingOrganizationId]); @@index([transportProviderOrganizationId]); @@index([tripSeriesId]); @@unique([tripSeriesId, seriesOccurrenceDate]); @@map("Trip")
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
+
+  tripSeriesId         String?     @map("trip_series_id")
+  tripSeries           TripSeries? @relation(fields: [tripSeriesId], references: [id], onDelete: SetNull)
+  seriesOccurrenceDate DateTime?   @map("series_occurrence_date") @db.Date
+
+  createdBy      String?
+  createdByEmail String?
+  createdById    Int?
+
+  origin        String?
+  tripType      String?
+  destination   String?
+  date          DateTime?
+  departureTime String?
+  returnDate    DateTime?
+  returnTime    String?
+  students      Int?
+  staff         Int?
+  status        String?
+  price         Decimal? @db.Decimal(12, 2)
+  notes         String?
+
+  boosterSeatsRequested Boolean  @default(false) @map("booster_seats_requested")
+  boosterSeatCount      Int      @default(0) @map("booster_seat_count")
+  cancelRequest         Boolean? @default(false)
+
+  busInfo    Json?
+  driverInfo Json?
+  buses      Json?
+
+  passengers     TripPassenger[]
+  busAssignments TripBusAssignment[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([createdByAppUserId])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([managingOrganizationId])
+  @@index([transportProviderOrganizationId])
+  @@index([tripSeriesId])
+  @@unique([tripSeriesId, seriesOccurrenceDate])
+  @@map("Trip")
 }
+
 model TripBusAssignment {
-  id String @id @default(uuid()); tripId Int @map("trip_id"); trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade); sequence Int @default(1)
-  busType String? @map("bus_type"); seatCapacity Int? @map("seat_capacity"); vehicleNumber String? @map("vehicle_number"); plateNumber String? @map("plate_number"); driverName String? @map("driver_name"); driverPhone String? @map("driver_phone")
-  price Decimal? @db.Decimal(12, 2); currency String @default("AED") @db.VarChar(3); status String @default("assigned"); notes String?; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6); passengerAllocations TripBusPassengerAllocation[]
-  @@unique([id, tripId]); @@unique([tripId, sequence]); @@index([tripId, status]); @@map("trip_bus_assignments")
+  id       String @id @default(uuid())
+  tripId   Int    @map("trip_id")
+  trip     Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sequence Int    @default(1)
+
+  busType       String? @map("bus_type")
+  seatCapacity  Int?    @map("seat_capacity")
+  vehicleNumber String? @map("vehicle_number")
+  plateNumber   String? @map("plate_number")
+  driverName    String? @map("driver_name")
+  driverPhone   String? @map("driver_phone")
+
+  price    Decimal? @db.Decimal(12, 2)
+  currency String   @default("AED") @db.VarChar(3)
+  status   String   @default("assigned")
+  notes    String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  passengerAllocations TripBusPassengerAllocation[]
+
+  @@unique([id, tripId])
+  @@unique([tripId, sequence])
+  @@index([tripId, status])
+  @@map("trip_bus_assignments")
 }
+
 // A TripPassenger is a manifest entry for one specific Trip, not a permanent
-// student/person/customer master record. Its id identifies only this manifest
-// row so it can be edited, checked in, or allocated to one bus. The same person
-// on another Trip is a separate manifest row with a separate internal id.
+// student/person/customer master record. Its id identifies this manifest row
+// only, so it can be edited, checked in, or allocated to one bus. The same
+// person on another Trip is a separate manifest row with a separate internal id.
 model TripPassenger {
-  id Int @id @default(autoincrement()); tripId Int; trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade); createdAt DateTime @default(now()); fullName String; guardianName String?; guardianPhone String?; pickupPoint String?; dropoffPoint String?; notes String?; checkedIn Boolean @default(false); payments TripPassengerPayment[]; busAllocations TripBusPassengerAllocation[]
-  @@unique([id, tripId]); @@index([tripId]); @@map("TripPassenger")
+  id            Int      @id @default(autoincrement())
+  tripId        Int
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  fullName      String
+  guardianName  String?
+  guardianPhone String?
+  pickupPoint   String?
+  dropoffPoint  String?
+  notes         String?
+  checkedIn     Boolean  @default(false)
+
+  payments       TripPassengerPayment[]
+  busAllocations TripBusPassengerAllocation[]
+
+  @@unique([id, tripId])
+  @@index([tripId])
+  @@map("TripPassenger")
 }
+
 model TripBusPassengerAllocation {
-  busAssignmentId String @map("bus_assignment_id"); tripPassengerId Int @map("trip_passenger_id"); tripId Int @map("trip_id"); busAssignment TripBusAssignment @relation(fields: [busAssignmentId, tripId], references: [id, tripId], onDelete: Cascade); passenger TripPassenger @relation(fields: [tripPassengerId, tripId], references: [id, tripId], onDelete: Cascade); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  @@id([busAssignmentId, tripPassengerId]); @@unique([tripId, tripPassengerId]); @@index([tripPassengerId]); @@index([tripId]); @@map("trip_bus_passenger_allocations")
+  busAssignmentId String @map("bus_assignment_id")
+  tripPassengerId Int    @map("trip_passenger_id")
+  tripId          Int    @map("trip_id")
+
+  busAssignment TripBusAssignment @relation(fields: [busAssignmentId, tripId], references: [id, tripId], onDelete: Cascade)
+  passenger     TripPassenger     @relation(fields: [tripPassengerId, tripId], references: [id, tripId], onDelete: Cascade)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([busAssignmentId, tripPassengerId])
+  @@unique([tripId, tripPassengerId])
+  @@index([tripPassengerId])
+  @@index([tripId])
+  @@map("trip_bus_passenger_allocations")
 }
+
 model TripPassengerPayment {
-  id Int @id @default(autoincrement()); tripPassengerId Int; passenger TripPassenger @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade); createdAt DateTime @default(now()); amountDue Decimal @db.Decimal(12, 2); amountPaid Decimal? @default(0) @db.Decimal(12, 2); status String?; method String?; reference String?; currency String @default("AED") @db.VarChar(3)
-  @@index([tripPassengerId]); @@map("TripPassengerPayment")
+  id              Int           @id @default(autoincrement())
+  tripPassengerId Int
+  passenger       TripPassenger @relation(fields: [tripPassengerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  amountDue       Decimal       @db.Decimal(12, 2)
+  amountPaid      Decimal?      @default(0) @db.Decimal(12, 2)
+  status          String?
+  method          String?
+  reference       String?
+  currency        String        @default("AED") @db.VarChar(3)
+
+  @@index([tripPassengerId])
+  @@map("TripPassengerPayment")
 }
+
 model BusBooking {
-  id Int @id @default(autoincrement()); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt
-  createdByAppUserId String? @map("created_by_app_user_id"); tenantId String? @map("tenant_id_v2"); owningSchoolOrganizationId String? @map("owning_school_organization_id"); managingOrganizationId String? @map("managing_organization_id"); transportProviderOrganizationId String? @map("transport_provider_organization_id")
-  createdById Int?; createdBy String?; createdByEmail String?; tenant_id String?; school_org_id String?
-  title String?; purpose String?; date_start DateTime?; date_end DateTime?; passengers_students Int @default(0); passengers_adults Int @default(0); totalPassengers Int?; pickup Json?; dropoff Json?; busesRequested Int?; busType String?; notes String?; status String @default("requested")
-  @@index([status]); @@index([createdByAppUserId]); @@index([tenantId]); @@index([owningSchoolOrganizationId]); @@index([managingOrganizationId]); @@index([transportProviderOrganizationId]); @@map("BusBooking")
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdByAppUserId              String? @map("created_by_app_user_id")
+  tenantId                        String? @map("tenant_id_v2")
+  owningSchoolOrganizationId      String? @map("owning_school_organization_id")
+  managingOrganizationId          String? @map("managing_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
+
+  createdById    Int?
+  createdBy      String?
+  createdByEmail String?
+  tenant_id      String?
+  school_org_id  String?
+
+  title               String?
+  purpose             String?
+  date_start          DateTime?
+  date_end            DateTime?
+  passengers_students Int      @default(0)
+  passengers_adults   Int      @default(0)
+  totalPassengers     Int?
+  pickup              Json?
+  dropoff             Json?
+  busesRequested      Int?
+  busType             String?
+  notes               String?
+  status              String   @default("requested")
+
+  @@index([status])
+  @@index([createdByAppUserId])
+  @@index([tenantId])
+  @@index([owningSchoolOrganizationId])
+  @@index([managingOrganizationId])
+  @@index([transportProviderOrganizationId])
+  @@map("BusBooking")
 }
