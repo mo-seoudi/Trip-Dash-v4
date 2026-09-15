@@ -71,8 +71,11 @@ export function singleActiveWorkspaceConnection(connections = []) {
   return connections[0];
 }
 
-export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null, resolveAccess = resolveRuntimeAccess) {
-  const access = await resolveAccess({ user });
+export async function authorizeSchoolWorkspace(user, schoolId, requiredPermission = null, resolveAccess = resolveRuntimeAccess, mode = accessRuntimeMode()) {
+  // Bind authorization and data-source routing to the same runtime mode. This
+  // prevents a caller from authorizing with legacy access while routing through
+  // canonical metadata (or the inverse) during cutover.
+  const access = await resolveAccess({ user, mode });
   const workspace = workspaceFromAccess(access, schoolId, requiredPermission);
   return { access, workspace };
 }
@@ -81,7 +84,7 @@ export async function resolveWorkspaceDataSource(user, schoolId, requiredPermiss
   runtimeMode = accessRuntimeMode(), legacyPrisma = prismaGlobal, controlPrisma = prismaControl,
   resolveAccess = resolveRuntimeAccess,
 } = {}) {
-  const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission, resolveAccess);
+  const { access, workspace } = await authorizeSchoolWorkspace(user, schoolId, requiredPermission, resolveAccess, runtimeMode);
 
   if (runtimeMode === "canonical") {
     const rows = await controlPrisma.operationalDataSource.findMany({
