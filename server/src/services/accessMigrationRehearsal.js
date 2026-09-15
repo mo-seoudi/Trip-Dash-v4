@@ -60,12 +60,15 @@ export async function rehearseAccessMigration({
       counts: {
         tenants: plan.tenants?.length || 0,
         organizations: plan.organizations?.length || 0,
-        appUsers: plan.appUsers?.length || 0,
+        appUsers: plan.users?.length || 0,
         memberships: plan.memberships?.length || 0,
         roleAssignments: plan.roleAssignments?.length || 0,
         relationships: plan.relationships?.length || 0,
       },
-      validation: plan.validation,
+      validation: {
+        valid: (plan.errors?.length || 0) === 0,
+        errors: plan.errors || [],
+      },
     },
     parity,
   };
