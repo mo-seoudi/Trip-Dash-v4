@@ -1,9 +1,8 @@
 // Compare legacy and canonical-v2 effective-access outputs without mutating data.
 //
-// Migration rule: canonical v2 must never grant a school workspace or permission
-// that the currently-authoritative legacy resolver did not grant. Missing v2
-// access is also reported because cutover requires exact parity, but only an
-// expansion is classified as a security failure.
+// Migration rule: canonical v2 must never grant a school workspace, permission,
+// or tenant context that the currently-authoritative legacy resolver did not
+// grant. Missing v2 access is reported because cutover requires exact parity.
 
 function setOf(values = []) {
   return new Set((values || []).filter(Boolean));
@@ -33,7 +32,7 @@ export function compareEffectiveAccessParity(legacyAccess, canonicalAccess) {
       code: "TENANT_MISMATCH",
       legacyTenantId: legacyAccess?.tenantId || null,
       canonicalTenantId: canonicalAccess?.tenantId || null,
-    });
+    }, { expansion: true });
   }
 
   for (const [schoolId, canonicalWorkspace] of canonicalWorkspaces) {
