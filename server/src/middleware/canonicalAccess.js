@@ -1,10 +1,10 @@
 // Canonical permission middleware for rebuilt/admin routes.
 //
-// This is intentionally separate from the legacy role-based requireAdmin
-// middleware. New architecture routes should authorize against the canonical
-// effective-access contract and then apply resource/tenant scope checks.
+// During migration the permission vocabulary is canonical, while the runtime
+// access decision remains legacy-authoritative. Optional canonical-v2 shadow
+// evaluation is centralized in accessRuntime and cannot grant permissions.
 
-import { resolveEffectiveAccess } from "../services/effectiveAccess.js";
+import { resolveRuntimeAccess } from "../services/accessRuntime.js";
 import { ROLE_KEYS } from "../services/accessCatalog.js";
 
 export function hasTenantAccess(access, tenantId) {
@@ -16,7 +16,7 @@ export function hasTenantAccess(access, tenantId) {
 export function requireCanonicalPermission(permission) {
   return async function canonicalPermissionMiddleware(req, res, next) {
     try {
-      const access = await resolveEffectiveAccess(req.user);
+      const access = await resolveRuntimeAccess({ user: req.user });
       if (!(access.permissions || []).includes(permission)) {
         return res.status(403).json({
           message: "Forbidden",
