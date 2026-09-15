@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canonicalShadowEnabled, resolveRuntimeAccess } from "../src/services/accessRuntime.js";
+import { accessRuntimeMode, canonicalShadowEnabled, resolveRuntimeAccess } from "../src/services/accessRuntime.js";
 
 const legacy = {
   tenantId: "t1",
@@ -9,20 +9,18 @@ const legacy = {
   workspaces: [{ schoolId: "s1", permissions: ["trip.read"] }],
 };
 
-test("canonical shadow is explicit opt-in only", () => {
-  assert.equal(canonicalShadowEnabled({}), false);
-  assert.equal(canonicalShadowEnabled({ CANONICAL_ACCESS_SHADOW: "false" }), false);
-  assert.equal(canonicalShadowEnabled({ CANONICAL_ACCESS_SHADOW: "TRUE" }), true);
+test("runtime mode defaults to legacy and preserves old shadow flag", () => {
+  assert.equal(accessRuntimeMode({}), "legacy");
+  assert.equal(accessRuntimeMode({ CANONICAL_ACCESS_SHADOW: "TRUE" }), "shadow");
+  assert.equal(accessRuntimeMode({ ACCESS_RUNTIME_MODE: "canonical" }), "canonical");
+  assert.equal(canonicalShadowEnabled({ ACCESS_RUNTIME_MODE: "shadow" }), true);
 });
 
-test("runtime skips canonical database entirely while shadow is disabled", async () => {
+test("runtime skips canonical database entirely in legacy mode", async () => {
   let canonicalCalls = 0;
   const result = await resolveRuntimeAccess({
-    user: { id: 7, email: "user@example.com" },
-    legacyPrisma: { marker: "legacy" },
-    controlPrisma: null,
-    shadowEnabled: false,
-    resolveLegacy: async () => legacy,
+    user: { id: 7, email: "user@example.com" }, legacyPrisma: { marker: "legacy" }, controlPrisma: null,
+    mode: "legacy", resolveLegacy: async () => legacy,
     resolveCanonical: async () => { canonicalCalls += 1; throw new Error("must not run"); },
   });
   assert.equal(result, legacy);
@@ -32,15 +30,9 @@ test("runtime skips canonical database entirely while shadow is disabled", async
 test("runtime shadow reports canonical mismatch but legacy remains authoritative", async () => {
   let report;
   const result = await resolveRuntimeAccess({
-    user: { id: 7, email: "private@example.com" },
-    legacyPrisma: {},
-    controlPrisma: {},
-    shadowEnabled: true,
+    user: { id: 7, email: "private@example.com" }, legacyPrisma: {}, controlPrisma: {}, mode: "shadow",
     resolveLegacy: async () => legacy,
-    resolveCanonical: async () => ({
-      ...legacy,
-      workspaces: [{ schoolId: "s1", permissions: ["trip.read", "passenger.read"] }],
-    }),
+    resolveCanonical: async () => ({ ...legacy, workspaces: [{ schoolId: "s1", permissions: ["trip.read", "passenger.read"] }] }),
     onShadowResult: async (value) => { report = value; },
   });
   assert.equal(result, legacy);
@@ -50,17 +42,45 @@ test("runtime shadow reports canonical mismatch but legacy remains authoritative
   assert.equal(JSON.stringify(report).includes("private@example.com"), false);
 });
 
-test("canonical shadow failure never denies or broadens legacy authorization", async () => {
+test("canonical shadow failure never changes legacy authorization", async () => {
   let failure;
   const result = await resolveRuntimeAccess({
-    user: { id: 7 },
-    legacyPrisma: {},
-    controlPrisma: {},
-    shadowEnabled: true,
+    user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "shadow",
     resolveLegacy: async () => legacy,
     resolveCanonical: async () => { throw Object.assign(new Error("control unavailable"), { code: "CONTROL_DOWN" }); },
     onShadowError: async (value) => { failure = value; },
   });
   assert.equal(result, legacy);
   assert.deepEqual(failure, { userId: "7", code: "CONTROL_DOWN" });
+});
+
+test("canonical mode returns canonical access only at exact parity", async () => {
+  const canonical = structuredClone(legacy);
+  const result = await resolveRuntimeAccess({
+    user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
+    resolveLegacy: async () => legacy, resolveCanonical: async () => canonical,
+  });
+  assert.equal(result, canonical);
+});
+
+test("canonical mode fails closed when parity is not exact", async () => {
+  await assert.rejects(
+    resolveRuntimeAccess({
+      user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
+      resolveLegacy: async () => legacy,
+      resolveCanonical: async () => ({ ...legacy, workspaces: [{ schoolId: "s1", permissions: [] }] }),
+    }),
+    (error) => error?.code === "CANONICAL_ACCESS_PARITY_REQUIRED" && error?.status === 503,
+  );
+});
+
+test("canonical mode fails closed if the control plane is unavailable", async () => {
+  await assert.rejects(
+    resolveRuntimeAccess({
+      user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
+      resolveLegacy: async () => legacy,
+      resolveCanonical: async () => { throw new Error("control unavailable"); },
+    }),
+    (error) => error?.code === "CANONICAL_ACCESS_UNAVAILABLE" && error?.status === 503,
+  );
 });
