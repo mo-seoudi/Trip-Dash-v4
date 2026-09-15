@@ -1,72 +1,24 @@
-// src/pages/AllTrips.jsx
+import React,{useCallback,useEffect,useState}from"react";
+import{getWorkspaceTrips}from"../services/tripService";
+import TripsLayout from"../layout/TripsLayout";
+import SmartTripTable from"../components/SmartTripTable";
+import TripCalendar from"../components/TripCalendar";
+import{useAuth}from"../context/AuthContext";
+import RequestTripButton from"../components/RequestTripButton";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { getAllTrips, getTripsByUser } from "../services/tripService";
-import TripsLayout from "../layout/TripsLayout";
-import SmartTripTable from "../components/SmartTripTable";
-import TripCalendar from "../components/TripCalendar";
-import { useAuth } from "../context/AuthContext";
-import RequestTripButton from "../components/RequestTripButton"; // NEW
-
-const AllTrips = () => {
-  const [trips, setTrips] = useState([]);
-  const { profile } = useAuth();
-
-  // 🔔 NEW: listen for child updates and patch parent trips immutably
-  useEffect(() => {
-    const onTripUpdated = (e) => {
-      const updated = e?.detail;
-      if (!updated || !updated.id) return;
-      setTrips((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
-    };
-    window.addEventListener("trip:updated", onTripUpdated);
-    return () => window.removeEventListener("trip:updated", onTripUpdated);
-  }, []);
-
-  const fetchTrips = useCallback(async () => {
-    try {
-      if (!profile) return;
-
-      let tripsList = [];
-
-      // Same roles as before have global visibility
-      if (
-        profile.role === "admin" ||
-        profile.role === "school_staff" ||
-        profile.role === "bus_company" ||
-        profile.role === "finance"
-      ) {
-        tripsList = await getAllTrips();
-      } else {
-        // Fallback: scoped to the user
-        tripsList = await getTripsByUser(profile?.name);
-      }
-
-      setTrips(tripsList);
-    } catch (error) {
-      console.error("Failed to fetch trips:", error);
-    }
-  }, [profile]);
-
-  useEffect(() => {
-    fetchTrips();
-  }, [fetchTrips]);
-
-  return (
-    <>
-      <TripsLayout
-        title="All Trips"
-        trips={trips}
-        tableComponent={SmartTripTable}
-        calendarComponent={TripCalendar}
-      />
-
-      {/* Show the same FAB for school staff on this page too */}
-      {profile?.role === "school_staff" && (
-        <RequestTripButton onSuccess={fetchTrips} />
-      )}
-    </>
-  );
+const TRIP_CREATE="trip.create";
+const AllTrips=()=>{
+ const[trips,setTrips]=useState([]),[loadError,setLoadError]=useState(null);
+ const{activeWorkspace}=useAuth();
+ const canCreate=Boolean(activeWorkspace?.permissions?.includes(TRIP_CREATE));
+ useEffect(()=>{const onTripUpdated=e=>{const updated=e?.detail;if(!updated?.id)return;setTrips(prev=>prev.map(t=>t.id===updated.id?{...t,...updated}:t));};window.addEventListener("trip:updated",onTripUpdated);return()=>window.removeEventListener("trip:updated",onTripUpdated);},[]);
+ const fetchTrips=useCallback(async()=>{if(!activeWorkspace?.schoolId){setTrips([]);setLoadError(null);return;}try{setLoadError(null);setTrips(await getWorkspaceTrips(activeWorkspace.schoolId));}catch(error){console.error("Failed to fetch workspace trips:",error);setTrips([]);setLoadError(error?.response?.data?.message||"Unable to load trips for this workspace.");}},[activeWorkspace?.schoolId]);
+ useEffect(()=>{fetchTrips();},[fetchTrips]);
+ if(!activeWorkspace)return <div className="p-6 text-sm text-gray-600">No school workspace is available for this account.</div>;
+ return <>
+  {loadError&&<div className="mx-6 mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>}
+  <TripsLayout title={activeWorkspace.displayName?`${activeWorkspace.displayName} Trips`:"Trips"} trips={trips} tableComponent={SmartTripTable} calendarComponent={TripCalendar}/>
+  {canCreate&&<RequestTripButton onSuccess={fetchTrips}/>} 
+ </>;
 };
-
 export default AllTrips;
