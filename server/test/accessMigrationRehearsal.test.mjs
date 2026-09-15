@@ -30,7 +30,7 @@ test("rehearsal builds a plan and exact parity report without writes", async () 
     },
     resolveCanonicalAccessFromPlan: async ({ plan, identity }) => {
       canonicalCalls += 1;
-      assert.equal(plan.appUsers.length, 1);
+      assert.equal(plan.users.length, 1);
       assert.equal(identity.id, "1");
       return exactAccess;
     },
