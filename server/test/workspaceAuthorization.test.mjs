@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PERMISSIONS } from "../src/services/accessCatalog.js";
 import {
   canAllocateWorkspacePassengers,
+  canManageWorkspaceBusAssignmentCommercials,
   canManageWorkspaceBusAssignments,
   canManageWorkspacePassengers,
   canReadWorkspaceBusAssignments,
@@ -26,6 +27,8 @@ test("bus assignment read requires bus permission and readable parent trip",()=>
 test("bus assignment read-all follows explicit trip read-all authority",()=>{const ws=workspace(PERMISSIONS.TRIP_READ,PERMISSIONS.TRIP_READ_ALL,PERMISSIONS.BUS_ASSIGNMENT_READ);assert.equal(canReadWorkspaceBusAssignments({access,workspace:ws,trip:otherTrip}),true);});
 test("school edit permission remains creator-scoped",()=>{const ws=workspace(PERMISSIONS.TRIP_EDIT_REQUEST);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:ownTrip,patch:{destination:"Museum"}}),true);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:otherTrip,patch:{destination:"Museum"}}),false);});
 test("bus response permission cannot edit school request fields",()=>{const ws=workspace(PERMISSIONS.TRIP_RESPOND,PERMISSIONS.BUS_ASSIGNMENT_MANAGE);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:ownTrip,patch:{status:"Accepted"}}),true);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:ownTrip,patch:{destination:"Changed"}}),false);assert.equal(canManageWorkspaceBusAssignments({workspace:ws}),true);});
+test("bus assignment operational management does not grant commercial writes",()=>{const operator=workspace(PERMISSIONS.BUS_ASSIGNMENT_MANAGE);assert.equal(canManageWorkspaceBusAssignments({workspace:operator}),true);assert.equal(canManageWorkspaceBusAssignmentCommercials({workspace:operator}),false);});
+test("finance or access admin can manage bus assignment commercials",()=>{assert.equal(canManageWorkspaceBusAssignmentCommercials({workspace:workspace(PERMISSIONS.FINANCE_MANAGE_PRICE)}),true);assert.equal(canManageWorkspaceBusAssignmentCommercials({workspace:workspace(PERMISSIONS.ACCESS_ADMIN)}),true);});
 test("finance price permission cannot change operational fields",()=>{const ws=workspace(PERMISSIONS.FINANCE_MANAGE_PRICE);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:ownTrip,patch:{price:"500.00"}}),true);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:ownTrip,patch:{status:"Accepted"}}),false);});
 test("trip delete permission does not imply administrative edit override",()=>{const ws=workspace(PERMISSIONS.TRIP_DELETE);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:otherTrip,patch:{destination:"Changed"}}),false);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:otherTrip,patch:{status:"Completed"}}),false);});
 test("access admin permission provides explicit administrative edit override",()=>{const ws=workspace(PERMISSIONS.ACCESS_ADMIN);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:otherTrip,patch:{destination:"Changed"}}),true);assert.equal(canUpdateWorkspaceTrip({access,workspace:ws,trip:otherTrip,patch:{status:"Completed"}}),true);});
