@@ -32,6 +32,18 @@ test("finance price permission cannot change operational fields", () => {
   assert.equal(canUpdateWorkspaceTrip({ access, workspace: ws, trip: ownTrip, patch: { status: "Accepted" } }), false);
 });
 
+test("trip delete permission does not imply administrative edit override", () => {
+  const ws = workspace(PERMISSIONS.TRIP_DELETE);
+  assert.equal(canUpdateWorkspaceTrip({ access, workspace: ws, trip: otherTrip, patch: { destination: "Changed" } }), false);
+  assert.equal(canUpdateWorkspaceTrip({ access, workspace: ws, trip: otherTrip, patch: { status: "Completed" } }), false);
+});
+
+test("access admin permission provides explicit administrative edit override", () => {
+  const ws = workspace(PERMISSIONS.ACCESS_ADMIN);
+  assert.equal(canUpdateWorkspaceTrip({ access, workspace: ws, trip: otherTrip, patch: { destination: "Changed" } }), true);
+  assert.equal(canUpdateWorkspaceTrip({ access, workspace: ws, trip: otherTrip, patch: { status: "Completed" } }), true);
+});
+
 test("passenger permissions remain separate from bus assignment management", () => {
   const operator = workspace(PERMISSIONS.BUS_ASSIGNMENT_MANAGE);
   assert.equal(canManageWorkspacePassengers({ access, workspace: operator, trip: ownTrip }), false);
