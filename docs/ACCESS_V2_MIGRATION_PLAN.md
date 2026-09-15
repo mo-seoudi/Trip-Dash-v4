@@ -100,6 +100,42 @@ Keep legacy effective access authoritative, calculate canonical access in parall
 
 Switch effective access and Access Admin to canonical tables behind a configuration flag. Keep legacy tables read-only for rollback during an agreed observation period. No production legacy table deletion in this phase.
 
+### Phase 7 - primary-schema consolidation
+
+After the controlled cutover observation period succeeds, remove the duplicated canonical control-plane models from `server/prisma/schema.prisma`. This is deliberately **not** a Phase 4/5 cleanup: parity/shadow green is necessary but not sufficient. Removal belongs after canonical reads/writes have cut over to `prismaControl` and rollback confidence has been established.
+
+The primary schema must then contain only the legacy-v4 structures still needed during their own retirement and operational structures that have not yet moved out. The permanent control-plane definitions live only in `control.schema.prisma`.
+
+#### Consolidation entry gate
+
+All of the following must be true before deleting a duplicated control-plane model or enum from the primary schema:
+
+- Phase 4 exact parity is green for the migration rehearsal dataset and any approved non-production snapshot.
+- Phase 5 shadow reads have no unresolved security expansion and no unexplained access mismatch.
+- Phase 6 canonical access reads and Access Admin writes use `prismaControl`; no runtime feature uses the main `prisma` client as a canonical control-plane source of truth.
+- Main-schema operational relations to `Tenant`, `AppUser` and `Organization` have been replaced by scalar control-plane IDs in the permanent operational schema/routing path. Cross-database Prisma relations must not survive consolidation.
+- Auth/session ownership has a single settled home in the control plane; browser/session cutover is tested before removing duplicate `AuthenticationIdentity` or `AuthSession` models.
+- A fresh code/dependency audit finds no main-client calls to duplicated models.
+- CI validates/generates the primary, control and operational Prisma schemas after the removal and all authorization/database contract tests remain green.
+- Removal is performed in reversible commits and does not drop or mutate production data as part of this architecture branch.
+
+#### Concrete disentanglement checklist (2026-09-15 audit)
+
+The current primary `schema.prisma` still couples its operational `Trip`/`BusBooking` graph to duplicated `Tenant`, `AppUser` and `Organization` models through Prisma relations. These schema-level relations are the principal blocker even where runtime canonical access already uses `prismaControl`.
+
+- [ ] `Trip.createdByAppUser` -> remove cross-domain Prisma relation; retain `createdByAppUserId` as scalar control-plane identifier in the canonical operational schema.
+- [ ] `Trip.tenant` -> remove relation; retain `tenantId` scalar.
+- [ ] `Trip.owningSchoolOrganization`, `managingOrganization`, `transportProvider` -> remove relations; retain organization IDs as scalars.
+- [ ] `BusBooking` equivalents -> remove the same AppUser/Tenant/Organization Prisma relations and retain scalar IDs.
+- [ ] Remove inverse operational collections from duplicated `Tenant`, `AppUser` and `Organization` (`trips`, `bookings`, created/owned/managed/transport collections).
+- [ ] Confirm all canonical access runtime reads remain on the injected/dedicated control client (`prismaControl`) rather than the primary client.
+- [ ] Keep `prismaGlobal` usages such as legacy `UserOrgMembership`, `UserOrgScope`, legacy Organization and partnership administration explicitly classified as **legacy migration dependencies**, not as justification for retaining canonical-v2 duplicates.
+- [ ] Audit authentication/session routes before removing duplicate `AuthenticationIdentity` and `AuthSession`; cookie/session modernization must not silently switch databases.
+- [ ] Audit `OperationalDataSource` and `AuditEvent` callers so canonical metadata/audit writes target the control client only.
+- [ ] After all above are complete, remove duplicated control-plane models/enums from `schema.prisma`, regenerate the primary client, and prove all three database contracts in CI.
+
+This checklist is a forcing function: a contributor must not add new runtime dependencies on the duplicated primary-schema control models. New canonical control-plane work goes through `prismaControl`.
+
 ## Required gates before production execution
 
 - all server contract tests green
