@@ -87,17 +87,20 @@ test("missing canonical access is not a security expansion but blocks exact cuto
   assert.doesNotThrow(() => assertNoAccessExpansion(legacy, canonical));
 });
 
-test("tenant mismatch is reported and prevents exact parity", () => {
-  const result = compareEffectiveAccessParity(
-    access({ tenantId: "t1" }),
-    access({ tenantId: "t2" }),
-  );
+test("tenant mismatch is a security isolation failure", () => {
+  const legacy = access({ tenantId: "t1" });
+  const canonical = access({ tenantId: "t2" });
+  const result = compareEffectiveAccessParity(legacy, canonical);
 
-  assert.equal(result.safe, true);
+  assert.equal(result.safe, false);
   assert.equal(result.exact, false);
-  assert.deepEqual(result.issues[0], {
+  assert.deepEqual(result.securityExpansions[0], {
     code: "TENANT_MISMATCH",
     legacyTenantId: "t1",
     canonicalTenantId: "t2",
   });
+  assert.throws(
+    () => assertNoAccessExpansion(legacy, canonical),
+    (error) => error.code === "ACCESS_PARITY_SECURITY_EXPANSION",
+  );
 });
