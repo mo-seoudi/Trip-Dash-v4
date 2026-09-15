@@ -52,15 +52,14 @@ model Trip {
   cancelRequest         Boolean? @default(false)
 
   // Compatibility snapshots only. Normalized assignments are authoritative
-  // after migration.
+  // after migration. These fields can be removed after migration verification.
   busInfo    Json?
   driverInfo Json?
   buses      Json?
 
-  parentId Int?
-  parent   Trip?  @relation("TripSelf", fields: [parentId], references: [id])
-  children Trip[] @relation("TripSelf")
-
+  // There is deliberately no parent/child Trip hierarchy in the canonical
+  // operational model. Legacy SubTrip/parentId data is migration input only:
+  // one journey remains one Trip and multiple vehicles are TripBusAssignments.
   passengers     TripPassenger[]
   busAssignments TripBusAssignment[]
 
