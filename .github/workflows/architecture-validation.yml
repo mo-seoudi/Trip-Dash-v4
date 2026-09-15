@@ -36,6 +36,7 @@ jobs:
       CONTROL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=public
       OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=operational_validation
       CONTROL_DATABASE_SMOKE: "true"
+      OPERATIONAL_DATABASE_SMOKE: "true"
       JWT_SECRET: architecture-validation-only-secret
     steps:
       - name: Checkout
@@ -62,7 +63,10 @@ jobs:
       - name: Create disposable canonical control-plane schema
         run: npx prisma db push --schema prisma/control.schema.prisma --skip-generate
 
-      - name: Test canonical access policy and real database rehearsal
+      - name: Create disposable operational schema
+        run: npx prisma db push --schema prisma/operational.schema.prisma --skip-generate
+
+      - name: Test canonical access and operational database contracts
         run: npm run test:access
 
   client-build:
