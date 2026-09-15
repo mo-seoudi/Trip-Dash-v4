@@ -40,9 +40,11 @@ test("operational database enforces one bus per passenger within a trip", { skip
       (error) => error?.code === "P2002",
     );
 
+    // PostgreSQL may report either compound FK first: passenger+trip or bus+trip.
+    // Both are the desired fail-closed result: an allocation cannot cross Trip boundaries.
     await assert.rejects(
       prisma.tripBusPassengerAllocation.create({ data: { tripId: otherTrip.id, tripPassengerId: passenger.id, busAssignmentId: otherTripBus.id } }),
-      (error) => error?.code === "P2003",
+      (error) => error?.code === "P2003" || /Foreign key constraint violated/.test(String(error?.message || "")),
     );
 
     await prisma.tripBusPassengerAllocation.create({ data: { tripId: otherTrip.id, tripPassengerId: samePersonOtherTrip.id, busAssignmentId: otherTripBus.id } });
