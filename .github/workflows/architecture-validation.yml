@@ -13,14 +13,29 @@ on:
 jobs:
   server-contracts:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tripdash
+          POSTGRES_PASSWORD: tripdash
+          POSTGRES_DB: tripdash_control_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U tripdash -d tripdash_control_validation"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     defaults:
       run:
         working-directory: server
     env:
-      DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
-      DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=primary_validation
+      DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=primary_validation
       CONTROL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=public
-      OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_validation?schema=public
+      OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=operational_validation
+      CONTROL_DATABASE_SMOKE: "true"
       JWT_SECRET: architecture-validation-only-secret
     steps:
       - name: Checkout
@@ -44,7 +59,10 @@ jobs:
       - name: Generate all Prisma clients
         run: npm run prisma:generate
 
-      - name: Test canonical access policy
+      - name: Create disposable canonical control-plane schema
+        run: npx prisma db push --schema prisma/control.schema.prisma --skip-generate
+
+      - name: Test canonical access policy and real database rehearsal
         run: npm run test:access
 
   client-build:
