@@ -6,6 +6,7 @@ import { seedControlPlaneReferenceData } from "../src/services/controlPlaneSeed.
 import { buildAccessV2BackfillPlan } from "../src/services/accessV2BackfillPlan.js";
 import { writeControlPlaneBackfill } from "../src/services/controlPlaneBackfill.js";
 import { resolveEffectiveAccessV2 } from "../src/services/effectiveAccessV2.js";
+import { assertControlPlaneBackfillVerified } from "../src/services/controlPlanePostWriteVerification.js";
 
 const enabled = process.env.CONTROL_DATABASE_SMOKE === "true";
 
@@ -27,7 +28,23 @@ async function reset(prisma) {
   ]);
 }
 
-test("canonical control plane works against real disposable PostgreSQL", { skip: !enabled }, async () => {
+function expectedLegacyAccess() {
+  const permissions = ["organization.read", "trip.read", "trip.create", "trip.edit_request", "trip.cancel", "bus_assignment.read", "passenger.read", "passenger.manage", "passenger.allocate"].sort();
+  return {
+    source: "smoke-legacy-fixture",
+    tenantId: "tenant-smoke",
+    roles: ["group_staff"],
+    permissions,
+    organizations: [
+      { id: "group-smoke", type: "SCHOOL_GROUP" },
+      { id: "school-smoke", type: "SCHOOL" },
+    ],
+    workspaces: [{ schoolId: "school-smoke", roles: ["group_staff"], permissions }],
+    portfolio: { enabled: true, schoolCount: 1 },
+  };
+}
+
+test("canonical control plane backfill is exact against real disposable PostgreSQL", { skip: !enabled }, async () => {
   assertDisposableUrl(process.env.CONTROL_DATABASE_URL);
   const prisma = new PrismaControl();
   try {
@@ -47,11 +64,16 @@ test("canonical control plane works against real disposable PostgreSQL", { skip:
     assert.deepEqual(plan.errors, []);
     const write = await writeControlPlaneBackfill(prisma, plan, { allowWrite: true, environment: "ci-smoke" });
     assert.equal(write.writesPerformed, true);
-    const access = await resolveEffectiveAccessV2(prisma, { id: 7001, email: "smoke@example.invalid" });
-    assert.equal(access.tenantId, "tenant-smoke");
-    assert.deepEqual(access.workspaces.map((row) => row.schoolId), ["school-smoke"]);
-    assert.deepEqual(new Set(access.organizations.map((row) => row.id)), new Set(["group-smoke", "school-smoke"]));
-    assert.ok(access.workspaces[0].roles.includes("group_staff"));
+
+    const verification = await assertControlPlaneBackfillVerified({
+      legacyUsers: [{ id: 7001 }],
+      resolveLegacyAccess: async () => expectedLegacyAccess(),
+      resolveCanonicalAccess: async (identity) => resolveEffectiveAccessV2(prisma, identity),
+    });
+    assert.equal(verification.cutoverReady, true);
+    assert.equal(verification.report.safe, true);
+    assert.equal(verification.report.exact, true);
+    assert.equal(verification.report.users[0].identity.email, undefined);
   } finally {
     await reset(prisma).catch(() => {});
     await prisma.$disconnect();
