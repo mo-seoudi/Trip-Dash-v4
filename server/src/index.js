@@ -17,6 +17,7 @@ import workspaceTripsRoutes from "./routes/workspaceTripsRoutes.js";
 import workspaceTripSeriesRoutes from "./routes/workspaceTripSeriesRoutes.js";
 import workspaceTripPassengersRoutes from "./routes/workspaceTripPassengersRoutes.js";
 import workspaceTripBusAssignmentsRoutes from "./routes/workspaceTripBusAssignmentsRoutes.js";
+import workspaceTripWorkflowRoutes from "./routes/workspaceTripWorkflowRoutes.js";
 import globalRoutes from "./routes/globalRoutes.js";
 import globalRolesRoutes from "./routes/globalRolesRoutes.js";
 import bookingsRoutes from "./routes/bookingsRoutes.js";
@@ -27,30 +28,14 @@ import accessAdminRoutes from "./routes/accessAdminRoutes.js";
 import dataSourceAdminRoutes from "./routes/dataSourceAdminRoutes.js";
 
 dotenv.config();
-
 const app = express();
 app.set("trust proxy", 1);
-
 const DEV_DEFAULT = "http://localhost:5173";
-const rawOrigins =
-  (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim()) ||
-  (process.env.NODE_ENV === "production" ? "" : DEV_DEFAULT);
+const rawOrigins = (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim()) || (process.env.NODE_ENV === "production" ? "" : DEV_DEFAULT);
 const normalize = (s) => (s?.startsWith("http") ? s : s ? `https://${s}` : s);
 const allowList = rawOrigins.split(",").map((s) => normalize(s.trim())).filter(Boolean);
-const regexList = (process.env.ALLOWED_ORIGIN_REGEXES || "")
-  .split(",").map((s) => s.trim()).filter(Boolean)
-  .map((pattern) => { try { return new RegExp(pattern); } catch { return null; } }).filter(Boolean);
-
-const corsOptions = {
-  credentials: true,
-  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  origin(origin, cb) {
-    if (!origin) return cb(null, true);
-    return cb(null, allowList.includes(origin) || regexList.some((re) => re.test(origin)));
-  },
-};
-
+const regexList = (process.env.ALLOWED_ORIGIN_REGEXES || "").split(",").map((s) => s.trim()).filter(Boolean).map((pattern) => { try { return new RegExp(pattern); } catch { return null; } }).filter(Boolean);
+const corsOptions = { credentials: true, methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"], origin(origin, cb) { if (!origin) return cb(null, true); return cb(null, allowList.includes(origin) || regexList.some((re) => re.test(origin))); } };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
@@ -58,7 +43,6 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 app.get("/", (_, res) => res.status(200).json({ ok: true }));
 app.get("/health", (_, res) => res.status(200).json({ ok: true }));
-
 app.use("/api", sessionRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/access", accessRoutes);
@@ -69,6 +53,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/workspaces/:schoolId/trip-series", workspaceTripSeriesRoutes);
 app.use("/api/workspaces/:schoolId/trips/:tripId/passengers", workspaceTripPassengersRoutes);
 app.use("/api/workspaces/:schoolId/trips/:tripId/bus-assignments", workspaceTripBusAssignmentsRoutes);
+app.use("/api/workspaces/:schoolId/trips/:tripId/workflow", workspaceTripWorkflowRoutes);
 app.use("/api/workspaces/:schoolId/trips", workspaceTripsRoutes);
 app.use("/api/trips", tripsRouter);
 app.use("/api/global", globalRoutes);
@@ -76,33 +61,11 @@ app.use("/api/global", globalRolesRoutes);
 app.use("/api/bookings", bookingsRoutes);
 app.use("/api/ms", msRoutes);
 app.use("/api/auth", authMicrosoftRoutes);
-
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));
-app.use((err, req, res, next) => {
-  console.error(err);
-  const status = Number.isInteger(err?.status) ? err.status : 500;
-  return res.status(status).json({ message: status >= 500 ? "Internal server error" : err.message || "Request failed" });
-});
-
+app.use((err, req, res, next) => { console.error(err); const status = Number.isInteger(err?.status) ? err.status : 500; return res.status(status).json({ message: status >= 500 ? "Internal server error" : err.message || "Request failed" }); });
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 let shuttingDown = false;
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log(`${signal} received; shutting down`);
-  server.close(async () => {
-    try {
-      await Promise.all([
-        prisma.$disconnect(), prismaGlobal.$disconnect(), prismaControl.$disconnect(), disconnectOperationalClients(),
-      ]);
-      process.exit(0);
-    } catch (error) {
-      console.error("Shutdown failed:", error);
-      process.exit(1);
-    }
-  });
-  setTimeout(() => process.exit(1), 10_000).unref();
-}
+async function shutdown(signal) { if (shuttingDown) return; shuttingDown = true; console.log(`${signal} received; shutting down`); server.close(async () => { try { await Promise.all([prisma.$disconnect(), prismaGlobal.$disconnect(), prismaControl.$disconnect(), disconnectOperationalClients()]); process.exit(0); } catch (error) { console.error("Shutdown failed:", error); process.exit(1); } }); setTimeout(() => process.exit(1), 10_000).unref(); }
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
