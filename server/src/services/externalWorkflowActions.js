@@ -31,6 +31,17 @@ export async function resolveExternalWorkflowAction({ prisma, token, requiredAct
   return record;
 }
 
+// Must be called inside the same transaction as the protected workflow change.
+// updateMany gives us compare-and-set semantics: only one concurrent request can
+// move an unused, live token to consumed. A replay therefore fails closed.
 export async function consumeExternalWorkflowAction({ prisma, id }) {
-  return prisma.externalWorkflowAction.update({ where: { id }, data: { consumedAt: new Date() } });
+  const consumedAt = new Date();
+  const result = await prisma.externalWorkflowAction.updateMany({
+    where: { id, consumedAt: null, revokedAt: null, expiresAt: { gt: consumedAt } },
+    data: { consumedAt },
+  });
+  if (result.count !== 1) {
+    throw Object.assign(new Error("This action link is invalid, expired, revoked, or already used"), { status: 410 });
+  }
+  return { id, consumedAt };
 }
