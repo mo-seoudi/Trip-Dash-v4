@@ -22,41 +22,46 @@ const useTripActions = (workspace, setTripData, setExpandedTripId) => {
     return schoolId;
   };
 
-  const handleStatusChange = async (trip, nextStatus) => {
+  const applyAction = async (trip, action) => {
     try {
       setLoading(true);
       const workspaceSchoolId = requireWorkspace();
       let updated;
 
-      // Canonical lifecycle transitions are explicit server-owned actions.
-      if (nextStatus === "Accepted" && trip.status === "Pending") {
+      // Canonical lifecycle transitions are explicit server-owned actions. Cancellation
+      // decisions are modeled as workflow actions because a declined request preserves
+      // the trip's existing status rather than transitioning it to "Confirmed".
+      if (action === "Accepted" && trip.status === "Pending") {
         updated = await acceptWorkspaceTrip(workspaceSchoolId, trip.id);
-      } else if (nextStatus === "Rejected" && trip.status === "Pending") {
+      } else if (action === "Rejected" && trip.status === "Pending") {
         updated = await rejectWorkspaceTrip(workspaceSchoolId, trip.id);
-      } else if (nextStatus === "Completed") {
+      } else if (action === "Completed") {
         updated = await completeWorkspaceTrip(workspaceSchoolId, trip.id);
-      } else if (nextStatus === "Cancel Requested") {
+      } else if (action === "requestCancellation") {
         updated = await requestWorkspaceTripCancellation(workspaceSchoolId, trip.id);
-      } else if (trip.cancelRequest && nextStatus === "Canceled") {
+      } else if (action === "approveCancellation" && trip.cancelRequest) {
         updated = await resolveWorkspaceTripCancellation(workspaceSchoolId, trip.id, true);
-      } else if (trip.cancelRequest && nextStatus === "Confirmed") {
+      } else if (action === "declineCancellation" && trip.cancelRequest) {
         updated = await resolveWorkspaceTripCancellation(workspaceSchoolId, trip.id, false);
-      } else if (nextStatus === "Canceled" && trip.status === "Pending") {
+      } else if (action === "Canceled" && trip.status === "Pending") {
         updated = await cancelWorkspaceTrip(workspaceSchoolId, trip.id);
       } else {
-        throw new Error(`Unsupported trip lifecycle transition: ${trip.status} → ${nextStatus}`);
+        throw new Error(`Unsupported trip workflow action: ${trip.status} → ${action}`);
       }
 
       setTripData?.((prev) => prev.map((t) => (t.id === trip.id ? { ...t, ...updated } : t)));
       setExpandedTripId?.(null);
       return updated;
     } catch (error) {
-      console.error("Failed to update trip status:", error);
+      console.error("Failed to execute trip workflow action:", error);
       throw error;
     } finally {
       setLoading(false);
     }
   };
+
+  const handleStatusChange = (trip, nextStatus) => applyAction(trip, nextStatus);
+  const handleWorkflowAction = (trip, workflowAction) => applyAction(trip, workflowAction);
 
   const handleSoftDelete = async (trip) => {
     try {
@@ -73,7 +78,7 @@ const useTripActions = (workspace, setTripData, setExpandedTripId) => {
     }
   };
 
-  return { loading, handleStatusChange, handleSoftDelete };
+  return { loading, handleStatusChange, handleWorkflowAction, handleSoftDelete };
 };
 
 export default useTripActions;
