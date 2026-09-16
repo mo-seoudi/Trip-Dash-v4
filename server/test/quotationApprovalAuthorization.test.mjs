@@ -35,7 +35,7 @@ test("rejects access without an authorized tenant even when school and permissio
   await assert.rejects(() => validateInternalQuotationApprover({
     appUserId: "app-1", schoolId: "school-a", globalPrisma: globalPrismaFor(user()),
     resolveAccess: async () => ({ user: { appUserId: "app-1" }, workspaces: [ws("school-a", ["trip.approve_quote"])] })
-  }), (error) => error?.status === 403 && error?.code === "WORKSPACE_TENANT_FORBIDDEN");
+  }), (error) => error?.status === 400 && error?.code === "APPROVER_NOT_AUTHORIZED");
 });
 
 test("rejects inactive, missing, or unmapped application users before resolving access", async () => {
