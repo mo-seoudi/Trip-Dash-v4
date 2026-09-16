@@ -17,6 +17,10 @@ function positiveInt(value, field) {
   return parsed;
 }
 
+// cancelRequest is nullable for compatibility with older Trip rows. Treat null
+// exactly like false so legacy data can move through the canonical workflow.
+const noPendingCancellation = { OR: [{ cancelRequest: false }, { cancelRequest: null }] };
+
 async function context(req, permission) {
   const tripId = positiveInt(req.params.tripId, "trip id");
   const operational = await operationalPrismaForWorkspace(req.user, req.params.schoolId, permission);
@@ -34,8 +38,8 @@ async function pendingDecision(req, res, next, nextStatus) {
     if (trip.cancelRequest) return res.status(409).json({ message: "Resolve the cancellation request before responding to this trip" });
 
     const changed = await prisma.trip.updateMany({
-      where: { id: tripId, status: "Pending", cancelRequest: { not: true } },
-      data: { status: nextStatus },
+      where: { id: tripId, status: "Pending", ...noPendingCancellation },
+      data: { status: nextStatus, cancelRequest: false },
     });
     if (changed.count !== 1) return res.status(409).json({ message: "Trip changed before the response was recorded" });
     return res.json(await prisma.trip.findUnique({ where: { id: tripId } }));
@@ -53,8 +57,8 @@ router.post("/complete", async (req, res, next) => {
     if (trip.status !== "Confirmed") return res.status(409).json({ message: "Only a Confirmed trip can be completed" });
 
     const changed = await prisma.trip.updateMany({
-      where: { id: tripId, status: "Confirmed", cancelRequest: { not: true } },
-      data: { status: "Completed" },
+      where: { id: tripId, status: "Confirmed", ...noPendingCancellation },
+      data: { status: "Completed", cancelRequest: false },
     });
     if (changed.count !== 1) return res.status(409).json({ message: "Trip changed before completion" });
     return res.json(await prisma.trip.findUnique({ where: { id: tripId } }));
@@ -70,7 +74,7 @@ router.post("/request-cancel", async (req, res, next) => {
     if (trip.cancelRequest) return res.status(409).json({ message: "A cancellation request is already pending" });
 
     const changed = await prisma.trip.updateMany({
-      where: { id: tripId, status: trip.status, cancelRequest: { not: true } },
+      where: { id: tripId, status: trip.status, ...noPendingCancellation },
       data: { cancelRequest: true },
     });
     if (changed.count !== 1) return res.status(409).json({ message: "Trip changed before the cancellation request was recorded" });
@@ -100,9 +104,10 @@ router.post("/cancel", async (req, res, next) => {
     const { prisma, tripId, trip } = await context(req, PERMISSIONS.TRIP_EDIT_REQUEST);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     if (trip.status !== "Pending") return res.status(409).json({ message: "Only a Pending trip can be cancelled directly; request cancellation after it has been accepted" });
+    if (trip.cancelRequest) return res.status(409).json({ message: "Resolve the cancellation request before cancelling this trip" });
 
     const changed = await prisma.trip.updateMany({
-      where: { id: tripId, status: "Pending" },
+      where: { id: tripId, status: "Pending", ...noPendingCancellation },
       data: { status: "Canceled", cancelRequest: false },
     });
     if (changed.count !== 1) return res.status(409).json({ message: "Trip changed before cancellation" });
