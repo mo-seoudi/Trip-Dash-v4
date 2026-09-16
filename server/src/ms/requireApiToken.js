@@ -37,13 +37,18 @@ function issuerAllowed(decoded) {
     return issuer === expectedV2 || issuer === expectedV1;
   }
 
-  // Multi-tenant compatibility mode: require a concrete Microsoft tenant ID in
-  // both the token and issuer rather than accepting an arbitrary matching URL.
   if (!tokenTenant) return false;
   return (
     issuer === `https://login.microsoftonline.com/${tokenTenant}/v2.0` ||
     issuer === `https://sts.windows.net/${tokenTenant}/`
   );
+}
+
+function delegatedToken(req) {
+  // Authorization belongs to the TripDash application session. Microsoft is a
+  // second, delegated identity and therefore travels in its own header.
+  const value = String(req.headers["x-microsoft-access-token"] || "").trim();
+  return value || null;
 }
 
 export function requireApiToken(req, res, next) {
@@ -52,9 +57,8 @@ export function requireApiToken(req, res, next) {
     return res.status(503).json({ error: "Microsoft authentication is not configured" });
   }
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  if (!token) return res.status(401).json({ error: "Missing bearer token" });
+  const token = delegatedToken(req);
+  if (!token) return res.status(401).json({ error: "Missing Microsoft access token" });
 
   jwt.verify(
     token,
@@ -69,7 +73,7 @@ export function requireApiToken(req, res, next) {
         return res.status(401).json({ error: "Invalid Microsoft access token" });
       }
 
-      req.spaAccessToken = token;
+      req.microsoftAccessToken = token;
       req.msal = { decoded };
       return next();
     }
