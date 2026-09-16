@@ -17,6 +17,10 @@ export function canUpdateWorkspaceTrip({access,workspace,trip,patch}){if(!worksp
   // Lifecycle state is controlled only by explicit workflow endpoints. This is
   // intentionally true even for admins so the same invariants apply to every actor.
   if(fields.some(field=>WORKFLOW_ONLY_FIELDS.has(field)))return false;
+  // The original school request becomes immutable once an operator has acted on it.
+  // Later changes must be represented by an explicit workflow/revision rather than
+  // silently rewriting the request underneath quotations or approvals.
+  if(fields.some(field=>SCHOOL_EDIT_FIELDS.has(field))&&trip.status!=="Pending")return false;
   // Trip.price is compatibility/cache data only. Never let a generic patch alter
   // commercial terms after quotation submission, even through an admin override.
   if(fields.includes("price")&&trip.status!=="Accepted")return false;
