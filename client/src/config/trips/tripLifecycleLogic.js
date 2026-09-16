@@ -7,11 +7,12 @@ const PrepareQuotation={label:"Prepare Quotation",icon:FaPlusCircle,trigger:"ass
 const Finalise={label:"Finalize Bus Details",icon:FaCheckCircle,trigger:"finaliseTrip",color:"text-green-700 hover:text-green-900 border border-green-300"};
 const Complete={label:"Complete",icon:FaCheckCircle,nextStatus:"Completed",color:"text-green-700 hover:text-green-900 border border-green-300"};
 const CancelImmediate={label:"Cancel",icon:FaTimesCircle,nextStatus:"Canceled",color:"text-red-700 hover:text-red-900 border border-red-300"};
-const RequestCancel={label:"Request Cancel",icon:FaTimesCircle,nextStatus:"Cancel Requested",color:"text-red-700 hover:text-red-900 border border-red-300"};
-const ApproveCancel={label:"Approve Cancel",icon:FaCheckCircle,nextStatus:"Canceled",color:"text-red-700 hover:text-red-900 border border-red-300"};
-const DeclineCancel={label:"Decline Request",icon:FaTimesCircle,nextStatus:"Confirmed",color:"text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400"};
+const RequestCancel={label:"Request Cancel",icon:FaTimesCircle,workflowAction:"requestCancellation",color:"text-red-700 hover:text-red-900 border border-red-300"};
+const ApproveCancel={label:"Approve Cancel",icon:FaCheckCircle,workflowAction:"approveCancellation",color:"text-red-700 hover:text-red-900 border border-red-300"};
+const DeclineCancel={label:"Decline Request",icon:FaTimesCircle,workflowAction:"declineCancellation",color:"text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400"};
 const DeleteIfCancelled={label:"Delete",icon:FaTrash,trigger:"softDeleteTrip",color:"text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400"};
 // Direct cancellation is intentionally limited to Pending. Once accepted, every
 // cancellation goes through the request/resolve workflow so an operator decision
-// is recorded and the client cannot offer an action the API will reject.
+// is recorded. Resolving a cancellation is an action, not a fake status transition:
+// declining it preserves whatever lifecycle status the trip already had.
 export const tripLifecycle={Pending:{actions:[Accept,Reject,CancelImmediate]},Accepted:{actions:[PrepareQuotation,RequestCancel]},"Quotation Submitted":{actions:[RequestCancel]},Approved:{actions:[Finalise,RequestCancel]},Confirmed:{actions:[Complete,RequestCancel]},"Cancel Requested":{actions:[ApproveCancel,DeclineCancel]},Rejected:{actions:[]},Completed:{actions:[]},Canceled:{actions:[DeleteIfCancelled]}};
