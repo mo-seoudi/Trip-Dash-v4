@@ -13,16 +13,20 @@ function statusTransitionAllowed(workspace,trip,patch){if(!Object.prototype.hasO
 export function workspaceTripReadWhere({access,workspace}){if(!has(workspace,PERMISSIONS.TRIP_READ))return null;if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return{};const id=callerAppUserId(access);return id?{createdByAppUserId:id}:null;}
 export function canReadWorkspaceTrip({access,workspace,trip=null}){if(!has(workspace,PERMISSIONS.TRIP_READ))return false;if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return true;return trip?createdByCaller(access,trip):Boolean(callerAppUserId(access));}
 export function canCreateWorkspaceTrip({workspace}){return has(workspace,PERMISSIONS.TRIP_CREATE);}
-export function canUpdateWorkspaceTrip({access,workspace,trip,patch}){if(!workspace||!trip||!patch)return false;const fields=Object.keys(patch);if(!fields.length)return false;if(hasAdministrativeOverride(workspace))return true;if(has(workspace,PERMISSIONS.FINANCE_MANAGE_PRICE)&&fieldsWithin(patch,FINANCE_EDIT_FIELDS))return true;if(has(workspace,PERMISSIONS.TRIP_RESPOND)&&fieldsWithin(patch,OPERATOR_EDIT_FIELDS))return statusTransitionAllowed(workspace,trip,patch);if(has(workspace,PERMISSIONS.TRIP_EDIT_REQUEST)&&fieldsWithin(patch,SCHOOL_EDIT_FIELDS))return createdByCaller(access,trip)&&statusTransitionAllowed(workspace,trip,patch);return false;}
+export function canUpdateWorkspaceTrip({access,workspace,trip,patch}){if(!workspace||!trip||!patch)return false;const fields=Object.keys(patch);if(!fields.length)return false;
+  // Trip.price is compatibility/cache data only. Never let a generic patch alter
+  // commercial terms after quotation submission, even through an admin override.
+  if(fields.includes("price")&&trip.status!=="Accepted")return false;
+  if(hasAdministrativeOverride(workspace))return true;if(has(workspace,PERMISSIONS.FINANCE_MANAGE_PRICE)&&fieldsWithin(patch,FINANCE_EDIT_FIELDS))return true;if(has(workspace,PERMISSIONS.TRIP_RESPOND)&&fieldsWithin(patch,OPERATOR_EDIT_FIELDS))return statusTransitionAllowed(workspace,trip,patch);if(has(workspace,PERMISSIONS.TRIP_EDIT_REQUEST)&&fieldsWithin(patch,SCHOOL_EDIT_FIELDS))return createdByCaller(access,trip)&&statusTransitionAllowed(workspace,trip,patch);return false;}
 export function canDeleteWorkspaceTrip({workspace}){return has(workspace,PERMISSIONS.TRIP_DELETE);}
 export function canReadWorkspacePassengers({access,workspace,trip}){return has(workspace,PERMISSIONS.PASSENGER_READ)&&canReadWorkspaceTrip({access,workspace,trip});}
 export function canManageWorkspacePassengers({access,workspace,trip}){return has(workspace,PERMISSIONS.PASSENGER_MANAGE)&&createdByCaller(access,trip);}
 export function canReadWorkspaceBusAssignments({access,workspace,trip}){return has(workspace,PERMISSIONS.BUS_ASSIGNMENT_READ)&&canReadWorkspaceTrip({access,workspace,trip});}
 export function canManageWorkspaceBusAssignments({workspace}){return has(workspace,PERMISSIONS.BUS_ASSIGNMENT_MANAGE);}
-// Operators own quotation preparation. Finance retains a separate permission for
-// commercial adjustment/audit, but finance permission is not required for an
-// operator to price a bus while preparing an Accepted trip quotation.
-export function canManageWorkspaceBusAssignmentCommercials({workspace,trip}){if(hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.FINANCE_MANAGE_PRICE))return true;return has(workspace,PERMISSIONS.BUS_ASSIGNMENT_MANAGE)&&trip?.status==="Accepted";}
+// Every commercial mutation belongs to quotation preparation. Finance/admin can
+// adjust terms while Accepted, but once submitted the immutable quotation snapshot
+// can only be replaced through the explicit revision workflow.
+export function canManageWorkspaceBusAssignmentCommercials({workspace,trip}){if(trip?.status!=="Accepted")return false;return hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.FINANCE_MANAGE_PRICE)||has(workspace,PERMISSIONS.BUS_ASSIGNMENT_MANAGE);}
 export function canSubmitWorkspaceQuotation({workspace,trip}){return Boolean(trip&&trip.status==="Accepted"&&(hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.TRIP_RESPOND)));}
 export function canApproveWorkspaceQuotation({workspace,trip}){return Boolean(trip&&trip.status==="Quotation Submitted"&&(hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.TRIP_APPROVE_QUOTE)));}
 export function canConfirmWorkspaceTrip({workspace,trip}){return Boolean(trip&&trip.status==="Approved"&&(hasAdministrativeOverride(workspace)||has(workspace,PERMISSIONS.TRIP_RESPOND)));}
