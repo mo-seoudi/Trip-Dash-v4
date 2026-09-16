@@ -6,9 +6,9 @@ import { oboAcquire, graphGet, graphPost } from "../ms/graphOnBehalf.js";
 
 const router = Router();
 
-// Microsoft integration endpoints require both:
-// 1) an approved TripDash application session, and
-// 2) a valid Microsoft access token for the configured API.
+// Microsoft integration endpoints require two independent identities:
+// 1) the approved TripDash application session (normal app Authorization), and
+// 2) a Microsoft delegated API token in X-Microsoft-Access-Token.
 router.use(requireAuth, requireApiToken);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -74,7 +74,7 @@ router.get("/me", async (req, res, next) => {
     const scopes = (process.env.MS_GRAPH_DEFAULT_SCOPES || "https://graph.microsoft.com/User.Read")
       .split(/\s+/)
       .filter(Boolean);
-    const userToken = await oboAcquire(scopes, req.spaAccessToken);
+    const userToken = await oboAcquire(scopes, req.microsoftAccessToken);
     const me = await graphGet("/me", userToken);
     return res.json(me);
   } catch (e) {
@@ -82,7 +82,6 @@ router.get("/me", async (req, res, next) => {
   }
 });
 
-// Creates an Outlook calendar event for the signed-in Microsoft user.
 router.post("/events", async (req, res, next) => {
   try {
     const input = req.body || {};
@@ -110,7 +109,7 @@ router.post("/events", async (req, res, next) => {
 
     const graphToken = await oboAcquire(
       ["https://graph.microsoft.com/Calendars.ReadWrite"],
-      req.spaAccessToken
+      req.microsoftAccessToken
     );
     const created = await graphPost("/me/events", graphToken, event);
     return res.status(201).json(created);
@@ -119,7 +118,6 @@ router.post("/events", async (req, res, next) => {
   }
 });
 
-// Sends mail as the signed-in Microsoft user.
 router.post("/sendMail", async (req, res, next) => {
   try {
     const { to, html, text } = req.body || {};
@@ -145,7 +143,7 @@ router.post("/sendMail", async (req, res, next) => {
 
     const graphToken = await oboAcquire(
       ["https://graph.microsoft.com/Mail.Send"],
-      req.spaAccessToken
+      req.microsoftAccessToken
     );
     await graphPost("/me/sendMail", graphToken, message);
     return res.status(202).json({ ok: true });
@@ -154,9 +152,6 @@ router.post("/sendMail", async (req, res, next) => {
   }
 });
 
-// Only a TripDash admin may request the configured Microsoft admin-consent URL.
-// Redirect URIs are server-configured; arbitrary client supplied redirects are
-// intentionally rejected to avoid turning this endpoint into a redirect gadget.
 router.get("/admin-consent-url", requireAdmin, (req, res) => {
   const clientId = process.env.MS_API_CLIENT_ID;
   const configuredRedirect = process.env.MS_ADMIN_CONSENT_REDIRECT_URI;
