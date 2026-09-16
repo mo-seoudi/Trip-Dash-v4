@@ -3,174 +3,28 @@ import { Router } from "express";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { requireApiToken } from "../ms/requireApiToken.js";
 import { oboAcquire, graphGet, graphPost } from "../ms/graphOnBehalf.js";
+import { PERMISSIONS } from "../services/accessCatalog.js";
+import { operationalPrismaForWorkspace } from "../services/workspaceOperationalContext.js";
+import { canReadWorkspaceTrip } from "../services/workspaceAuthorization.js";
+import { EXTERNAL_ACTIONS, issueExternalWorkflowAction } from "../services/externalWorkflowActions.js";
+import { externalApprovalUrl, quotationApprovalMessage } from "../services/workflowEmail.js";
 
 const router = Router();
-
-// Microsoft integration endpoints require two independent identities:
-// 1) the approved TripDash application session (normal app Authorization), and
-// 2) a Microsoft delegated API token in X-Microsoft-Access-Token.
 router.use(requireAuth, requireApiToken);
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanString(value, { max = 500, required = false, field = "value" } = {}) {
-  if (value === undefined || value === null) {
-    if (required) {
-      const error = new Error(`${field} is required`);
-      error.status = 400;
-      throw error;
-    }
-    return null;
-  }
-  const result = String(value).trim();
-  if (required && !result) {
-    const error = new Error(`${field} is required`);
-    error.status = 400;
-    throw error;
-  }
-  if (result.length > max) {
-    const error = new Error(`${field} is too long`);
-    error.status = 400;
-    throw error;
-  }
-  return result || null;
-}
+function cleanString(value,{max=500,required=false,field="value"}={}){if(value==null){if(required)throw Object.assign(new Error(`${field} is required`),{status:400});return null;}const result=String(value).trim();if(required&&!result)throw Object.assign(new Error(`${field} is required`),{status:400});if(result.length>max)throw Object.assign(new Error(`${field} is too long`),{status:400});return result||null;}
+function parseDateTime(value,field){const text=cleanString(value,{required:true,max:100,field});const parsed=new Date(text);if(Number.isNaN(parsed.getTime()))throw Object.assign(new Error(`${field} must be a valid date/time`),{status:400});return text;}
+function normalizeRecipients(to){const recipients=(Array.isArray(to)?to:[to]).map(v=>String(v||"").trim().toLowerCase()).filter(Boolean);if(!recipients.length||recipients.length>50)throw Object.assign(new Error("Between 1 and 50 recipients are required"),{status:400});for(const address of recipients)if(address.length>254||!EMAIL_RE.test(address))throw Object.assign(new Error("One or more recipient email addresses are invalid"),{status:400});return[...new Set(recipients)];}
+async function sendGraphMail(assertion,message){const graphToken=await oboAcquire(["https://graph.microsoft.com/Mail.Send"],assertion);await graphPost("/me/sendMail",graphToken,{message:{subject:message.subject,body:{contentType:message.html?"HTML":"Text",content:message.html||message.text},toRecipients:normalizeRecipients(message.to).map(address=>({emailAddress:{address}}))},saveToSentItems:true});}
 
-function parseDateTime(value, field) {
-  const text = cleanString(value, { required: true, max: 100, field });
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) {
-    const error = new Error(`${field} must be a valid date/time`);
-    error.status = 400;
-    throw error;
-  }
-  return text;
-}
+router.get("/me",async(req,res,next)=>{try{const scopes=(process.env.MS_GRAPH_DEFAULT_SCOPES||"https://graph.microsoft.com/User.Read").split(/\s+/).filter(Boolean);return res.json(await graphGet("/me",await oboAcquire(scopes,req.microsoftAccessToken)));}catch(e){next(e);}});
+router.post("/events",async(req,res,next)=>{try{const input=req.body||{},subject=cleanString(input.subject,{required:true,max:255,field:"subject"}),startDateTime=parseDateTime(input.start?.dateTime,"start.dateTime"),endDateTime=parseDateTime(input.end?.dateTime,"end.dateTime");if(new Date(endDateTime)<=new Date(startDateTime))return res.status(400).json({message:"end.dateTime must be after start.dateTime"});const startTimeZone=cleanString(input.start?.timeZone,{max:100,field:"start.timeZone"})||"UTC",endTimeZone=cleanString(input.end?.timeZone,{max:100,field:"end.timeZone"})||startTimeZone,bodyContent=cleanString(input.body?.content,{max:20000,field:"body.content"}),bodyContentType=input.body?.contentType==="HTML"?"HTML":"Text",locationName=cleanString(input.location?.displayName,{max:500,field:"location.displayName"}),event={subject,start:{dateTime:startDateTime,timeZone:startTimeZone},end:{dateTime:endDateTime,timeZone:endTimeZone},...(bodyContent?{body:{contentType:bodyContentType,content:bodyContent}}:{}),...(locationName?{location:{displayName:locationName}}:{})};return res.status(201).json(await graphPost("/me/events",await oboAcquire(["https://graph.microsoft.com/Calendars.ReadWrite"],req.microsoftAccessToken),event));}catch(e){next(e);}});
+router.post("/sendMail",async(req,res,next)=>{try{const{to,html,text}=req.body||{},subject=cleanString(req.body?.subject,{required:true,max:255,field:"subject"}),htmlContent=cleanString(html,{max:50000,field:"html"}),textContent=cleanString(text,{max:50000,field:"text"});if(!htmlContent&&!textContent)return res.status(400).json({message:"html or text content is required"});await sendGraphMail(req.microsoftAccessToken,{to,subject,html:htmlContent,text:textContent});return res.status(202).json({ok:true});}catch(e){next(e);}});
 
-function normalizeRecipients(to) {
-  const source = Array.isArray(to) ? to : [to];
-  const recipients = source
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean);
+// Creates the external approval request/action and sends it from the initiating
+// user's connected Microsoft mailbox. The raw action token never reaches browser code.
+router.post("/workflow/quotation-approval",async(req,res,next)=>{try{const schoolId=cleanString(req.body?.schoolId,{required:true,max:100,field:"schoolId"}),tripId=Number(req.body?.tripId),approverEmail=String(req.body?.approverEmail||"").trim().toLowerCase();if(!Number.isInteger(tripId)||tripId<=0)return res.status(400).json({message:"tripId must be a positive integer"});if(!EMAIL_RE.test(approverEmail))return res.status(400).json({message:"A valid approverEmail is required"});const c=await operationalPrismaForWorkspace(req.user,schoolId,PERMISSIONS.TRIP_READ),trip=await c.prisma.trip.findFirst({where:{id:tripId,owningSchoolOrganizationId:c.workspace.schoolId},select:{id:true,status:true,createdByAppUserId:true,destination:true}});if(!trip)return res.status(404).json({message:"Trip not found"});if(!canReadWorkspaceTrip({access:c.access,workspace:c.workspace,trip}))return res.status(403).json({message:"Forbidden"});if(trip.status!=="Quotation Submitted")return res.status(409).json({message:"Approval can only be requested for a submitted quotation"});const quotation=await c.prisma.tripQuotation.findFirst({where:{tripId,status:"submitted"},orderBy:{version:"desc"}});if(!quotation)return res.status(409).json({message:"Submitted quotation not found"});const actorId=String(c.access?.user?.appUserId||"").trim()||null;const created=await c.prisma.$transaction(async tx=>{await tx.tripApprovalRequest.updateMany({where:{tripId,quotationId:quotation.id,status:"pending"},data:{status:"superseded",decidedAt:new Date(),decisionNote:"Superseded by a newer approval request"}});await tx.externalWorkflowAction.updateMany({where:{tripId,quotationId:quotation.id,consumedAt:null,revokedAt:null},data:{revokedAt:new Date()}});const approval=await tx.tripApprovalRequest.create({data:{tripId,quotationId:quotation.id,status:"pending",requestedByAppUserId:actorId,approverEmail,channel:"microsoft"}});const issued=await issueExternalWorkflowAction({prisma:tx,tripId,quotationId:quotation.id,approvalRequestId:approval.id,recipientEmail:approverEmail,participantOrganizationId:req.body?.participantOrganizationId||null,allowedActions:[EXTERNAL_ACTIONS.APPROVE_QUOTATION,EXTERNAL_ACTIONS.DECLINE_QUOTATION],channel:"microsoft"});return{approval,issued};});try{const actionUrl=externalApprovalUrl({schoolId,token:created.issued.token}),message=quotationApprovalMessage({recipientEmail:approverEmail,quotation,trip,actionUrl});await sendGraphMail(req.microsoftAccessToken,message);}catch(error){await c.prisma.$transaction([c.prisma.tripApprovalRequest.update({where:{id:created.approval.id},data:{status:"delivery_failed",decidedAt:new Date(),decisionNote:"Microsoft mail delivery failed"}}),c.prisma.externalWorkflowAction.update({where:{id:created.issued.action.id},data:{revokedAt:new Date()}})]);throw error;}return res.status(202).json({ok:true,approvalRequestId:created.approval.id,expiresAt:created.issued.action.expiresAt});}catch(e){next(e);}});
 
-  if (!recipients.length || recipients.length > 50) {
-    const error = new Error("Between 1 and 50 recipients are required");
-    error.status = 400;
-    throw error;
-  }
-
-  for (const address of recipients) {
-    if (address.length > 254 || !EMAIL_RE.test(address)) {
-      const error = new Error("One or more recipient email addresses are invalid");
-      error.status = 400;
-      throw error;
-    }
-  }
-  return [...new Set(recipients)];
-}
-
-router.get("/me", async (req, res, next) => {
-  try {
-    const scopes = (process.env.MS_GRAPH_DEFAULT_SCOPES || "https://graph.microsoft.com/User.Read")
-      .split(/\s+/)
-      .filter(Boolean);
-    const userToken = await oboAcquire(scopes, req.microsoftAccessToken);
-    const me = await graphGet("/me", userToken);
-    return res.json(me);
-  } catch (e) {
-    return next(e);
-  }
-});
-
-router.post("/events", async (req, res, next) => {
-  try {
-    const input = req.body || {};
-    const subject = cleanString(input.subject, { required: true, max: 255, field: "subject" });
-    const startDateTime = parseDateTime(input.start?.dateTime, "start.dateTime");
-    const endDateTime = parseDateTime(input.end?.dateTime, "end.dateTime");
-
-    if (new Date(endDateTime) <= new Date(startDateTime)) {
-      return res.status(400).json({ message: "end.dateTime must be after start.dateTime" });
-    }
-
-    const startTimeZone = cleanString(input.start?.timeZone, { max: 100, field: "start.timeZone" }) || "UTC";
-    const endTimeZone = cleanString(input.end?.timeZone, { max: 100, field: "end.timeZone" }) || startTimeZone;
-    const bodyContent = cleanString(input.body?.content, { max: 20_000, field: "body.content" });
-    const bodyContentType = input.body?.contentType === "HTML" ? "HTML" : "Text";
-    const locationName = cleanString(input.location?.displayName, { max: 500, field: "location.displayName" });
-
-    const event = {
-      subject,
-      start: { dateTime: startDateTime, timeZone: startTimeZone },
-      end: { dateTime: endDateTime, timeZone: endTimeZone },
-      ...(bodyContent ? { body: { contentType: bodyContentType, content: bodyContent } } : {}),
-      ...(locationName ? { location: { displayName: locationName } } : {}),
-    };
-
-    const graphToken = await oboAcquire(
-      ["https://graph.microsoft.com/Calendars.ReadWrite"],
-      req.microsoftAccessToken
-    );
-    const created = await graphPost("/me/events", graphToken, event);
-    return res.status(201).json(created);
-  } catch (e) {
-    return next(e);
-  }
-});
-
-router.post("/sendMail", async (req, res, next) => {
-  try {
-    const { to, html, text } = req.body || {};
-    const recipients = normalizeRecipients(to);
-    const subject = cleanString(req.body?.subject, { required: true, max: 255, field: "subject" });
-    const htmlContent = cleanString(html, { max: 50_000, field: "html" });
-    const textContent = cleanString(text, { max: 50_000, field: "text" });
-    if (!htmlContent && !textContent) {
-      return res.status(400).json({ message: "html or text content is required" });
-    }
-
-    const message = {
-      message: {
-        subject,
-        body: {
-          contentType: htmlContent ? "HTML" : "Text",
-          content: htmlContent || textContent,
-        },
-        toRecipients: recipients.map((address) => ({ emailAddress: { address } })),
-      },
-      saveToSentItems: true,
-    };
-
-    const graphToken = await oboAcquire(
-      ["https://graph.microsoft.com/Mail.Send"],
-      req.microsoftAccessToken
-    );
-    await graphPost("/me/sendMail", graphToken, message);
-    return res.status(202).json({ ok: true });
-  } catch (e) {
-    return next(e);
-  }
-});
-
-router.get("/admin-consent-url", requireAdmin, (req, res) => {
-  const clientId = process.env.MS_API_CLIENT_ID;
-  const configuredRedirect = process.env.MS_ADMIN_CONSENT_REDIRECT_URI;
-  if (!clientId || !configuredRedirect) {
-    return res.status(503).json({ message: "Microsoft admin consent is not configured" });
-  }
-
-  if (req.query.redirect_uri && String(req.query.redirect_uri) !== configuredRedirect) {
-    return res.status(400).json({ message: "redirect_uri is not allowed" });
-  }
-
-  const tenant = process.env.MS_TENANT_ID || "common";
-  const params = new URLSearchParams({
-    client_id: clientId,
-    scope: ".default",
-    redirect_uri: configuredRedirect,
-  });
-  const url = `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/v2.0/adminconsent?${params.toString()}`;
-  return res.json({ url });
-});
-
+router.get("/admin-consent-url",requireAdmin,(req,res)=>{const clientId=process.env.MS_API_CLIENT_ID,configuredRedirect=process.env.MS_ADMIN_CONSENT_REDIRECT_URI;if(!clientId||!configuredRedirect)return res.status(503).json({message:"Microsoft admin consent is not configured"});if(req.query.redirect_uri&&String(req.query.redirect_uri)!==configuredRedirect)return res.status(400).json({message:"redirect_uri is not allowed"});const tenant=process.env.MS_TENANT_ID||"common",params=new URLSearchParams({client_id:clientId,scope:".default",redirect_uri:configuredRedirect});return res.json({url:`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/v2.0/adminconsent?${params.toString()}`});});
 export default router;
