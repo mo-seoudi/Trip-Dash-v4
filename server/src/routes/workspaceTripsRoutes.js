@@ -25,7 +25,9 @@ function nullableMoney(value, fallback = null) {
 }
 function nullableDate(value, field) { if (value === "" || value === null || value === undefined) return null; const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) { const error = new Error(`${field} must be a valid date`); error.status = 400; throw error; } return parsed; }
 function buildTripPatch(body = {}) {
-  const supported = ["tripType","destination","origin","date","departureTime","returnDate","returnTime","students","staff","status","price","notes","cancelRequest","busInfo","driverInfo","buses","boosterSeatsRequested","boosterSeatCount"];
+  // Lifecycle state is server-owned. status/cancelRequest must only change through
+  // explicit /workflow endpoints, never through the generic trip editor.
+  const supported = ["tripType","destination","origin","date","departureTime","returnDate","returnTime","students","staff","price","notes","busInfo","driverInfo","buses","boosterSeatsRequested","boosterSeatCount"];
   const patch = {};
   for (const key of supported) {
     if (body[key] === undefined) continue;
@@ -33,7 +35,7 @@ function buildTripPatch(body = {}) {
     else if (["students", "staff"].includes(key)) patch[key] = nullableNumber(body[key]);
     else if (key === "price") patch[key] = nullableMoney(body[key], "0.00");
     else if (key === "boosterSeatCount") patch[key] = nullableNumber(body[key], 0);
-    else if (["cancelRequest", "boosterSeatsRequested"].includes(key)) patch[key] = Boolean(body[key]);
+    else if (key === "boosterSeatsRequested") patch[key] = Boolean(body[key]);
     else patch[key] = body[key];
   }
   return patch;
@@ -41,7 +43,7 @@ function buildTripPatch(body = {}) {
 function patchPermission(patch) {
   const fields = Object.keys(patch);
   if (fields.length && fields.every((field) => field === "price")) return PERMISSIONS.FINANCE_MANAGE_PRICE;
-  if (fields.some((field) => ["status", "busInfo", "driverInfo", "buses"].includes(field))) return PERMISSIONS.TRIP_RESPOND;
+  if (fields.some((field) => ["busInfo", "driverInfo", "buses"].includes(field))) return PERMISSIONS.TRIP_RESPOND;
   return PERMISSIONS.TRIP_EDIT_REQUEST;
 }
 function schoolTripWhere(schoolId, extra = null) { const base = { owningSchoolOrganizationId: schoolId }; return extra && Object.keys(extra).length ? { AND: [base, extra] } : base; }
@@ -91,6 +93,9 @@ router.post("/", async (req, res, next) => {
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id); if (!id) return res.status(400).json({ message: "Invalid trip id" });
+    if (req.body?.status !== undefined || req.body?.cancelRequest !== undefined) {
+      return res.status(400).json({ message: "Trip lifecycle fields must be changed through workflow actions" });
+    }
     const patch = buildTripPatch(req.body || {}); if (!Object.keys(patch).length) return res.status(400).json({ message: "No supported fields supplied" });
     const { prisma, access, workspace } = await operationalPrismaForWorkspace(req.user, req.params.schoolId, patchPermission(patch));
     const existing = await findSchoolTrip(prisma, workspace.schoolId, id); if (!existing) return res.status(404).json({ message: "Trip not found" });
