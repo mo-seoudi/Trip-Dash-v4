@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { PrismaClient as PrismaControl } from "../src/prisma-control/index.js";
+import { PERMISSIONS, ROLE_KEYS, ROLE_PERMISSION_CATALOG } from "../src/services/accessCatalog.js";
 import { seedControlPlaneReferenceData } from "../src/services/controlPlaneSeed.js";
 import { buildAccessV2BackfillPlan } from "../src/services/accessV2BackfillPlan.js";
 import { writeControlPlaneBackfill } from "../src/services/controlPlaneBackfill.js";
@@ -29,7 +30,11 @@ async function reset(prisma) {
 }
 
 function expectedLegacyAccess() {
-  const permissions = ["organization.read", "trip.read", "trip.create", "trip.edit_request", "trip.cancel", "bus_assignment.read", "passenger.read", "passenger.manage", "passenger.allocate"].sort();
+  // This fixture represents the transitional group-staff contract. Keep it tied
+  // to the application catalog so adding an intentional workflow permission does
+  // not look like an accidental canonical-only security expansion.
+  const permissions = [...ROLE_PERMISSION_CATALOG[ROLE_KEYS.GROUP_STAFF]].sort();
+  assert.equal(permissions.includes(PERMISSIONS.TRIP_REQUEST_QUOTE_APPROVAL), true);
   return {
     source: "smoke-legacy-fixture",
     tenantId: "tenant-smoke",
