@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
-  updateWorkspaceTrip,
   deleteWorkspaceTrip,
+  acceptWorkspaceTrip,
+  rejectWorkspaceTrip,
   completeWorkspaceTrip,
   requestWorkspaceTripCancellation,
   resolveWorkspaceTripCancellation,
@@ -13,9 +14,6 @@ const useTripActions = (workspace, setTripData, setExpandedTripId) => {
   const [loading, setLoading] = useState(false);
   const { activeWorkspace } = useAuth();
 
-  // Transitional callers may still pass something other than a workspace.
-  // Canonical trip writes must always resolve to an authorized workspace and
-  // never fall back to the legacy global /api/trips endpoint.
   const resolvedWorkspace = workspace?.schoolId ? workspace : activeWorkspace;
   const schoolId = resolvedWorkspace?.schoolId;
 
@@ -30,10 +28,12 @@ const useTripActions = (workspace, setTripData, setExpandedTripId) => {
       const workspaceSchoolId = requireWorkspace();
       let updated;
 
-      // Lifecycle transitions with business meaning are server-owned actions.
-      // Generic PATCH remains temporarily for the earlier Accept/Reject stages
-      // until those stages are migrated to explicit workflow endpoints too.
-      if (nextStatus === "Completed") {
+      // Canonical lifecycle transitions are explicit server-owned actions.
+      if (nextStatus === "Accepted" && trip.status === "Pending") {
+        updated = await acceptWorkspaceTrip(workspaceSchoolId, trip.id);
+      } else if (nextStatus === "Rejected" && trip.status === "Pending") {
+        updated = await rejectWorkspaceTrip(workspaceSchoolId, trip.id);
+      } else if (nextStatus === "Completed") {
         updated = await completeWorkspaceTrip(workspaceSchoolId, trip.id);
       } else if (nextStatus === "Cancel Requested") {
         updated = await requestWorkspaceTripCancellation(workspaceSchoolId, trip.id);
@@ -44,7 +44,7 @@ const useTripActions = (workspace, setTripData, setExpandedTripId) => {
       } else if (nextStatus === "Canceled" && trip.status === "Pending") {
         updated = await cancelWorkspaceTrip(workspaceSchoolId, trip.id);
       } else {
-        updated = await updateWorkspaceTrip(workspaceSchoolId, trip.id, { status: nextStatus });
+        throw new Error(`Unsupported trip lifecycle transition: ${trip.status} → ${nextStatus}`);
       }
 
       setTripData?.((prev) => prev.map((t) => (t.id === trip.id ? { ...t, ...updated } : t)));
