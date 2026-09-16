@@ -11,4 +11,7 @@ const RequestCancel={label:"Request Cancel",icon:FaTimesCircle,nextStatus:"Cance
 const ApproveCancel={label:"Approve Cancel",icon:FaCheckCircle,nextStatus:"Canceled",color:"text-red-700 hover:text-red-900 border border-red-300"};
 const DeclineCancel={label:"Decline Request",icon:FaTimesCircle,nextStatus:"Confirmed",color:"text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400"};
 const DeleteIfCancelled={label:"Delete",icon:FaTrash,trigger:"softDeleteTrip",color:"text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400"};
-export const tripLifecycle={Pending:{actions:[Accept,Reject,CancelImmediate]},Accepted:{actions:[PrepareQuotation,RequestCancel,CancelImmediate]},"Quotation Submitted":{actions:[RequestCancel]},Approved:{actions:[Finalise,RequestCancel]},Confirmed:{actions:[Complete,RequestCancel,CancelImmediate]},"Cancel Requested":{actions:[ApproveCancel,DeclineCancel]},Rejected:{actions:[]},Completed:{actions:[]},Canceled:{actions:[DeleteIfCancelled]}};
+// Direct cancellation is intentionally limited to Pending. Once accepted, every
+// cancellation goes through the request/resolve workflow so an operator decision
+// is recorded and the client cannot offer an action the API will reject.
+export const tripLifecycle={Pending:{actions:[Accept,Reject,CancelImmediate]},Accepted:{actions:[PrepareQuotation,RequestCancel]},"Quotation Submitted":{actions:[RequestCancel]},Approved:{actions:[Finalise,RequestCancel]},Confirmed:{actions:[Complete,RequestCancel]},"Cancel Requested":{actions:[ApproveCancel,DeclineCancel]},Rejected:{actions:[]},Completed:{actions:[]},Canceled:{actions:[DeleteIfCancelled]}};
