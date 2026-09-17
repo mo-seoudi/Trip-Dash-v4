@@ -30,22 +30,43 @@ function touch(entry) {
 }
 
 /**
- * Return a Prisma client for an already-authorized school organization.
- * Datasource and secret selection are resolved by the control plane; callers
- * never provide a database URL or vault secret.
+ * Resolve the infrastructure context for an already-authorized school.
+ * The control plane owns datasource selection and supplies the tenant partition
+ * attached to that datasource; operational services must not derive tenant
+ * scope from user access or accept it from the client.
  */
-export async function getOperationalPrismaForOrganization(organizationId) {
+export async function getOperationalContextForOrganization(organizationId) {
   const resolved = await resolveOperationalDataSource(organizationId);
   const existing = clientCache.get(resolved.id);
-  if (existing) return touch(existing);
+  const prisma = existing ? touch(existing) : createClient(resolved.connectionUrl);
 
-  const client = createClient(resolved.connectionUrl);
-  clientCache.set(resolved.id, {
-    client,
-    lastUsedAt: Date.now(),
-    providerLabel: resolved.providerLabel || null,
-  });
-  return client;
+  if (!existing) {
+    clientCache.set(resolved.id, {
+      client: prisma,
+      lastUsedAt: Date.now(),
+      providerLabel: resolved.providerLabel || null,
+    });
+  }
+
+  return {
+    prisma,
+    dataSource: {
+      id: resolved.id,
+      tenantId: resolved.tenantId,
+      organizationId: resolved.organizationId,
+      engine: resolved.engine,
+      providerLabel: resolved.providerLabel || null,
+      schemaVersion: resolved.schemaVersion || null,
+    },
+  };
+}
+
+/**
+ * Compatibility helper for callers that only need the routed Prisma client.
+ */
+export async function getOperationalPrismaForOrganization(organizationId) {
+  const { prisma } = await getOperationalContextForOrganization(organizationId);
+  return prisma;
 }
 
 export async function evictOperationalClient(dataSourceId) {
