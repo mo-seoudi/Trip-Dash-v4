@@ -11,6 +11,38 @@ datasource db {
   url      = env("OPERATIONAL_DATABASE_URL")
 }
 
+model BusBooking {
+  id                         Int      @id @default(autoincrement())
+  createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByAppUserId         String?  @map("created_by_app_user_id")
+  owningSchoolOrganizationId String   @map("owning_school_organization_id")
+  requestingOrganizationId   String   @map("requesting_organization_id")
+  payerOrganizationId        String?  @map("payer_organization_id")
+  title                      String?
+  purpose                    String?
+  date                       DateTime? @db.Date
+  startTime                  String?  @map("start_time")
+  endDate                    DateTime? @map("end_date") @db.Date
+  endTime                    String?  @map("end_time")
+  durationMinutes            Int?     @map("duration_minutes")
+  students                   Int      @default(0)
+  adults                     Int      @default(0)
+  totalPassengers            Int      @default(0) @map("total_passengers")
+  pickupPoints               Json?    @map("pickup_points")
+  dropoffPoints              Json?    @map("dropoff_points")
+  busesRequested             Int?     @map("buses_requested")
+  busType                    String?  @map("bus_type")
+  notes                      String?
+  status                     String   @default("requested")
+
+  @@index([owningSchoolOrganizationId, createdAt])
+  @@index([requestingOrganizationId])
+  @@index([payerOrganizationId])
+  @@index([status])
+  @@map("bus_bookings")
+}
+
 model TripSeries {
   id                              String   @id @default(uuid())
   createdAt                       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
