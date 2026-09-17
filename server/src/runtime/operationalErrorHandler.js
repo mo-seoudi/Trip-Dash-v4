@@ -2,6 +2,7 @@ import { OperationalAuthorizationError } from "../services/authorizedOperational
 import { OperationalServiceContextError } from "./operationalService.js";
 import { TripNotFoundError, TripValidationError } from "../domain/trips/tripService.js";
 import { PassengerNotFoundError } from "../domain/trips/passengerService.js";
+import { BusAssignmentNotFoundError, PassengerAllocationConflictError } from "../domain/trips/passengerAllocationService.js";
 
 export function operationalErrorHandler(error, _req, res, next) {
   const known =
@@ -9,7 +10,9 @@ export function operationalErrorHandler(error, _req, res, next) {
     error instanceof OperationalServiceContextError ||
     error instanceof TripValidationError ||
     error instanceof TripNotFoundError ||
-    error instanceof PassengerNotFoundError;
+    error instanceof PassengerNotFoundError ||
+    error instanceof BusAssignmentNotFoundError ||
+    error instanceof PassengerAllocationConflictError;
 
   if (!known) return next(error);
 
