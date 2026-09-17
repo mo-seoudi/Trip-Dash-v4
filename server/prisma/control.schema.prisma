@@ -56,6 +56,12 @@ enum DataSourceMode {
   CUSTOMER_POSTGRES
 }
 
+enum SecretProviderType {
+  ENVIRONMENT
+  INFISICAL
+  GENERIC_VAULT
+}
+
 model Tenant {
   id          String   @id @default(uuid())
   name        String
@@ -69,6 +75,7 @@ model Tenant {
   roleAssignments        RoleAssignment[]
   auditEvents             AuditEvent[]
   operationalDataSources OperationalDataSource[]
+  secretProviders        SecretProvider[]
 
   @@map("tenants")
 }
@@ -260,24 +267,65 @@ model RoleAssignment {
   @@map("role_assignments")
 }
 
+model SecretProvider {
+  id          String             @id @default(uuid())
+  tenantId    String?            @map("tenant_id")
+  key         String             @unique
+  displayName String             @map("display_name")
+  type        SecretProviderType
+  config      Json?
+  isActive    Boolean            @default(true) @map("is_active")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  credentials DataSourceCredential[]
+
+  @@index([tenantId])
+  @@index([type, isActive])
+  @@map("secret_providers")
+}
+
+model DataSourceCredential {
+  id               String   @id @default(uuid())
+  dataSourceId     String   @unique @map("data_source_id")
+  secretProviderId String   @map("secret_provider_id")
+  secretReference  String   @map("secret_reference")
+  secretKey        String?  @map("secret_key")
+  version          String?
+  isActive         Boolean  @default(true) @map("is_active")
+  lastResolvedAt   DateTime? @map("last_resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource     OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  secretProvider SecretProvider        @relation(fields: [secretProviderId], references: [id], onDelete: Restrict)
+
+  @@index([secretProviderId, isActive])
+  @@map("data_source_credentials")
+}
+
 model OperationalDataSource {
   id             String         @id @default(uuid())
   tenantId       String         @map("tenant_id")
   organizationId String?        @map("organization_id")
+  name           String
   mode           DataSourceMode @default(HOSTED)
-  provider       String         @default("postgresql")
+  engine         String         @default("postgresql")
+  providerLabel  String?        @map("provider_label")
   region         String?
-  secretRef      String?        @map("secret_ref")
   isActive       Boolean        @default(true) @map("is_active")
+  schemaVersion  String?        @map("schema_version")
   lastVerifiedAt DateTime?      @map("last_verified_at") @db.Timestamptz(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credential   DataSourceCredential?
 
   @@index([tenantId])
-  @@index([organizationId])
+  @@index([organizationId, isActive])
   @@map("operational_data_sources")
 }
 
