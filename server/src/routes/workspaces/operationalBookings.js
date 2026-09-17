@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { operationalRequestContext, requireOperationalContext } from "../../runtime/operationalRequestContext.js";
+import { listBookings, getBooking, createBooking, updateBooking, deleteBooking } from "../../domain/bookings/bookingController.js";
+const router=Router({mergeParams:true});
+router.get("/bookings",operationalRequestContext("trip.read"),requireOperationalContext,listBookings);
+router.post("/bookings",operationalRequestContext("trip.create"),requireOperationalContext,createBooking);
+router.get("/bookings/:bookingId",operationalRequestContext("trip.read"),requireOperationalContext,getBooking);
+router.patch("/bookings/:bookingId",operationalRequestContext("trip.edit_request"),requireOperationalContext,updateBooking);
+router.delete("/bookings/:bookingId",operationalRequestContext("trip.delete"),requireOperationalContext,deleteBooking);
+export default router;
