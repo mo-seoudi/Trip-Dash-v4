@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { operationalRequestContext, requireOperationalContext } from "../../runtime/operationalRequestContext.js";
-import { listTrips, getTrip, createTrip } from "../../domain/trips/tripController.js";
+import { listTrips, getTrip, createTrip, updateTrip, cancelTrip, deleteTrip } from "../../domain/trips/tripController.js";
 import { listBusAssignments, createBusAssignment } from "../../domain/trips/busAssignmentController.js";
 import { listPassengers, addPassengers, updatePassenger, removePassenger } from "../../domain/trips/passengerController.js";
 import { listPassengerAllocations, allocatePassenger, movePassenger, unallocatePassenger } from "../../domain/trips/passengerAllocationController.js";
@@ -10,6 +10,9 @@ const router = Router({ mergeParams: true });
 router.get("/trips", operationalRequestContext("trip.read"), requireOperationalContext, listTrips);
 router.post("/trips", operationalRequestContext("trip.create"), requireOperationalContext, createTrip);
 router.get("/trips/:tripId", operationalRequestContext("trip.read"), requireOperationalContext, getTrip);
+router.patch("/trips/:tripId", operationalRequestContext("trip.edit_request"), requireOperationalContext, updateTrip);
+router.post("/trips/:tripId/cancel", operationalRequestContext("trip.cancel"), requireOperationalContext, cancelTrip);
+router.delete("/trips/:tripId", operationalRequestContext("trip.delete"), requireOperationalContext, deleteTrip);
 
 router.get("/trips/:tripId/bus-assignments", operationalRequestContext("trip.read"), requireOperationalContext, listBusAssignments);
 router.post("/trips/:tripId/bus-assignments", operationalRequestContext("bus_assignment.manage"), requireOperationalContext, createBusAssignment);
