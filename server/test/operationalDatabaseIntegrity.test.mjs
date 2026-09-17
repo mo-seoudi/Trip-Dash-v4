@@ -14,8 +14,6 @@ function assertDisposableUrl(url) {
 }
 
 async function reset(prisma) {
-  // Keep this reset list aligned strictly with the canonical operational schema.
-  // Legacy BusBooking/SubTrip tables are intentionally not part of this database.
   await prisma.$transaction([
     prisma.tripBusPassengerAllocation.deleteMany(),
     prisma.tripPassengerPayment.deleteMany(),
@@ -27,8 +25,9 @@ async function reset(prisma) {
 
 function tripData(destination) {
   return {
-    tenantId: "tenant-smoke",
     owningSchoolOrganizationId: "school-a",
+    requestingOrganizationId: "school-a",
+    payerOrganizationId: "school-a",
     destination,
     date: new Date("2026-09-17T00:00:00.000Z"),
   };
@@ -46,20 +45,9 @@ test("operational database enforces one bus per passenger within a trip", { skip
     const bus1 = await prisma.tripBusAssignment.create({ data: { tripId: trip.id, sequence: 1, seatCapacity: 30 } });
     const bus2 = await prisma.tripBusAssignment.create({ data: { tripId: trip.id, sequence: 2, seatCapacity: 30 } });
     const otherTripBus = await prisma.tripBusAssignment.create({ data: { tripId: otherTrip.id, sequence: 1, seatCapacity: 30 } });
-
     await prisma.tripBusPassengerAllocation.create({ data: { tripId: trip.id, tripPassengerId: passenger.id, busAssignmentId: bus1.id } });
-    await assert.rejects(
-      prisma.tripBusPassengerAllocation.create({ data: { tripId: trip.id, tripPassengerId: passenger.id, busAssignmentId: bus2.id } }),
-      (error) => error?.code === "P2002",
-    );
-
-    // PostgreSQL may report either compound FK first: passenger+trip or bus+trip.
-    // Both are the desired fail-closed result: an allocation cannot cross Trip boundaries.
-    await assert.rejects(
-      prisma.tripBusPassengerAllocation.create({ data: { tripId: otherTrip.id, tripPassengerId: passenger.id, busAssignmentId: otherTripBus.id } }),
-      (error) => error?.code === "P2003" || /Foreign key constraint violated/.test(String(error?.message || "")),
-    );
-
+    await assert.rejects(prisma.tripBusPassengerAllocation.create({ data: { tripId: trip.id, tripPassengerId: passenger.id, busAssignmentId: bus2.id } }), (error) => error?.code === "P2002");
+    await assert.rejects(prisma.tripBusPassengerAllocation.create({ data: { tripId: otherTrip.id, tripPassengerId: passenger.id, busAssignmentId: otherTripBus.id } }), (error) => error?.code === "P2003" || /Foreign key constraint violated/.test(String(error?.message || "")));
     await prisma.tripBusPassengerAllocation.create({ data: { tripId: otherTrip.id, tripPassengerId: samePersonOtherTrip.id, busAssignmentId: otherTripBus.id } });
     assert.equal(await prisma.tripBusPassengerAllocation.count(), 2);
   } finally {
