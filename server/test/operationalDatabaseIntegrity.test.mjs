@@ -14,11 +14,24 @@ function assertDisposableUrl(url) {
 }
 
 async function reset(prisma) {
+  // Keep this reset list aligned strictly with the canonical operational schema.
+  // Legacy BusBooking/SubTrip tables are intentionally not part of this database.
   await prisma.$transaction([
-    prisma.tripBusPassengerAllocation.deleteMany(), prisma.tripPassengerPayment.deleteMany(),
-    prisma.tripBusAssignment.deleteMany(), prisma.tripPassenger.deleteMany(),
-    prisma.busBooking.deleteMany(), prisma.trip.deleteMany(),
+    prisma.tripBusPassengerAllocation.deleteMany(),
+    prisma.tripPassengerPayment.deleteMany(),
+    prisma.tripBusAssignment.deleteMany(),
+    prisma.tripPassenger.deleteMany(),
+    prisma.trip.deleteMany(),
   ]);
+}
+
+function tripData(destination) {
+  return {
+    tenantId: "tenant-smoke",
+    owningSchoolOrganizationId: "school-a",
+    destination,
+    date: new Date("2026-09-17T00:00:00.000Z"),
+  };
 }
 
 test("operational database enforces one bus per passenger within a trip", { skip: !enabled }, async () => {
@@ -26,8 +39,8 @@ test("operational database enforces one bus per passenger within a trip", { skip
   const prisma = new PrismaOperational();
   try {
     await reset(prisma);
-    const trip = await prisma.trip.create({ data: { owningSchoolOrganizationId: "school-a", destination: "Museum" } });
-    const otherTrip = await prisma.trip.create({ data: { owningSchoolOrganizationId: "school-a", destination: "Sports City" } });
+    const trip = await prisma.trip.create({ data: tripData("Museum") });
+    const otherTrip = await prisma.trip.create({ data: tripData("Sports City") });
     const passenger = await prisma.tripPassenger.create({ data: { tripId: trip.id, fullName: "Passenger A" } });
     const samePersonOtherTrip = await prisma.tripPassenger.create({ data: { tripId: otherTrip.id, fullName: "Passenger A" } });
     const bus1 = await prisma.tripBusAssignment.create({ data: { tripId: trip.id, sequence: 1, seatCapacity: 30 } });
@@ -60,7 +73,7 @@ test("deleting a trip cascades its assignments passengers and allocations", { sk
   const prisma = new PrismaOperational();
   try {
     await reset(prisma);
-    const trip = await prisma.trip.create({ data: { owningSchoolOrganizationId: "school-a" } });
+    const trip = await prisma.trip.create({ data: tripData("Museum") });
     const passenger = await prisma.tripPassenger.create({ data: { tripId: trip.id, fullName: "Passenger" } });
     const bus = await prisma.tripBusAssignment.create({ data: { tripId: trip.id, sequence: 1 } });
     await prisma.tripBusPassengerAllocation.create({ data: { tripId: trip.id, tripPassengerId: passenger.id, busAssignmentId: bus.id } });
