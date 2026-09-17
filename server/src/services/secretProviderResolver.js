@@ -14,15 +14,21 @@ export class SecretResolutionError extends Error {
   }
 }
 
-export function registerSecretProviderAdapter(type, adapter) {
-  if (!type || typeof adapter?.resolve !== "function") {
+export function registerSecretProviderAdapter(key, adapter) {
+  if (!key || typeof adapter?.resolve !== "function") {
     throw new TypeError("Secret provider adapter must expose resolve(context)");
   }
-  adapters.set(String(type).toUpperCase(), adapter);
+  adapters.set(String(key).toLowerCase(), adapter);
 }
 
-export function unregisterSecretProviderAdapter(type) {
-  adapters.delete(String(type).toUpperCase());
+export function unregisterSecretProviderAdapter(key) {
+  adapters.delete(String(key).toLowerCase());
+}
+
+function adapterKeyFor(provider) {
+  if (provider.type === "HOST_ENVIRONMENT") return "host-environment";
+  if (provider.type === "EXTERNAL_VAULT") return String(provider.adapterKey || "").toLowerCase();
+  return "";
 }
 
 export async function resolveSecret({ provider, credential }) {
@@ -33,12 +39,10 @@ export async function resolveSecret({ provider, credential }) {
     throw new SecretResolutionError("Datasource credential is inactive", "DATASOURCE_CREDENTIAL_INACTIVE");
   }
 
-  const adapter = adapters.get(String(provider.type).toUpperCase());
-  if (!adapter) {
-    throw new SecretResolutionError(
-      `No secret adapter registered for provider type ${provider.type}`,
-      "SECRET_PROVIDER_UNSUPPORTED"
-    );
+  const key = adapterKeyFor(provider);
+  const adapter = adapters.get(key);
+  if (!key || !adapter) {
+    throw new SecretResolutionError("No compatible secret adapter is registered", "SECRET_PROVIDER_UNSUPPORTED");
   }
 
   const value = await adapter.resolve({ provider, credential });
@@ -48,18 +52,17 @@ export async function resolveSecret({ provider, credential }) {
   return value;
 }
 
-// Environment-backed secrets are useful when the backend host (for example
-// Render) owns secret storage. The control plane stores only the environment
-// variable name in DataSourceCredential.secretReference.
-registerSecretProviderAdapter("ENVIRONMENT", {
+// A backend host may own secret storage. The control plane stores only the
+// environment-variable name in DataSourceCredential.secretReference.
+registerSecretProviderAdapter("host-environment", {
   async resolve({ credential }) {
     const variableName = credential.secretReference;
     if (!variableName || !/^[A-Z_][A-Z0-9_]*$/i.test(variableName)) {
-      throw new SecretResolutionError("Invalid environment secret reference", "INVALID_SECRET_REFERENCE");
+      throw new SecretResolutionError("Invalid host secret reference", "INVALID_SECRET_REFERENCE");
     }
     const value = process.env[variableName];
     if (!value) {
-      throw new SecretResolutionError("Configured environment secret is unavailable", "SECRET_NOT_FOUND");
+      throw new SecretResolutionError("Configured host secret is unavailable", "SECRET_NOT_FOUND");
     }
     return value;
   },
