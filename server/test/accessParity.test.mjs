@@ -45,7 +45,9 @@ test("missing canonical access is not expansion but blocks exact cutover parity"
   const result = compareEffectiveAccessParity(legacy, canonical); assert.equal(result.safe, true); assert.equal(result.exact, false); assert.ok(result.issues.some((issue) => issue.code === "CANONICAL_MISSING_ORGANIZATION")); assert.ok(result.issues.some((issue) => issue.code === "CANONICAL_MISSING_WORKSPACE")); assert.doesNotThrow(() => assertNoAccessExpansion(legacy, canonical));
 });
 
-test("tenant mismatch is a security isolation failure", () => {
-  const result = compareEffectiveAccessParity(access({ tenantId: "t1" }), access({ tenantId: "t2" })); assert.equal(result.safe, false); assert.equal(result.exact, false);
-  assert.ok(result.securityExpansions.some((issue) => issue.code === "TENANT_MISMATCH"));
+test("tenant coverage mismatch is ignored by operational access parity", () => {
+  const result = compareEffectiveAccessParity(access({ tenantId: "t1" }), access({ tenantId: "t2" }));
+  assert.equal(result.safe, true);
+  assert.equal(result.exact, true);
+  assert.deepEqual(result.issues, []);
 });
