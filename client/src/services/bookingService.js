@@ -1,25 +1,7 @@
-// client/src/services/bookingService.js
-
 import api from "./apiClient";
-
-export const listBookings = async (createdBy) => {
-  const { data } = await api.get("/bookings", {
-    params: createdBy ? { createdBy } : undefined,
-  });
-  return data;
-};
-
-export const createBooking = async (payload) => {
-  const { data } = await api.post("/bookings", payload);
-  return data;
-};
-
-export const updateBooking = async (id, patch) => {
-  const { data } = await api.patch(`/bookings/${id}`, patch);
-  return data;
-};
-
-export const deleteBooking = async (id) => {
-  const { data } = await api.delete(`/bookings/${id}`);
-  return data;
-};
+const school = value => { const id=String(value||"").trim(); if(!id) throw new Error("A school workspace is required for bookings"); return encodeURIComponent(id); };
+const base = schoolId => `/workspaces/${school(schoolId)}/bookings`;
+export const listBookings=async schoolId=>(await api.get(base(schoolId))).data;
+export const createBooking=async(schoolId,payload)=>(await api.post(base(schoolId),payload)).data;
+export const updateBooking=async(schoolId,id,patch)=>(await api.patch(`${base(schoolId)}/${id}`,patch)).data;
+export const deleteBooking=async(schoolId,id)=>(await api.delete(`${base(schoolId)}/${id}`)).data;
