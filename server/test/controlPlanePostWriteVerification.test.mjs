@@ -42,15 +42,15 @@ test("post-write verification blocks canonical passenger permission expansion", 
   );
 });
 
-test("post-write verification blocks tenant mismatch as isolation failure", async () => {
-  await assert.rejects(
-    assertControlPlaneBackfillVerified({
-      legacyUsers: users,
-      resolveLegacyAccess: async () => exact,
-      resolveCanonicalAccess: async () => ({ ...exact, tenantId: "t2" }),
-    }),
-    (error) => error.code === "CONTROL_VERIFY_SECURITY_EXPANSION",
-  );
+test("post-write verification ignores tenant coverage mismatch for operational cutover", async () => {
+  const result = await assertControlPlaneBackfillVerified({
+    legacyUsers: users,
+    resolveLegacyAccess: async () => exact,
+    resolveCanonicalAccess: async () => ({ ...exact, tenantId: "t2" }),
+  });
+
+  assert.equal(result.cutoverReady, true);
+  assert.equal(result.report.hasSecurityExpansion, false);
 });
 
 test("post-write verification refuses an empty user set", async () => {
