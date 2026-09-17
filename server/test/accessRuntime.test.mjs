@@ -54,31 +54,37 @@ test("canonical shadow failure never changes legacy authorization", async () => 
   assert.deepEqual(failure, { userId: "7", code: "CONTROL_DOWN" });
 });
 
-test("canonical mode returns canonical access only at exact parity", async () => {
-  const canonical = structuredClone(legacy);
+test("canonical mode uses only canonical control-plane access", async () => {
+  const canonical = { permissions: ["trip.read"], workspaces: [{ schoolId: "s1", permissions: ["trip.read"] }] };
+  let legacyCalls = 0;
   const result = await resolveRuntimeAccess({
-    user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
-    resolveLegacy: async () => legacy, resolveCanonical: async () => canonical,
+    user: { id: 7, email: "user@example.com" }, legacyPrisma: null, controlPrisma: {}, mode: "canonical",
+    resolveLegacy: async () => { legacyCalls += 1; throw new Error("legacy must not run"); },
+    resolveCanonical: async (_prisma, identity) => {
+      assert.deepEqual(identity, { id: "7", email: "user@example.com" });
+      return canonical;
+    },
   });
   assert.equal(result, canonical);
+  assert.equal(legacyCalls, 0);
 });
 
-test("canonical mode fails closed when parity is not exact", async () => {
-  await assert.rejects(
-    resolveRuntimeAccess({
-      user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
-      resolveLegacy: async () => legacy,
-      resolveCanonical: async () => ({ ...legacy, workspaces: [{ schoolId: "s1", permissions: [] }] }),
-    }),
-    (error) => error?.code === "CANONICAL_ACCESS_PARITY_REQUIRED" && error?.status === 503,
-  );
+test("canonical mode does not require runtime parity with legacy", async () => {
+  let legacyCalls = 0;
+  const canonical = { permissions: [], workspaces: [] };
+  const result = await resolveRuntimeAccess({
+    user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
+    resolveLegacy: async () => { legacyCalls += 1; return legacy; },
+    resolveCanonical: async () => canonical,
+  });
+  assert.equal(result, canonical);
+  assert.equal(legacyCalls, 0);
 });
 
 test("canonical mode fails closed if the control plane is unavailable", async () => {
   await assert.rejects(
     resolveRuntimeAccess({
-      user: { id: 7 }, legacyPrisma: {}, controlPrisma: {}, mode: "canonical",
-      resolveLegacy: async () => legacy,
+      user: { id: 7 }, legacyPrisma: null, controlPrisma: {}, mode: "canonical",
       resolveCanonical: async () => { throw new Error("control unavailable"); },
     }),
     (error) => error?.code === "CANONICAL_ACCESS_UNAVAILABLE" && error?.status === 503,
