@@ -1,12 +1,6 @@
 // Canonical control-plane backfill writer.
-//
-// Safety rules:
-// - caller injects the canonical control-plane Prisma client explicitly;
-// - execution is disabled unless an explicit non-production gate is supplied;
-// - the complete access graph is written in one transaction;
-// - reference Role/Permission rows must already exist in the destination.
-//
-// This module is intentionally not wired to an HTTP route, startup hook or CLI.
+// Tenant rows are platform subscription accounts only. Operational identity,
+// hierarchy and collaboration are represented by Organizations + Relationships.
 
 function requireExecutionGate({ allowWrite, environment }) {
   if (allowWrite !== true) {
@@ -31,6 +25,33 @@ function requireValidPlan(plan) {
   }
 }
 
+function tenantData(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    status: row.status || "active",
+    subscriptionMode: row.subscriptionMode || "FREE",
+    planKey: row.planKey ?? null,
+    billingContactEmail: row.billingContactEmail ?? null,
+    subscriptionStart: row.subscriptionStart ?? null,
+    subscriptionEnd: row.subscriptionEnd ?? null,
+  };
+}
+
+function organizationData(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    displayName: row.displayName,
+    fullName: row.fullName ?? null,
+    legalName: row.legalName ?? null,
+    abbreviation: row.abbreviation ?? null,
+    slug: row.slug,
+    status: row.status || "active",
+  };
+}
+
 export async function writeControlPlaneBackfill(prismaControl, plan, options = {}) {
   if (!prismaControl?.$transaction) throw new TypeError("canonical control-plane Prisma client is required");
   requireExecutionGate(options);
@@ -47,93 +68,100 @@ export async function writeControlPlaneBackfill(prismaControl, plan, options = {
       throw error;
     }
 
+    // Legacy tenants can be preserved as subscription accounts during migration,
+    // but no organization is operationally owned or isolated by them.
     for (const row of plan.tenants || []) {
-      await tx.tenant.upsert({
-        where: { id: row.id },
-        create: row,
-        update: { name: row.name, slug: row.slug, status: row.status, timezone: row.timezone },
-      });
+      const data = tenantData(row);
+      await tx.tenant.upsert({ where: { id: data.id }, create: data, update: data });
     }
 
-    // Parent links are written after all organizations exist so hierarchy order
-    // in the legacy snapshot cannot create a foreign-key failure.
     for (const row of plan.organizations || []) {
-      const { parentId, ...base } = row;
-      await tx.organization.upsert({
-        where: { id: row.id },
-        create: { ...base, parentId: null },
-        update: { ...base, parentId: null },
-      });
+      const data = organizationData(row);
+      await tx.organization.upsert({ where: { id: data.id }, create: data, update: data });
     }
+
+    // Preserve legacy tenant coverage only as commercial subscription coverage.
+    // It must never be used by Effective Access to create operational workspaces.
     for (const row of plan.organizations || []) {
-      if (row.parentId) {
-        await tx.organization.update({ where: { id: row.id }, data: { parentId: row.parentId } });
-      }
+      if (!row.tenantId) continue;
+      await tx.tenantOrganization.upsert({
+        where: { tenantId_organizationId: { tenantId: row.tenantId, organizationId: row.id } },
+        create: { tenantId: row.tenantId, organizationId: row.id, coverageType: "migrated" },
+        update: { coverageType: "migrated" },
+      });
     }
 
     for (const row of plan.users || []) {
       await tx.appUser.upsert({
         where: { id: row.id },
         create: row,
-        update: {
-          email: row.email,
-          displayName: row.displayName,
-          status: row.status,
-          legacyUserId: row.legacyUserId,
-        },
+        update: { email: row.email, displayName: row.displayName, status: row.status, legacyUserId: row.legacyUserId },
       });
     }
 
     for (const row of plan.memberships || []) {
       await tx.organizationMembership.upsert({
-        where: {
-          userId_organizationId: {
-            userId: row.userId,
-            organizationId: row.organizationId,
-          },
-        },
+        where: { userId_organizationId: { userId: row.userId, organizationId: row.organizationId } },
         create: row,
-        update: { status: row.status, isPrimary: row.isPrimary },
+        update: { status: row.status, isPrimary: row.isPrimary, jobTitle: row.jobTitle ?? undefined },
       });
     }
 
-    for (const row of plan.relationships || []) {
+    // Convert old parent links to the canonical organization graph if the plan
+    // did not already provide the relationship explicitly.
+    const relationships = [...(plan.relationships || [])];
+    const relationshipKeys = new Set(relationships.map((r) => `${r.fromOrganizationId}|${r.toOrganizationId}|${r.type}`));
+    for (const row of plan.organizations || []) {
+      if (!row.parentId) continue;
+      const key = `${row.id}|${row.parentId}|BELONGS_TO_GROUP`;
+      if (!relationshipKeys.has(key)) {
+        relationships.push({
+          id: `migrated-parent:${row.id}:${row.parentId}`,
+          fromOrganizationId: row.id,
+          toOrganizationId: row.parentId,
+          type: "BELONGS_TO_GROUP",
+          status: "active",
+          notes: "Migrated from legacy parent organization link",
+        });
+        relationshipKeys.add(key);
+      }
+    }
+
+    for (const row of relationships) {
       const data = {
         id: row.id,
         fromOrganizationId: row.fromOrganizationId,
         toOrganizationId: row.toOrganizationId,
         type: row.type,
-        status: row.status,
+        isPrimary: row.isPrimary === true,
+        status: row.status || "active",
+        validFrom: row.validFrom ?? null,
+        validUntil: row.validUntil ?? null,
         notes: row.notes ?? null,
       };
       await tx.organizationRelationship.upsert({
-        where: { id: row.id },
-        create: data,
-        update: {
+        where: { fromOrganizationId_toOrganizationId_type: {
           fromOrganizationId: data.fromOrganizationId,
           toOrganizationId: data.toOrganizationId,
           type: data.type,
-          status: data.status,
-          notes: data.notes,
-        },
+        } },
+        create: data,
+        update: data,
       });
     }
 
-    // Role assignments are migration-owned for these users. Replace them inside
-    // the transaction so rerunning a rehearsal/backfill cannot retain a legacy
-    // grant that was subsequently removed from the source access graph.
     const migratedUserIds = [...new Set((plan.users || []).map((row) => row.id))];
-    if (migratedUserIds.length) {
-      await tx.roleAssignment.deleteMany({ where: { userId: { in: migratedUserIds } } });
-    }
+    if (migratedUserIds.length) await tx.roleAssignment.deleteMany({ where: { userId: { in: migratedUserIds } } });
+
     for (const row of plan.roleAssignments || []) {
       await tx.roleAssignment.create({
         data: {
           userId: row.userId,
           roleId: roleIdByKey.get(row.roleKey),
           scopeType: row.scopeType,
-          tenantId: row.tenantId ?? null,
-          organizationId: row.organizationId ?? null,
+          // TENANT scope remains valid only for platform/subscription administration.
+          tenantId: row.scopeType === "TENANT" ? (row.tenantId ?? null) : null,
+          organizationId: row.scopeType === "ORGANIZATION" ? (row.organizationId ?? null) : null,
           isActive: row.isActive !== false,
         },
       });
@@ -145,10 +173,11 @@ export async function writeControlPlaneBackfill(prismaControl, plan, options = {
       counts: {
         tenants: plan.tenants?.length || 0,
         organizations: plan.organizations?.length || 0,
+        tenantCoverage: (plan.organizations || []).filter((row) => row.tenantId).length,
         appUsers: plan.users?.length || 0,
         memberships: plan.memberships?.length || 0,
         roleAssignments: plan.roleAssignments?.length || 0,
-        relationships: plan.relationships?.length || 0,
+        relationships: relationships.length,
       },
     };
   });
