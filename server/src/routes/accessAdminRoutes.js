@@ -1,25 +1,20 @@
-// Transitional access-control administration API backed by the legacy global
-// control-plane tables. Public contracts use canonical product terminology;
-// legacy storage details stay behind compatibility helpers until v2 migration.
+// Canonical access-control administration API.
+// Platform tenancy is commercial coverage; organizations and relationships form
+// the operational graph and are not owned by a tenant.
 
 import { Router } from "express";
-import { prismaGlobal } from "../lib/prismaGlobal.js";
+import { prismaControl } from "../lib/prismaControl.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
-import { canonicalOrganizationType, isLegacyBusOperatorType } from "../lib/legacyOrganizations.js";
-import { canonicalRoleKey } from "../services/accessCatalog.js";
-import {
-  deleteLegacyMembershipWithScopes,
-  updateLegacyMembershipWithScopes,
-} from "../services/legacyMembershipIntegrity.js";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
 const MAX_TEXT = 200;
-const ROLE_TO_LEGACY = new Map([
-  ["tenant_admin", "admin"], ["super_admin", "admin"], ["group_staff", "staff"],
-  ["school_staff", "school_staff"], ["service_partner", "trip_manager"],
-  ["bus_operator", "bus_company"], ["finance", "finance"],
+const RELATIONSHIP_TYPES = new Set([
+  "BELONGS_TO_GROUP",
+  "TRANSPORT_PROVIDER",
+  "TRIP_MANAGER",
+  "WORKS_WITH_TRANSPORT_PROVIDER",
 ]);
 
 function text(value, field, { required = false, max = MAX_TEXT } = {}) {
@@ -29,181 +24,142 @@ function text(value, field, { required = false, max = MAX_TEXT } = {}) {
   return result || null;
 }
 
-function legacyRole(role) {
-  const canonical = canonicalRoleKey(role);
-  const stored = ROLE_TO_LEGACY.get(canonical);
-  if (!stored) { const e = new Error("Unsupported role"); e.status = 400; throw e; }
-  return { canonical, stored };
-}
-
 function organizationView(org) {
   if (!org) return null;
   return {
-    id: org.id, tenant_id: org.tenantId, type: canonicalOrganizationType(org.type),
-    display_name: org.name, full_name: org.name, abbreviation: org.code || null,
-    parent_org_id: org.parentOrgId || null,
+    id: org.id,
+    type: org.type,
+    display_name: org.displayName,
+    full_name: org.fullName,
+    abbreviation: org.abbreviation,
+    slug: org.slug,
+    status: org.status,
   };
 }
 
-async function globalUserForRequest(req) {
-  return (await prismaGlobal.user.findFirst({ where: { legacyUserId: Number(req.user.id) } })) ||
-    prismaGlobal.user.findFirst({ where: { email: req.user.email } });
+async function appUserForRequest(req) {
+  const legacyUserId = Number(req.user?.id);
+  return prismaControl.appUser.findFirst({
+    where: {
+      OR: [
+        ...(Number.isInteger(legacyUserId) ? [{ legacyUserId }] : []),
+        ...(req.user?.email ? [{ email: req.user.email }] : []),
+      ],
+    },
+  });
 }
 
 async function assertTenantAdminAccess(req, tenantId) {
-  const globalUser = await globalUserForRequest(req);
-  if (globalUser?.tenantId && globalUser.tenantId !== tenantId) {
-    const e = new Error("Forbidden for this tenant"); e.status = 403; throw e;
-  }
-  return globalUser;
+  const user = await appUserForRequest(req);
+  if (!user) { const e = new Error("Canonical user identity not found"); e.status = 403; throw e; }
+  const role = await prismaControl.roleAssignment.findFirst({
+    where: {
+      userId: user.id,
+      isActive: true,
+      OR: [
+        { scopeType: "PLATFORM", role: { key: "super_admin" } },
+        { scopeType: "TENANT", tenantId, role: { key: { in: ["tenant_admin", "super_admin"] } } },
+      ],
+    },
+  });
+  if (!role) { const e = new Error("Forbidden for this tenant"); e.status = 403; throw e; }
+  return user;
 }
 
 router.get("/overview", async (req, res, next) => {
   try {
     const tenantId = text(req.query.tenant_id, "tenant_id", { required: true, max: 100 });
     await assertTenantAdminAccess(req, tenantId);
-    const [tenant, organizations, users, memberships, scopes, partnerships] = await Promise.all([
-      prismaGlobal.tenant.findUnique({ where: { id: tenantId } }),
-      prismaGlobal.organization.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
-      prismaGlobal.user.findMany({ where: { tenantId }, orderBy: { email: "asc" } }),
-      prismaGlobal.userOrgMembership.findMany({ where: { user: { tenantId } }, include: { user: true, org: true }, orderBy: [{ userId: "asc" }, { orgId: "asc" }] }),
-      prismaGlobal.userOrgScope.findMany({ where: { user: { tenantId } }, include: { user: true, org: true, school: true } }),
-      prismaGlobal.partnership.findMany({ where: { tenantId }, include: { school: true, busCompany: true }, orderBy: { createdAt: "desc" } }),
-    ]);
+    const tenant = await prismaControl.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+
+    const coverage = await prismaControl.tenantOrganization.findMany({
+      where: { tenantId }, select: { organizationId: true },
+    });
+    const coveredIds = coverage.map((row) => row.organizationId);
+    const [organizations, memberships, assignments, relationships] = await Promise.all([
+      prismaControl.organization.findMany({ where: { id: { in: coveredIds } }, orderBy: { displayName: "asc" } }),
+      prismaControl.organizationMembership.findMany({
+        where: { organizationId: { in: coveredIds } }, include: { user: true, organization: true },
+        orderBy: [{ userId: "asc" }, { organizationId: "asc" }],
+      }),
+      prismaControl.roleAssignment.findMany({
+        where: { isActive: true, OR: [{ tenantId }, { organizationId: { in: coveredIds } }] },
+        include: { user: true, role: true, organization: true },
+      }),
+      prismaControl.organizationRelationship.findMany({
+        where: { OR: [{ fromOrganizationId: { in: coveredIds } }, { toOrganizationId: { in: coveredIds } }] },
+        include: { fromOrganization: true, toOrganization: true }, orderBy: { createdAt: "desc" },
+      }),
+    ]);
+
+    const usersById = new Map();
+    for (const membership of memberships) usersById.set(membership.user.id, membership.user);
+    for (const assignment of assignments) usersById.set(assignment.user.id, assignment.user);
+
     return res.json({
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, status: tenant.status },
+      tenant: {
+        id: tenant.id, name: tenant.name, slug: tenant.slug, status: tenant.status,
+        subscription_mode: tenant.subscriptionMode, plan_key: tenant.planKey,
+        billing_organization_id: tenant.billingOrganizationId,
+      },
       organizations: organizations.map(organizationView),
-      users: users.map((u) => ({ id: u.id, tenant_id: u.tenantId, legacy_user_id: u.legacyUserId, email: u.email, display_name: u.fullName || u.email, is_active: u.isActive })),
-      memberships: memberships.map((m) => ({ id: m.id, user_id: m.userId, organization_id: m.orgId, role: canonicalRoleKey(m.role), status: m.status, is_primary: m.isDefault, user: { id: m.user.id, email: m.user.email, display_name: m.user.fullName || m.user.email }, organization: organizationView(m.org) })),
-      scopes: scopes.map((s) => ({ user_id: s.userId, organization_id: s.orgId, role: canonicalRoleKey(s.role), school_organization_id: s.schoolOrgId, organization: organizationView(s.org), school: organizationView(s.school) })),
-      relationships: partnerships.map((p) => ({ id: p.id, type: "TRANSPORT_PROVIDER", status: p.status, from_organization_id: p.schoolOrgId, to_organization_id: p.busCompanyOrgId, from_organization: organizationView(p.school), to_organization: organizationView(p.busCompany), notes: p.notes || null, legacy: true })),
-      capabilities: { relationship_types: ["TRANSPORT_PROVIDER"], note: "Legacy bridge. SERVICE_PARTNER and generic relationship types activate after canonical v2 migration." },
+      users: [...usersById.values()].map((u) => ({
+        id: u.id, legacy_user_id: u.legacyUserId, email: u.email,
+        display_name: u.displayName, status: u.status,
+      })),
+      memberships: memberships.map((m) => ({
+        id: m.id, user_id: m.userId, organization_id: m.organizationId,
+        status: m.status, is_primary: m.isPrimary, job_title: m.jobTitle,
+        user: { id: m.user.id, email: m.user.email, display_name: m.user.displayName },
+        organization: organizationView(m.organization),
+      })),
+      role_assignments: assignments.map((a) => ({
+        id: a.id, user_id: a.userId, role: a.role.key, scope_type: a.scopeType,
+        tenant_id: a.tenantId, organization_id: a.organizationId, is_active: a.isActive,
+      })),
+      relationships: relationships.map((r) => ({
+        id: r.id, type: r.type, status: r.status, is_primary: r.isPrimary,
+        from_organization_id: r.fromOrganizationId, to_organization_id: r.toOrganizationId,
+        from_organization: organizationView(r.fromOrganization),
+        to_organization: organizationView(r.toOrganization), notes: r.notes,
+      })),
+      capabilities: { relationship_types: [...RELATIONSHIP_TYPES], canonical_control_plane: true },
     });
   } catch (e) { return next(e); }
 });
 
-router.post("/memberships", async (req, res, next) => {
-  try {
-    const userId = text(req.body?.user_id, "user_id", { required: true, max: 100 });
-    const orgId = text(req.body?.organization_id ?? req.body?.org_id, "organization_id", { required: true, max: 100 });
-    const { canonical, stored } = legacyRole(req.body?.role);
-    const status = String(req.body?.status || "active").toLowerCase();
-    if (!["active", "approved", "pending", "blocked"].includes(status)) return res.status(400).json({ message: "Unsupported membership status" });
-    const [user, org] = await Promise.all([
-      prismaGlobal.user.findUnique({ where: { id: userId }, select: { id: true, tenantId: true } }),
-      prismaGlobal.organization.findUnique({ where: { id: orgId }, select: { id: true, tenantId: true } }),
-    ]);
-    if (!user || !org) return res.status(404).json({ message: "User or organization not found" });
-    if (!user.tenantId || user.tenantId !== org.tenantId) return res.status(400).json({ message: "User and organization must belong to the same tenant" });
-    await assertTenantAdminAccess(req, user.tenantId);
-    const created = await prismaGlobal.userOrgMembership.create({ data: { userId, orgId, role: stored, status: status === "active" ? "approved" : status, isDefault: Boolean(req.body?.is_primary ?? req.body?.is_default) } });
-    return res.status(201).json({ id: created.id, user_id: created.userId, organization_id: created.orgId, role: canonical, status: created.status, is_primary: created.isDefault });
-  } catch (e) {
-    if (e?.code === "P2002") return res.status(409).json({ message: "This user already has that role on this organization" });
-    return next(e);
-  }
-});
-
-router.patch("/memberships/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid membership id" });
-    const existing = await prismaGlobal.userOrgMembership.findUnique({ where: { id }, include: { org: { select: { tenantId: true } } } });
-    if (!existing) return res.status(404).json({ message: "Membership not found" });
-    await assertTenantAdminAccess(req, existing.org.tenantId);
-    const data = {};
-    if (req.body?.role !== undefined) data.role = legacyRole(req.body.role).stored;
-    if (req.body?.status !== undefined) {
-      const status = String(req.body.status).toLowerCase();
-      if (!["active", "approved", "pending", "blocked"].includes(status)) return res.status(400).json({ message: "Unsupported membership status" });
-      data.status = status === "active" ? "approved" : status;
-    }
-    if (req.body?.is_primary !== undefined || req.body?.is_default !== undefined) data.isDefault = Boolean(req.body?.is_primary ?? req.body?.is_default);
-    if (!Object.keys(data).length) return res.status(400).json({ message: "No supported fields to update" });
-    const updated = await updateLegacyMembershipWithScopes(prismaGlobal, { membershipId: id, existing, data });
-    return res.json({ id: updated.id, user_id: updated.userId, organization_id: updated.orgId, role: canonicalRoleKey(updated.role), status: updated.status, is_primary: updated.isDefault });
-  } catch (e) {
-    if (e?.code === "P2025") return res.status(404).json({ message: "Membership not found" });
-    if (e?.code === "P2002") return res.status(409).json({ message: "This user already has that role on this organization" });
-    return next(e);
-  }
-});
-
-router.delete("/memberships/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid membership id" });
-    const existing = await prismaGlobal.userOrgMembership.findUnique({ where: { id }, include: { org: { select: { tenantId: true } } } });
-    if (!existing) return res.status(404).json({ message: "Membership not found" });
-    await assertTenantAdminAccess(req, existing.org.tenantId);
-    await deleteLegacyMembershipWithScopes(prismaGlobal, existing);
-    return res.status(204).end();
-  } catch (e) {
-    if (e?.code === "P2025") return res.status(404).json({ message: "Membership not found" });
-    return next(e);
-  }
-});
-
-router.post("/scopes", async (req, res, next) => {
-  try {
-    const userId = text(req.body?.user_id, "user_id", { required: true, max: 100 });
-    const orgId = text(req.body?.organization_id, "organization_id", { required: true, max: 100 });
-    const schoolOrgId = text(req.body?.school_organization_id, "school_organization_id", { required: true, max: 100 });
-    const { canonical, stored } = legacyRole(req.body?.role);
-    const [user, org, school] = await Promise.all([
-      prismaGlobal.user.findUnique({ where: { id: userId } }), prismaGlobal.organization.findUnique({ where: { id: orgId } }), prismaGlobal.organization.findUnique({ where: { id: schoolOrgId } }),
-    ]);
-    if (!user || !org || !school) return res.status(404).json({ message: "User or organization not found" });
-    if (!user.tenantId || user.tenantId !== org.tenantId || org.tenantId !== school.tenantId) return res.status(400).json({ message: "Scope entities must belong to the same tenant" });
-    if (canonicalOrganizationType(school.type) !== "SCHOOL") return res.status(400).json({ message: "school_organization_id must refer to a school" });
-    await assertTenantAdminAccess(req, user.tenantId);
-    const membership = await prismaGlobal.userOrgMembership.findFirst({ where: { userId, orgId, role: stored } });
-    if (!membership) return res.status(409).json({ message: "Create the organization membership before adding a school scope" });
-    const created = await prismaGlobal.userOrgScope.create({ data: { userId, orgId, role: stored, schoolOrgId } });
-    return res.status(201).json({ user_id: created.userId, organization_id: created.orgId, role: canonical, school_organization_id: created.schoolOrgId });
-  } catch (e) {
-    if (e?.code === "P2002") return res.status(409).json({ message: "This school scope already exists" });
-    return next(e);
-  }
-});
-
-router.delete("/scopes", async (req, res, next) => {
-  try {
-    const userId = text(req.body?.user_id, "user_id", { required: true, max: 100 });
-    const orgId = text(req.body?.organization_id, "organization_id", { required: true, max: 100 });
-    const schoolOrgId = text(req.body?.school_organization_id, "school_organization_id", { required: true, max: 100 });
-    const { stored } = legacyRole(req.body?.role);
-    const org = await prismaGlobal.organization.findUnique({ where: { id: orgId }, select: { tenantId: true } });
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-    await assertTenantAdminAccess(req, org.tenantId);
-    await prismaGlobal.userOrgScope.delete({ where: { userId_orgId_role_schoolOrgId: { userId, orgId, role: stored, schoolOrgId } } });
-    return res.status(204).end();
-  } catch (e) {
-    if (e?.code === "P2025") return res.status(404).json({ message: "Scope not found" });
-    return next(e);
-  }
-});
-
 router.post("/relationships", async (req, res, next) => {
   try {
-    const type = String(req.body?.type || "").toUpperCase();
-    if (type !== "TRANSPORT_PROVIDER") return res.status(409).json({ message: "This relationship type requires the canonical v2 access migration", supported_types: ["TRANSPORT_PROVIDER"] });
-    const schoolOrgId = text(req.body?.from_organization_id, "from_organization_id", { required: true, max: 100 });
-    const busOperatorOrgId = text(req.body?.to_organization_id, "to_organization_id", { required: true, max: 100 });
+    const type = String(req.body?.type || "").trim().toUpperCase();
+    if (!RELATIONSHIP_TYPES.has(type)) return res.status(400).json({ message: "Unsupported relationship type" });
+    const fromOrganizationId = text(req.body?.from_organization_id, "from_organization_id", { required: true, max: 100 });
+    const toOrganizationId = text(req.body?.to_organization_id, "to_organization_id", { required: true, max: 100 });
+    if (fromOrganizationId === toOrganizationId) return res.status(400).json({ message: "An organization cannot relate to itself" });
     const notes = text(req.body?.notes, "notes", { max: 2000 });
-    const [school, operator] = await Promise.all([
-      prismaGlobal.organization.findUnique({ where: { id: schoolOrgId } }), prismaGlobal.organization.findUnique({ where: { id: busOperatorOrgId } }),
+    const [fromOrg, toOrg] = await Promise.all([
+      prismaControl.organization.findUnique({ where: { id: fromOrganizationId } }),
+      prismaControl.organization.findUnique({ where: { id: toOrganizationId } }),
     ]);
-    if (!school || !operator) return res.status(404).json({ message: "Organization not found" });
-    if (school.tenantId !== operator.tenantId) return res.status(400).json({ message: "Organizations must belong to the same tenant" });
-    if (canonicalOrganizationType(school.type) !== "SCHOOL") return res.status(400).json({ message: "Relationship source must be a school" });
-    if (!isLegacyBusOperatorType(operator.type)) return res.status(400).json({ message: "Relationship target must be a Bus Operator" });
-    await assertTenantAdminAccess(req, school.tenantId);
-    const created = await prismaGlobal.partnership.create({ data: { tenantId: school.tenantId, schoolOrgId, busCompanyOrgId: busOperatorOrgId, status: "active", notes }, include: { school: true, busCompany: true } });
-    return res.status(201).json({ id: created.id, type: "TRANSPORT_PROVIDER", status: created.status, from_organization_id: created.schoolOrgId, to_organization_id: created.busCompanyOrgId, from_organization: organizationView(created.school), to_organization: organizationView(created.busCompany), notes: created.notes || null, legacy: true });
+    if (!fromOrg || !toOrg) return res.status(404).json({ message: "Organization not found" });
+
+    const covered = await prismaControl.tenantOrganization.findFirst({
+      where: { organizationId: { in: [fromOrganizationId, toOrganizationId] } }, select: { tenantId: true },
+    });
+    if (covered?.tenantId) await assertTenantAdminAccess(req, covered.tenantId);
+
+    const created = await prismaControl.organizationRelationship.create({
+      data: { fromOrganizationId, toOrganizationId, type, notes, isPrimary: Boolean(req.body?.is_primary) },
+      include: { fromOrganization: true, toOrganization: true },
+    });
+    return res.status(201).json({
+      id: created.id, type: created.type, status: created.status, is_primary: created.isPrimary,
+      from_organization_id: created.fromOrganizationId, to_organization_id: created.toOrganizationId,
+      from_organization: organizationView(created.fromOrganization),
+      to_organization: organizationView(created.toOrganization), notes: created.notes,
+    });
   } catch (e) {
-    if (e?.code === "P2002") return res.status(409).json({ message: "This transport-provider relationship already exists" });
+    if (e?.code === "P2002") return res.status(409).json({ message: "This organization relationship already exists" });
     return next(e);
   }
 });
@@ -211,15 +167,15 @@ router.post("/relationships", async (req, res, next) => {
 router.delete("/relationships/:id", async (req, res, next) => {
   try {
     const id = text(req.params.id, "relationship id", { required: true, max: 100 });
-    const existing = await prismaGlobal.partnership.findUnique({ where: { id } });
+    const existing = await prismaControl.organizationRelationship.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "Relationship not found" });
-    await assertTenantAdminAccess(req, existing.tenantId);
-    await prismaGlobal.partnership.delete({ where: { id } });
+    const coverage = await prismaControl.tenantOrganization.findFirst({
+      where: { organizationId: { in: [existing.fromOrganizationId, existing.toOrganizationId] } }, select: { tenantId: true },
+    });
+    if (coverage?.tenantId) await assertTenantAdminAccess(req, coverage.tenantId);
+    await prismaControl.organizationRelationship.delete({ where: { id } });
     return res.status(204).end();
-  } catch (e) {
-    if (e?.code === "P2025") return res.status(404).json({ message: "Relationship not found" });
-    return next(e);
-  }
+  } catch (e) { return next(e); }
 });
 
 export default router;
