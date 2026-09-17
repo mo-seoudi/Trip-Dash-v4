@@ -42,12 +42,15 @@ function schoolWhere(workspace, extra = {}) {
 }
 
 export function createTripService({ prisma, workspace, user, tenantId }) {
-  if (!prisma || !workspace?.schoolId) throw new TypeError("Scoped operational context is required");
+  if (!prisma || !workspace?.schoolId || !tenantId) {
+    throw new TypeError("Scoped operational context with tenant and school is required");
+  }
 
   return {
     async list({ status = null, from = null, to = null, take = 100 } = {}) {
       const limit = Math.max(1, Math.min(Number(take) || 100, 250));
       const where = schoolWhere(workspace, {
+        tenantId,
         ...(status ? { status: cleanText(status) } : {}),
         ...((from || to) ? { date: { ...(from ? { gte: asDate(from, "from") } : {}), ...(to ? { lte: asDate(to, "to") } : {}) } } : {}),
       });
@@ -63,7 +66,7 @@ export function createTripService({ prisma, workspace, user, tenantId }) {
       const id = Number(tripId);
       if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId");
       const trip = await prisma.trip.findFirst({
-        where: schoolWhere(workspace, { id }),
+        where: schoolWhere(workspace, { id, tenantId }),
         include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true },
       });
       if (!trip) throw new TripNotFoundError();
@@ -83,7 +86,7 @@ export function createTripService({ prisma, workspace, user, tenantId }) {
       return prisma.trip.create({
         data: {
           createdByAppUserId: user?.appUserId || null,
-          tenantId: tenantId || null,
+          tenantId,
           owningSchoolOrganizationId: workspace.schoolId,
           managingOrganizationId: cleanText(input.managingOrganizationId),
           transportProviderOrganizationId: cleanText(input.transportProviderOrganizationId),
