@@ -1,13 +1,15 @@
 import { OperationalAuthorizationError } from "../services/authorizedOperationalContext.js";
 import { OperationalServiceContextError } from "./operationalService.js";
 import { TripNotFoundError, TripValidationError } from "../domain/trips/tripService.js";
+import { PassengerNotFoundError } from "../domain/trips/passengerService.js";
 
 export function operationalErrorHandler(error, _req, res, next) {
   const known =
     error instanceof OperationalAuthorizationError ||
     error instanceof OperationalServiceContextError ||
     error instanceof TripValidationError ||
-    error instanceof TripNotFoundError;
+    error instanceof TripNotFoundError ||
+    error instanceof PassengerNotFoundError;
 
   if (!known) return next(error);
 
