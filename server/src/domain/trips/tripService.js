@@ -47,6 +47,14 @@ function schoolWhere(workspace, extra = {}) {
   return { owningSchoolOrganizationId: workspace.schoolId, ...extra };
 }
 
+function rejectProtectedIdentityFields(input = {}) {
+  for (const field of ["owningSchoolOrganizationId", "requestingOrganizationId", "createdByAppUserId"]) {
+    if (Object.hasOwn(input, field)) {
+      throw new TripValidationError(`${field} is derived from authenticated workspace context`, field);
+    }
+  }
+}
+
 export function createTripService({ prisma, workspace, user }) {
   if (!prisma || !workspace?.schoolId) {
     throw new TypeError("Scoped operational context with school workspace is required");
@@ -83,6 +91,7 @@ export function createTripService({ prisma, workspace, user }) {
     },
 
     async create(input = {}) {
+      rejectProtectedIdentityFields(input);
       const destination = cleanText(input.destination);
       const date = asDate(input.date, "date");
       if (!destination) throw new TripValidationError("destination is required", "destination");
@@ -96,7 +105,7 @@ export function createTripService({ prisma, workspace, user }) {
         data: {
           createdByAppUserId: user?.appUserId || null,
           owningSchoolOrganizationId: workspace.schoolId,
-          requestingOrganizationId: cleanText(input.requestingOrganizationId) || user?.organizationId || workspace.schoolId,
+          requestingOrganizationId: user?.organizationId || workspace.schoolId,
           managingOrganizationId: cleanText(input.managingOrganizationId),
           transportProviderOrganizationId: cleanText(input.transportProviderOrganizationId),
           payerOrganizationId: cleanText(input.payerOrganizationId) || workspace.schoolId,
@@ -119,6 +128,7 @@ export function createTripService({ prisma, workspace, user }) {
     },
 
     async update(id, input = {}) {
+      rejectProtectedIdentityFields(input);
       const current = await existing(id);
       const data = {};
       if (Object.hasOwn(input, "destination")) {
