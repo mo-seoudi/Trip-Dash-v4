@@ -7,32 +7,32 @@ function service(req) {
 
 export async function listTrips(req, res, next) {
   try {
-    const trips = await service(req).list({
-      status: req.query.status,
-      from: req.query.from,
-      to: req.query.to,
-      take: req.query.take,
-    });
+    const trips = await service(req).list({ status: req.query.status, from: req.query.from, to: req.query.to, take: req.query.take });
     return res.json({ data: trips });
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 }
 
 export async function getTrip(req, res, next) {
-  try {
-    const trip = await service(req).get(req.params.tripId);
-    return res.json({ data: trip });
-  } catch (error) {
-    return next(error);
-  }
+  try { return res.json({ data: await service(req).get(req.params.tripId) }); }
+  catch (error) { return next(error); }
 }
 
 export async function createTrip(req, res, next) {
-  try {
-    const trip = await service(req).create(req.body || {});
-    return res.status(201).json({ data: trip });
-  } catch (error) {
-    return next(error);
-  }
+  try { return res.status(201).json({ data: await service(req).create(req.body || {}) }); }
+  catch (error) { return next(error); }
+}
+
+export async function updateTrip(req, res, next) {
+  try { return res.json({ data: await service(req).update(req.params.tripId, req.body || {}) }); }
+  catch (error) { return next(error); }
+}
+
+export async function cancelTrip(req, res, next) {
+  try { return res.json({ data: await service(req).cancel(req.params.tripId) }); }
+  catch (error) { return next(error); }
+}
+
+export async function deleteTrip(req, res, next) {
+  try { return res.json({ data: await service(req).remove(req.params.tripId) }); }
+  catch (error) { return next(error); }
 }
