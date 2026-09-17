@@ -28,13 +28,26 @@ test("canonical trip reads are always scoped to the owning school organization",
 
 test("trip creation derives ownership and requester from authenticated context", async () => {
   const { service, calls } = harness();
-  const created = await service.create({ destination: "Museum", date: "2026-10-01", requestingOrganizationId: "spoofed", owningSchoolOrganizationId: "spoofed" });
+  const created = await service.create({ destination: "Museum", date: "2026-10-01" });
   const data = calls[0][1].data;
   assert.equal(created.id, 10);
   assert.equal(data.owningSchoolOrganizationId, "school-a");
   assert.equal(data.requestingOrganizationId, "school-a");
   assert.equal(data.createdByAppUserId, "user-1");
   assert.equal(data.destination, "Museum");
+});
+
+test("trip creation refuses client-supplied ownership and requester identity", async () => {
+  const { service, calls } = harness();
+  await assert.rejects(
+    service.create({ destination: "Museum", date: "2026-10-01", owningSchoolOrganizationId: "school-b" }),
+    (error) => error instanceof TripValidationError && error.field === "owningSchoolOrganizationId",
+  );
+  await assert.rejects(
+    service.create({ destination: "Museum", date: "2026-10-01", requestingOrganizationId: "partner-x" }),
+    (error) => error instanceof TripValidationError && error.field === "requestingOrganizationId",
+  );
+  assert.equal(calls.length, 0);
 });
 
 test("trip mutation verifies workspace ownership before update or delete", async () => {
@@ -57,7 +70,7 @@ test("trip mutation refuses a trip outside the active school workspace", async (
 });
 
 test("trip update refuses protected ownership and identity fields", async () => {
-  const { service } = harness();
+  const { service, calls } = harness();
   await assert.rejects(
     service.update(9, { owningSchoolOrganizationId: "school-b" }),
     (error) => error instanceof TripValidationError && error.field === "owningSchoolOrganizationId",
@@ -66,4 +79,5 @@ test("trip update refuses protected ownership and identity fields", async () => 
     service.update(9, { requestingOrganizationId: "partner-x" }),
     (error) => error instanceof TripValidationError && error.field === "requestingOrganizationId",
   );
+  assert.equal(calls.length, 0);
 });
