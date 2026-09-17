@@ -37,20 +37,31 @@ export class TripNotFoundError extends Error {
   }
 }
 
+function tripId(value) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId");
+  return id;
+}
+
 function schoolWhere(workspace, extra = {}) {
   return { owningSchoolOrganizationId: workspace.schoolId, ...extra };
 }
 
-export function createTripService({ prisma, workspace, user, tenantId }) {
-  if (!prisma || !workspace?.schoolId || !tenantId) {
-    throw new TypeError("Scoped operational context with tenant and school is required");
+export function createTripService({ prisma, workspace, user }) {
+  if (!prisma || !workspace?.schoolId) {
+    throw new TypeError("Scoped operational context with school workspace is required");
+  }
+
+  async function existing(id) {
+    const trip = await prisma.trip.findFirst({ where: schoolWhere(workspace, { id: tripId(id) }) });
+    if (!trip) throw new TripNotFoundError();
+    return trip;
   }
 
   return {
     async list({ status = null, from = null, to = null, take = 100 } = {}) {
       const limit = Math.max(1, Math.min(Number(take) || 100, 250));
       const where = schoolWhere(workspace, {
-        tenantId,
         ...(status ? { status: cleanText(status) } : {}),
         ...((from || to) ? { date: { ...(from ? { gte: asDate(from, "from") } : {}), ...(to ? { lte: asDate(to, "to") } : {}) } } : {}),
       });
@@ -62,11 +73,9 @@ export function createTripService({ prisma, workspace, user, tenantId }) {
       });
     },
 
-    async get(tripId) {
-      const id = Number(tripId);
-      if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId");
+    async get(id) {
       const trip = await prisma.trip.findFirst({
-        where: schoolWhere(workspace, { id, tenantId }),
+        where: schoolWhere(workspace, { id: tripId(id) }),
         include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true },
       });
       if (!trip) throw new TripNotFoundError();
@@ -86,10 +95,11 @@ export function createTripService({ prisma, workspace, user, tenantId }) {
       return prisma.trip.create({
         data: {
           createdByAppUserId: user?.appUserId || null,
-          tenantId,
           owningSchoolOrganizationId: workspace.schoolId,
+          requestingOrganizationId: cleanText(input.requestingOrganizationId) || user?.organizationId || workspace.schoolId,
           managingOrganizationId: cleanText(input.managingOrganizationId),
           transportProviderOrganizationId: cleanText(input.transportProviderOrganizationId),
+          payerOrganizationId: cleanText(input.payerOrganizationId) || workspace.schoolId,
           origin: cleanText(input.origin),
           tripType: cleanText(input.tripType),
           destination,
@@ -106,6 +116,44 @@ export function createTripService({ prisma, workspace, user, tenantId }) {
         },
         include: { busAssignments: true },
       });
+    },
+
+    async update(id, input = {}) {
+      const current = await existing(id);
+      const data = {};
+      if (Object.hasOwn(input, "destination")) {
+        const value = cleanText(input.destination);
+        if (!value) throw new TripValidationError("destination is required", "destination");
+        data.destination = value;
+      }
+      if (Object.hasOwn(input, "date")) {
+        const value = asDate(input.date, "date");
+        if (!value) throw new TripValidationError("date is required", "date");
+        data.date = value;
+      }
+      for (const field of ["origin", "tripType", "departureTime", "returnTime", "notes", "managingOrganizationId", "transportProviderOrganizationId", "payerOrganizationId"]) {
+        if (Object.hasOwn(input, field)) data[field] = cleanText(input[field]);
+      }
+      if (Object.hasOwn(input, "returnDate")) data.returnDate = asDate(input.returnDate, "returnDate");
+      if (Object.hasOwn(input, "students")) data.students = asCount(input.students, "students");
+      if (Object.hasOwn(input, "staff")) data.staff = asCount(input.staff, "staff");
+      if (Object.hasOwn(input, "boosterSeatCount")) data.boosterSeatCount = asCount(input.boosterSeatCount, "boosterSeatCount") ?? 0;
+      if (Object.hasOwn(input, "boosterSeatsRequested")) data.boosterSeatsRequested = Boolean(input.boosterSeatsRequested);
+      if (data.boosterSeatCount > 0) data.boosterSeatsRequested = true;
+
+      return prisma.trip.update({ where: { id: current.id }, data, include: { busAssignments: true } });
+    },
+
+    async cancel(id) {
+      const current = await existing(id);
+      if (current.status === "cancelled") return current;
+      return prisma.trip.update({ where: { id: current.id }, data: { status: "cancelled" }, include: { busAssignments: true } });
+    },
+
+    async remove(id) {
+      const current = await existing(id);
+      await prisma.trip.delete({ where: { id: current.id } });
+      return { id: current.id, deleted: true };
     },
   };
 }
