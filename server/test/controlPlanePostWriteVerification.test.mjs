@@ -50,7 +50,10 @@ test("post-write verification ignores tenant coverage mismatch for operational c
   });
 
   assert.equal(result.cutoverReady, true);
-  assert.equal(result.report.hasSecurityExpansion, false);
+  assert.equal(result.report.safe, true);
+  assert.equal(result.report.exact, true);
+  assert.equal(result.report.counts.unsafeUsers, 0);
+  assert.equal(result.report.counts.nonExactUsers, 0);
 });
 
 test("post-write verification refuses an empty user set", async () => {
