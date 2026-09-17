@@ -57,9 +57,8 @@ enum DataSourceMode {
 }
 
 enum SecretProviderType {
-  ENVIRONMENT
-  INFISICAL
-  GENERIC_VAULT
+  HOST_ENVIRONMENT
+  EXTERNAL_VAULT
 }
 
 model Tenant {
@@ -153,10 +152,8 @@ model Organization {
 
   memberships     OrganizationMembership[]
   roleAssignments RoleAssignment[]
-
   relationshipsFrom OrganizationRelationship[] @relation("RelationshipFrom")
   relationshipsTo   OrganizationRelationship[] @relation("RelationshipTo")
-
   operationalDataSources OperationalDataSource[]
   auditEvents             AuditEvent[]
 
@@ -273,12 +270,13 @@ model SecretProvider {
   key         String             @unique
   displayName String             @map("display_name")
   type        SecretProviderType
+  adapterKey  String?            @map("adapter_key")
   config      Json?
   isActive    Boolean            @default(true) @map("is_active")
   createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant      Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   credentials DataSourceCredential[]
 
   @@index([tenantId])
@@ -287,16 +285,16 @@ model SecretProvider {
 }
 
 model DataSourceCredential {
-  id               String   @id @default(uuid())
-  dataSourceId     String   @unique @map("data_source_id")
-  secretProviderId String   @map("secret_provider_id")
-  secretReference  String   @map("secret_reference")
-  secretKey        String?  @map("secret_key")
+  id               String    @id @default(uuid())
+  dataSourceId     String    @unique @map("data_source_id")
+  secretProviderId String    @map("secret_provider_id")
+  secretReference  String    @map("secret_reference")
+  secretKey        String?   @map("secret_key")
   version          String?
-  isActive         Boolean  @default(true) @map("is_active")
+  isActive         Boolean   @default(true) @map("is_active")
   lastResolvedAt   DateTime? @map("last_resolved_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   dataSource     OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   secretProvider SecretProvider        @relation(fields: [secretProviderId], references: [id], onDelete: Restrict)
