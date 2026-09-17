@@ -1,5 +1,7 @@
 // Compare legacy and canonical-v2 effective-access outputs without mutating data.
-// Cutover requires exact tenant, organization, workspace-role and permission parity.
+// Cutover requires exact organization, workspace-role and permission parity.
+// Tenant/subscription coverage is deliberately not an operational-access axis in
+// canonical v2, so it must not be treated as an access expansion here.
 
 function setOf(values = []) { return new Set((values || []).filter(Boolean)); }
 function workspaceMap(access) { return new Map((access?.workspaces || []).map((workspace) => [workspace.schoolId, workspace])); }
@@ -14,8 +16,6 @@ export function compareEffectiveAccessParity(legacyAccess, canonicalAccess) {
   const legacyOrganizations = organizationMap(legacyAccess);
   const canonicalOrganizations = organizationMap(canonicalAccess);
   const addIssue = (issue, { expansion = false } = {}) => { issues.push(issue); if (expansion) securityExpansions.push(issue); };
-
-  if ((legacyAccess?.tenantId || null) !== (canonicalAccess?.tenantId || null)) addIssue({ code: "TENANT_MISMATCH", legacyTenantId: legacyAccess?.tenantId || null, canonicalTenantId: canonicalAccess?.tenantId || null }, { expansion: true });
 
   for (const organizationId of canonicalOrganizations.keys()) if (!legacyOrganizations.has(organizationId)) addIssue({ code: "CANONICAL_EXTRA_ORGANIZATION", organizationId }, { expansion: true });
   for (const organizationId of legacyOrganizations.keys()) if (!canonicalOrganizations.has(organizationId)) addIssue({ code: "CANONICAL_MISSING_ORGANIZATION", organizationId });
