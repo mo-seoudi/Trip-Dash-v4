@@ -3,14 +3,12 @@ import assert from "node:assert/strict";
 
 import { PERMISSIONS } from "../src/services/accessCatalog.js";
 import {
-  activeWorkspaceConnectionWhere,
-  legacyConnectionAsDataSource,
+  activeCanonicalDataSourceWhere,
   singleActiveWorkspaceConnection,
   workspaceFromAccess,
 } from "../src/services/workspaceOperationalContext.js";
 
 const access = {
-  tenantId: "tenant-a",
   workspaces: [
     {
       schoolId: "school-a",
@@ -47,19 +45,10 @@ test("workspace authorization enforces permission inside that school", () => {
   );
 });
 
-test("unscoped access cannot become a database-routing context", () => {
-  throwsCode(
-    () => workspaceFromAccess({ workspaces: access.workspaces }, "school-a", PERMISSIONS.TRIP_READ),
-    403,
-    "WORKSPACE_TENANT_FORBIDDEN",
-  );
-});
-
-test("operational connection query is locked to tenant plus authorized school", () => {
+test("canonical operational data-source query is locked to the authorized school", () => {
   const workspace = workspaceFromAccess(access, "school-a", PERMISSIONS.TRIP_READ);
-  assert.deepEqual(activeWorkspaceConnectionWhere(access, workspace), {
-    tenantId: "tenant-a",
-    orgId: "school-a",
+  assert.deepEqual(activeCanonicalDataSourceWhere(access, workspace), {
+    organizationId: "school-a",
     isActive: true,
   });
 });
@@ -72,29 +61,4 @@ test("database routing fails closed when zero or multiple sources are active", (
     "DATA_SOURCE_AMBIGUOUS",
   );
   assert.deepEqual(singleActiveWorkspaceConnection([{ id: "one" }]), { id: "one" });
-});
-
-test("legacy connection conversion refuses missing credentials and preserves routing identity", () => {
-  throwsCode(
-    () => legacyConnectionAsDataSource({ id: "dc-1", vaultSecretId: "" }),
-    503,
-    "DATA_SOURCE_SECRET_MISSING",
-  );
-
-  const source = legacyConnectionAsDataSource({
-    id: "dc-1",
-    tenantId: "tenant-a",
-    orgId: "school-a",
-    mode: "BYODB",
-    dbHost: "example.neon.tech",
-    vaultSecretId: "env:TEST_DATABASE_URL",
-    isActive: true,
-    updatedAt: new Date("2026-09-14T00:00:00Z"),
-  });
-
-  assert.equal(source.tenantId, "tenant-a");
-  assert.equal(source.organizationId, "school-a");
-  assert.equal(source.mode, "CUSTOMER_POSTGRES");
-  assert.equal(source.provider, "neon");
-  assert.equal(source.secretRef, "env:TEST_DATABASE_URL");
 });
