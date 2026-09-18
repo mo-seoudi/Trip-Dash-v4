@@ -6,7 +6,7 @@ import { PERMISSIONS, ROLE_KEYS, ROLE_PERMISSION_CATALOG } from "../src/services
 import { seedControlPlaneReferenceData } from "../src/services/controlPlaneSeed.js";
 import { buildAccessV2BackfillPlan } from "../src/services/accessV2BackfillPlan.js";
 import { writeControlPlaneBackfill } from "../src/services/controlPlaneBackfill.js";
-import { resolveEffectiveAccessV2 } from "../src/services/effectiveAccessV2.js";
+import { resolveEffectiveAccess } from "../src/services/effectiveAccess.js";
 import { assertControlPlaneBackfillVerified } from "../src/services/controlPlanePostWriteVerification.js";
 
 const enabled = process.env.CONTROL_DATABASE_SMOKE === "true";
@@ -30,9 +30,6 @@ async function reset(prisma) {
 }
 
 function expectedLegacyAccess() {
-  // This fixture represents the transitional group-staff contract. Keep it tied
-  // to the application catalog so adding an intentional workflow permission does
-  // not look like an accidental canonical-only security expansion.
   const permissions = [...ROLE_PERMISSION_CATALOG[ROLE_KEYS.GROUP_STAFF]].sort();
   assert.equal(permissions.includes(PERMISSIONS.TRIP_REQUEST_QUOTE_APPROVAL), true);
   return {
@@ -73,7 +70,7 @@ test("canonical control plane backfill is exact against real disposable PostgreS
     const verification = await assertControlPlaneBackfillVerified({
       legacyUsers: [{ id: 7001 }],
       resolveLegacyAccess: async () => expectedLegacyAccess(),
-      resolveCanonicalAccess: async (identity) => resolveEffectiveAccessV2(prisma, identity),
+      resolveCanonicalAccess: async (identity) => resolveEffectiveAccess(prisma, identity),
     });
     assert.equal(verification.cutoverReady, true);
     assert.equal(verification.report.safe, true);
