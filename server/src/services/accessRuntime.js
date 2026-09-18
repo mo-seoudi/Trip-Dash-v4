@@ -1,11 +1,15 @@
 // Runtime access boundary during the legacy -> canonical control-plane migration.
 //
 // Modes:
-// - legacy: emergency rollback path; legacy access is authoritative.
-// - shadow: migration/diagnostic path; legacy is authoritative and canonical is compared.
-// - canonical: normal path; canonical control-plane access is authoritative and the
-//   legacy database is not read. This is important because operational authorization
-//   must no longer depend on legacy tenant-era state after verified cutover.
+// - canonical: normal/default path; canonical control-plane access is authoritative
+//   and the legacy database is not read.
+// - shadow: temporary migration/diagnostic path; legacy is authoritative and
+//   canonical is compared for parity.
+// - legacy: explicit emergency rollback path only.
+//
+// ACCESS_RUNTIME_MODE may temporarily select shadow/legacy during migration or
+// rollback. Absence of the variable must never silently put production back on
+// the retired tenant-era access model.
 
 import { prismaGlobal } from "../lib/prismaGlobal.js";
 import { prismaControl } from "../lib/prismaControl.js";
@@ -16,9 +20,9 @@ import { compareEffectiveAccessParity } from "./accessParity.js";
 export function accessRuntimeMode(env = process.env) {
   const explicit = String(env?.ACCESS_RUNTIME_MODE || "").trim().toLowerCase();
   if (["legacy", "shadow", "canonical"].includes(explicit)) return explicit;
-  // Safe deployment default while environments are explicitly migrated. Once an
-  // environment is verified, set ACCESS_RUNTIME_MODE=canonical.
-  return String(env?.CANONICAL_ACCESS_SHADOW || "").trim().toLowerCase() === "true" ? "shadow" : "legacy";
+  // Canonical is now the safe application default. Legacy access remains available
+  // only when an operator explicitly selects it for rollback/diagnostics.
+  return "canonical";
 }
 
 export function canonicalShadowEnabled(env = process.env) {
