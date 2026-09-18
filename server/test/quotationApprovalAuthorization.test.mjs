@@ -4,7 +4,7 @@ import { validateInternalQuotationApprover } from "../src/services/quotationAppr
 
 const user = (overrides = {}) => ({ id: "app-1", email: "approver@school.ae", isActive: true, legacyUserId: 101, ...overrides });
 const globalPrismaFor = (record) => ({ user: { async findFirst() { return record; } } });
-const accessFor = (workspaces) => async () => ({ tenantId: "tenant-1", user: { appUserId: "app-1" }, workspaces });
+const accessFor = (workspaces) => async () => ({ user: { appUserId: "app-1" }, workspaces });
 const ws = (schoolId, permissions) => ({ schoolId, permissions });
 
 test("accepts an active app user with quotation approval permission for the exact school", async () => {
@@ -31,11 +31,12 @@ test("rejects a school member who lacks quotation approval permission", async ()
   }), (error) => error?.status === 400 && error?.code === "APPROVER_NOT_AUTHORIZED");
 });
 
-test("rejects access without an authorized tenant even when school and permission appear present", async () => {
-  await assert.rejects(() => validateInternalQuotationApprover({
+test("canonical approval does not require obsolete tenant context", async () => {
+  const result = await validateInternalQuotationApprover({
     appUserId: "app-1", schoolId: "school-a", globalPrisma: globalPrismaFor(user()),
-    resolveAccess: async () => ({ user: { appUserId: "app-1" }, workspaces: [ws("school-a", ["trip.approve_quote"])] })
-  }), (error) => error?.status === 400 && error?.code === "APPROVER_NOT_AUTHORIZED");
+    resolveAccess: accessFor([ws("school-a", ["trip.approve_quote"])])
+  });
+  assert.equal(result.workspace.schoolId, "school-a");
 });
 
 test("rejects inactive, missing, or unmapped application users before resolving access", async () => {
