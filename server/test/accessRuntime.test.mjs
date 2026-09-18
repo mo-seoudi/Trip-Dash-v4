@@ -9,10 +9,12 @@ const legacy = {
   workspaces: [{ schoolId: "s1", permissions: ["trip.read"] }],
 };
 
-test("runtime mode defaults to legacy and preserves old shadow flag", () => {
-  assert.equal(accessRuntimeMode({}), "legacy");
-  assert.equal(accessRuntimeMode({ CANONICAL_ACCESS_SHADOW: "TRUE" }), "shadow");
+test("runtime mode defaults to canonical and requires explicit legacy or shadow mode", () => {
+  assert.equal(accessRuntimeMode({}), "canonical");
+  assert.equal(accessRuntimeMode({ CANONICAL_ACCESS_SHADOW: "TRUE" }), "canonical");
   assert.equal(accessRuntimeMode({ ACCESS_RUNTIME_MODE: "canonical" }), "canonical");
+  assert.equal(accessRuntimeMode({ ACCESS_RUNTIME_MODE: "shadow" }), "shadow");
+  assert.equal(accessRuntimeMode({ ACCESS_RUNTIME_MODE: "legacy" }), "legacy");
   assert.equal(canonicalShadowEnabled({ ACCESS_RUNTIME_MODE: "shadow" }), true);
 });
 
