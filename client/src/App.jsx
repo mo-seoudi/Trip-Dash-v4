@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-import GlobalAdminPage from "./pages/Admin/GlobalAdminPage.jsx";
 import AccessControlPage from "./pages/Admin/AccessControlPage.jsx";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -12,7 +11,6 @@ import Dashboard from "./pages/Dashboard";
 import FinancePage from "./pages/Finance";
 import AllTrips from "./pages/AllTrips";
 import BusBookings from "./pages/BusBookings";
-import AdminRoles from "./pages/AdminRoles";
 import Settings from "./pages/Settings";
 import ExternalQuotation from "./pages/ExternalQuotation.jsx";
 import Layout from "./layout/Layout";
@@ -34,8 +32,6 @@ function AppRoutes() {
       <Route path="/trips" element={<ProtectedRoute requiredPermission="trip.read"><AllTrips /></ProtectedRoute>} />
       <Route path="/bookings" element={<ProtectedRoute requiredPermission="trip.create"><BusBookings /></ProtectedRoute>} />
       <Route path="/admin/access" element={<ProtectedRoute requiredPermission="access.admin"><AccessControlPage /></ProtectedRoute>} />
-      <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={["admin"]}><AdminRoles /></ProtectedRoute>} />
-      <Route path="/admin/global" element={<ProtectedRoute allowedRoles={["admin"]}><GlobalAdminPage /></ProtectedRoute>} />
       <Route path="/settings" element={<Settings />} />
     </Route>}
     <Route path="*" element={<Navigate to={profile ? "/" : "/login"} />} />
