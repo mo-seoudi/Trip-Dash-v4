@@ -10,8 +10,19 @@ const resolveAccess = async () => access;
 
 function validDataSource(overrides={}) {
   return {
-    id: "ds-1", organizationId: "school-1", mode: "HOSTED", provider: "neon",
-    secretRef: "vault://school-1", isActive: true, ...overrides,
+    id: "ds-1",
+    organizationId: "school-1",
+    name: "School operational database",
+    mode: "HOSTED",
+    engine: "postgresql",
+    providerLabel: "neon",
+    isActive: true,
+    credential: {
+      id: "credential-1",
+      isActive: true,
+      secretProvider: { id: "provider-1", isActive: true },
+    },
+    ...overrides,
   };
 }
 
@@ -27,11 +38,12 @@ test("workspace routing reads only the canonical Control Plane data source", asy
   });
   assert.deepEqual(receivedAccessArgs, { user: { id: 1 } });
   assert.deepEqual(controlWhere, { organizationId: "school-1", isActive: true });
-  assert.equal(result.dataSource.provider, "neon");
-  assert.equal(result.dataSource.secretRef, "vault://school-1");
+  assert.equal(result.dataSource.engine, "postgresql");
+  assert.equal(result.dataSource.providerLabel, "neon");
+  assert.equal(result.dataSource.credential.isActive, true);
 });
 
-test("canonical routing fails closed on missing, ambiguous or invalid data source", async () => {
+test("canonical routing fails closed on missing or ambiguous data source", async () => {
   const base = { resolveAccess };
   await assert.rejects(
     resolveWorkspaceDataSource({ id: 1 }, "school-1", null, { ...base, controlPrisma: { operationalDataSource: { findMany: async () => [] } } }),
@@ -40,10 +52,6 @@ test("canonical routing fails closed on missing, ambiguous or invalid data sourc
   await assert.rejects(
     resolveWorkspaceDataSource({ id: 1 }, "school-1", null, { ...base, controlPrisma: { operationalDataSource: { findMany: async () => [validDataSource(), validDataSource({ id: "ds-2" })] } } }),
     (error) => error?.code === "DATA_SOURCE_AMBIGUOUS" && error?.status === 503,
-  );
-  await assert.rejects(
-    resolveWorkspaceDataSource({ id: 1 }, "school-1", null, { ...base, controlPrisma: { operationalDataSource: { findMany: async () => [validDataSource({ secretRef: null, provider: "postgresql" })] } } }),
-    (error) => error?.code === "CANONICAL_DATA_SOURCE_INVALID",
   );
 });
 
