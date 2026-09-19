@@ -14,6 +14,7 @@ export class OperationalDataSourceError extends Error {
  *
  * Authorization must happen before calling this function. This service only
  * maps an already-authorized organization/workspace to infrastructure.
+ * Platform tenancy is intentionally not part of operational routing.
  */
 export async function resolveOperationalDataSource(organizationId) {
   if (!organizationId) {
@@ -51,7 +52,7 @@ export async function resolveOperationalDataSource(organizationId) {
       "DATASOURCE_ENGINE_UNSUPPORTED"
     );
   }
-  if (!dataSource.credential?.secretProvider) {
+  if (!dataSource.credential?.isActive || !dataSource.credential?.secretProvider?.isActive) {
     throw new OperationalDataSourceError(
       "Operational datasource has no active credential configuration",
       "DATASOURCE_CREDENTIAL_NOT_CONFIGURED"
@@ -65,13 +66,14 @@ export async function resolveOperationalDataSource(organizationId) {
 
   return {
     id: dataSource.id,
-    tenantId: dataSource.tenantId,
     organizationId: dataSource.organizationId,
     name: dataSource.name,
+    mode: dataSource.mode,
     engine: dataSource.engine,
     providerLabel: dataSource.providerLabel,
     region: dataSource.region,
     schemaVersion: dataSource.schemaVersion,
+    lastVerifiedAt: dataSource.lastVerifiedAt,
     connectionUrl,
   };
 }
