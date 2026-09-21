@@ -67,6 +67,32 @@ jobs:
       - name: Test canonical access and operational database contracts
         run: npm run test:access
 
+      # Boot the actual application entrypoint so CI catches stale imports,
+      # deleted runtime modules, and route-mount failures that isolated tests
+      # cannot see. The health endpoint proves Express reached listening state.
+      - name: Smoke test live server startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=5050 node src/index.js > /tmp/tripdash-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:5050/health > /dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat /tmp/tripdash-server.log
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          cat /tmp/tripdash-server.log
+          echo "Server did not become healthy in time"
+          exit 1
+
   client-build:
     runs-on: ubuntu-latest
     defaults:
