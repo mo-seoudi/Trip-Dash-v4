@@ -65,6 +65,9 @@ jobs:
       - name: Test canonical access and operational database contracts
         run: npm run test:access
 
+      - name: Run operational database invariants
+        run: npm run test:operational:smoke
+
       - name: Smoke test live server startup
         shell: bash
         run: |
