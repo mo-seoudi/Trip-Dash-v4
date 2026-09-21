@@ -5,9 +5,9 @@ import operationalBookingsRouter from "./operationalBookings.js";
 
 const router = Router({ mergeParams: true });
 
-// Authentication is supplied by the transition auth boundary. Authorization,
-// workspace scope and datasource selection below this point are canonical
-// control-plane concerns.
+// Authenticate at the workspace boundary. Authorization, workspace scope and
+// operational datasource selection are resolved by the canonical backend
+// access and control-plane services used by the mounted routers.
 router.use(requireAuth);
 router.use(operationalTripsRouter);
 router.use(operationalBookingsRouter);
