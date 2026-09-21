@@ -8,6 +8,7 @@ on:
       - "server/prisma/operational.schema.prisma"
       - "server/scripts/operational-schema-smoke.mjs"
       - "server/package.json"
+      - "server/package-lock.json"
       - ".github/workflows/operational-schema.yml"
   workflow_dispatch:
 
@@ -48,11 +49,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
 
-      # package-lock.json is currently known to need reconciliation during the
-      # architecture rebuild. npm install is intentional here so schema
-      # verification can run without falsely implying the stale lockfile is CI-ready.
-      - name: Install dependencies
-        run: npm install --ignore-scripts
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts
 
       - name: Validate operational Prisma schema
         run: npm run prisma:operational:validate
