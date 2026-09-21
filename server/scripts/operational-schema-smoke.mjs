@@ -29,12 +29,14 @@ async function main() {
 
   const schoolA = "school-a";
   const schoolB = "school-b";
+  const tripDate = new Date("2026-09-21T00:00:00.000Z");
 
   const tripA = await prisma.trip.create({
     data: {
       owningSchoolOrganizationId: schoolA,
       requestingOrganizationId: schoolA,
       destination: "Museum",
+      date: tripDate,
       status: "Pending",
     },
   });
@@ -43,6 +45,7 @@ async function main() {
       owningSchoolOrganizationId: schoolB,
       requestingOrganizationId: schoolB,
       destination: "Stadium",
+      date: tripDate,
       status: "Pending",
     },
   });
