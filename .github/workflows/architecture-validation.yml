@@ -47,10 +47,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
 
-      # The server lockfile predates several rebuild dependencies and will be
-      # reconciled separately. Keep this explicit until npm ci becomes a gate.
-      - name: Install server dependencies
-        run: npm install --ignore-scripts
+      - name: Install server dependencies from lockfile
+        run: npm ci --ignore-scripts
 
       - name: Validate canonical Prisma schemas
         run: npm run prisma:validate
@@ -67,9 +65,6 @@ jobs:
       - name: Test canonical access and operational database contracts
         run: npm run test:access
 
-      # Boot the actual application entrypoint so CI catches stale imports,
-      # deleted runtime modules, and route-mount failures that isolated tests
-      # cannot see. The health endpoint proves Express reached listening state.
       - name: Smoke test live server startup
         shell: bash
         run: |
@@ -109,11 +104,8 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
 
-      # The client lockfile is currently stale (MSAL/Recharts entries are
-      # missing). Use install temporarily so we can still compile the rebuilt
-      # UI. Restoring npm ci remains a separate readiness gate.
-      - name: Install client dependencies
-        run: npm install --ignore-scripts
+      - name: Install client dependencies from lockfile
+        run: npm ci --ignore-scripts
 
       - name: Build React application
         run: npm run build
