@@ -36,8 +36,6 @@ jobs:
 
     env:
       OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
-      DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
-      DIRECT_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_operational_test?schema=public
 
     steps:
       - name: Checkout
