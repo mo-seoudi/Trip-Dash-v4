@@ -33,6 +33,7 @@ async function main() {
   const tripA = await prisma.trip.create({
     data: {
       owningSchoolOrganizationId: schoolA,
+      requestingOrganizationId: schoolA,
       destination: "Museum",
       status: "Pending",
     },
@@ -40,6 +41,7 @@ async function main() {
   const tripB = await prisma.trip.create({
     data: {
       owningSchoolOrganizationId: schoolB,
+      requestingOrganizationId: schoolB,
       destination: "Stadium",
       status: "Pending",
     },
