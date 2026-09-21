@@ -3,17 +3,15 @@
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.js",
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "generate": "npm run prisma:generate",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "test:access": "node --test --test-concurrency=1 test/*.test.mjs",
-    "prisma:generate": "prisma generate && prisma generate --schema=prisma/global.schema.prisma && prisma generate --schema=prisma/control.schema.prisma && prisma generate --schema=prisma/operational.schema.prisma",
-    "prisma:validate": "prisma validate && prisma validate --schema=prisma/global.schema.prisma && prisma validate --schema=prisma/control.schema.prisma && prisma validate --schema=prisma/operational.schema.prisma",
+    "prisma:generate": "npm run prisma:control:generate && npm run prisma:operational:generate",
+    "prisma:validate": "npm run prisma:control:validate && npm run prisma:operational:validate",
     "prisma:control:generate": "prisma generate --schema=prisma/control.schema.prisma",
     "prisma:control:validate": "prisma validate --schema=prisma/control.schema.prisma",
     "prisma:operational:generate": "prisma generate --schema=prisma/operational.schema.prisma",
@@ -21,9 +19,7 @@
     "prisma:operational:push": "prisma db push --schema=prisma/operational.schema.prisma --skip-generate",
     "test:operational:smoke": "node scripts/operational-schema-smoke.mjs",
     "verify:operational": "npm run prisma:operational:validate && npm run prisma:operational:generate && npm run prisma:operational:push && npm run test:operational:smoke",
-    "migrate:deploy": "prisma migrate deploy",
-    "postinstall": "npm run prisma:generate",
-    "seed": "node prisma/seed.js"
+    "postinstall": "npm run prisma:generate"
   },
   "dependencies": {
     "@azure/msal-node": "^2.6.6",
@@ -41,8 +37,5 @@
   "devDependencies": {
     "nodemon": "^3.1.0",
     "prisma": "^5.22.0"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
   }
 }
