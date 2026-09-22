@@ -1,5 +1,4 @@
 import express from "express";
-import { prismaControl } from "../lib/prismaControl.js";
 import { requireAuth } from "../middleware/auth.js";
 import { resolveRuntimeAccess } from "../services/accessRuntime.js";
 
@@ -27,11 +26,9 @@ router.post("/session/set-org", requireAuth, async (req, res, next) => {
     const orgId = String(req.body?.org_id || "").trim();
     if (!orgId || orgId.length > 100) return res.status(400).json({ message: "valid org_id required" });
 
-    const membership = await prismaControl.organizationMembership.findUnique({
-      where: { userId_organizationId: { userId: req.user.id, organizationId: orgId } },
-      select: { status: true },
-    });
-    if (!membership || membership.status !== "ACTIVE") return res.status(403).json({ message: "No active membership in this organization" });
+    const access = await resolveRuntimeAccess({ user: req.user });
+    const allowedOrganization = (access.organizations || []).some((organization) => organization.id === orgId);
+    if (!allowedOrganization) return res.status(403).json({ message: "Organization is outside your effective access" });
 
     const isProd = process.env.NODE_ENV === "production";
     res.cookie("td_active_org", orgId, { httpOnly: true, sameSite: isProd ? "none" : "lax", secure: isProd, path: "/" });
