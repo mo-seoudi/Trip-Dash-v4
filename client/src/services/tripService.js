@@ -1,7 +1,139 @@
 // client/src/services/tripService.js
-import api from"./apiClient";const toYMD=d=>{if(!d)return d;if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return`${y}-${m}-${day}`;}if(typeof d==="string"&&d.includes("T"))return d.slice(0,10);return d;};const normalizeTrip=t=>({...t,date:t?.date?new Date(t.date):null,returnDate:t?.returnDate?new Date(t.returnDate):null});const sortTrips=(a,b)=>typeof a.id==="number"&&typeof b.id==="number"?b.id-a.id:a.createdAt&&b.createdAt?new Date(b.createdAt)-new Date(a.createdAt):0;const serializeUpdates=(u={})=>{const p={...u};if(p.date!==undefined)p.date=toYMD(p.date);if(p.returnDate!==undefined)p.returnDate=toYMD(p.returnDate);return p;};const requireSchoolId=s=>{const id=String(s||"").trim();if(!id)throw new Error("A school workspace is required for this operation");return encodeURIComponent(id);};const workspaceTripsPath=s=>`/workspaces/${requireSchoolId(s)}/trips`,workspaceTripPath=(s,id)=>`${workspaceTripsPath(s)}/${id}`,workspaceBusAssignmentsPath=(s,id)=>`${workspaceTripPath(s,id)}/bus-assignments`,workspacePassengersPath=(s,id)=>`${workspaceTripPath(s,id)}/passengers`,workspaceWorkflowPath=(s,id)=>`${workspaceTripPath(s,id)}/workflow`;
-const extractTripList=data=>{if(Array.isArray(data))return data;if(Array.isArray(data?.trips))return data.trips;if(Array.isArray(data?.data))return data.data;return[];};
-export const getWorkspaceTrips=async s=>extractTripList((await api.get(workspaceTripsPath(s))).data).map(normalizeTrip).sort(sortTrips);export const getWorkspaceTrip=async(s,id)=>normalizeTrip((await api.get(workspaceTripPath(s,id))).data);export const createWorkspaceTrip=async(s,p)=>normalizeTrip((await api.post(workspaceTripsPath(s),serializeUpdates(p))).data);export const updateWorkspaceTrip=async(s,id,p)=>normalizeTrip((await api.patch(workspaceTripPath(s,id),serializeUpdates(p))).data);export const deleteWorkspaceTrip=async(s,id)=>(await api.delete(workspaceTripPath(s,id))).data;
-export const getWorkspaceBusAssignments=async(s,id)=>{const d=(await api.get(workspaceBusAssignmentsPath(s,id))).data;return Array.isArray(d)?d:[]};export const createWorkspaceBusAssignment=async(s,id,p)=>(await api.post(workspaceBusAssignmentsPath(s,id),p)).data;export const updateWorkspaceBusAssignment=async(s,id,a,p)=>(await api.patch(`${workspaceBusAssignmentsPath(s,id)}/${a}`,p)).data;export const updateWorkspaceBusAssignmentCommercials=async(s,id,a,p)=>(await api.patch(`${workspaceBusAssignmentsPath(s,id)}/${a}/commercial`,p)).data;export const deleteWorkspaceBusAssignment=async(s,id,a)=>{await api.delete(`${workspaceBusAssignmentsPath(s,id)}/${a}`)};
-export const getWorkspaceQuotation=async(s,id)=>(await api.get(`${workspaceWorkflowPath(s,id)}/quotation`)).data;export const submitWorkspaceQuotation=async(s,id)=>(await api.post(`${workspaceWorkflowPath(s,id)}/submit-quotation`)).data;export const reviseWorkspaceQuotation=async(s,id,reason)=>(await api.post(`${workspaceWorkflowPath(s,id)}/revise-quotation`,{reason})).data;export const getWorkspaceQuotationApprovers=async s=>{const d=(await api.get(`/access/workspaces/${requireSchoolId(s)}/quotation-approvers`)).data;return Array.isArray(d)?d:[]};export const requestWorkspaceQuotationApproval=async(s,id,payload)=>(await api.post(`${workspaceWorkflowPath(s,id)}/request-approval`,payload)).data;export const approveWorkspaceQuotation=async(s,id)=>(await api.post(`${workspaceWorkflowPath(s,id)}/approve-quotation`)).data;export const requestWorkspaceQuotationChanges=async(s,id,reason)=>(await api.post(`${workspaceWorkflowPath(s,id)}/request-changes`,{reason})).data;export const acceptWorkspaceTrip=async(s,id)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/accept`)).data);export const rejectWorkspaceTrip=async(s,id)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/reject`)).data);export const confirmWorkspaceTrip=async(s,id)=>(await api.post(`${workspaceWorkflowPath(s,id)}/confirm`)).data;export const completeWorkspaceTrip=async(s,id)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/complete`)).data);export const requestWorkspaceTripCancellation=async(s,id)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/request-cancel`)).data);export const resolveWorkspaceTripCancellation=async(s,id,approve)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/resolve-cancel`,{approve})).data);export const cancelWorkspaceTrip=async(s,id)=>normalizeTrip((await api.post(`${workspaceWorkflowPath(s,id)}/cancel`)).data);
-export const getWorkspaceTripPassengers=async(s,id)=>{const d=(await api.get(workspacePassengersPath(s,id))).data;return Array.isArray(d)?d:[]};export const addWorkspaceTripPassengers=async(s,id,p)=>(await api.post(workspacePassengersPath(s,id),{passengers:p})).data;export const updateWorkspaceTripPassenger=async(s,id,pid,p)=>(await api.patch(`${workspacePassengersPath(s,id)}/${pid}`,p)).data;export const deleteWorkspaceTripPassenger=async(s,id,pid)=>{await api.delete(`${workspacePassengersPath(s,id)}/${pid}`)};
+import api from "./apiClient";
+
+const toYMD = (date) => {
+  if (!date) return date;
+  if (date instanceof Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  if (typeof date === "string" && date.includes("T")) return date.slice(0, 10);
+  return date;
+};
+
+const normalizeTrip = (trip) => ({
+  ...trip,
+  date: trip?.date ? new Date(trip.date) : null,
+  returnDate: trip?.returnDate ? new Date(trip.returnDate) : null,
+});
+
+const sortTrips = (a, b) => {
+  if (typeof a.id === "number" && typeof b.id === "number") return b.id - a.id;
+  if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
+  return 0;
+};
+
+const serializeUpdates = (updates = {}) => {
+  const payload = { ...updates };
+  if (payload.date !== undefined) payload.date = toYMD(payload.date);
+  if (payload.returnDate !== undefined) payload.returnDate = toYMD(payload.returnDate);
+  return payload;
+};
+
+const requireSchoolId = (schoolId) => {
+  const id = String(schoolId || "").trim();
+  if (!id) throw new Error("A school workspace is required for this operation");
+  return encodeURIComponent(id);
+};
+
+// Workspace APIs use a consistent { data: ... } response envelope. Axios exposes
+// that envelope as response.data, so unwrap it once here before domain mapping.
+const unwrapData = (response) => response?.data?.data ?? response?.data;
+const unwrapList = (response) => {
+  const value = unwrapData(response);
+  return Array.isArray(value) ? value : [];
+};
+
+const workspaceTripsPath = (schoolId) => `/workspaces/${requireSchoolId(schoolId)}/trips`;
+const workspaceTripPath = (schoolId, tripId) => `${workspaceTripsPath(schoolId)}/${tripId}`;
+const workspaceBusAssignmentsPath = (schoolId, tripId) => `${workspaceTripPath(schoolId, tripId)}/bus-assignments`;
+const workspacePassengersPath = (schoolId, tripId) => `${workspaceTripPath(schoolId, tripId)}/passengers`;
+const workspaceWorkflowPath = (schoolId, tripId) => `${workspaceTripPath(schoolId, tripId)}/workflow`;
+
+export const getWorkspaceTrips = async (schoolId) =>
+  unwrapList(await api.get(workspaceTripsPath(schoolId))).map(normalizeTrip).sort(sortTrips);
+
+export const getWorkspaceTrip = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.get(workspaceTripPath(schoolId, tripId))));
+
+export const createWorkspaceTrip = async (schoolId, payload) =>
+  normalizeTrip(unwrapData(await api.post(workspaceTripsPath(schoolId), serializeUpdates(payload))));
+
+export const updateWorkspaceTrip = async (schoolId, tripId, payload) =>
+  normalizeTrip(unwrapData(await api.patch(workspaceTripPath(schoolId, tripId), serializeUpdates(payload))));
+
+export const deleteWorkspaceTrip = async (schoolId, tripId) =>
+  unwrapData(await api.delete(workspaceTripPath(schoolId, tripId)));
+
+export const getWorkspaceBusAssignments = async (schoolId, tripId) =>
+  unwrapList(await api.get(workspaceBusAssignmentsPath(schoolId, tripId)));
+
+export const createWorkspaceBusAssignment = async (schoolId, tripId, payload) =>
+  unwrapData(await api.post(workspaceBusAssignmentsPath(schoolId, tripId), payload));
+
+export const updateWorkspaceBusAssignment = async (schoolId, tripId, assignmentId, payload) =>
+  unwrapData(await api.patch(`${workspaceBusAssignmentsPath(schoolId, tripId)}/${assignmentId}`, payload));
+
+export const updateWorkspaceBusAssignmentCommercials = async (schoolId, tripId, assignmentId, payload) =>
+  unwrapData(await api.patch(`${workspaceBusAssignmentsPath(schoolId, tripId)}/${assignmentId}/commercial`, payload));
+
+export const deleteWorkspaceBusAssignment = async (schoolId, tripId, assignmentId) => {
+  await api.delete(`${workspaceBusAssignmentsPath(schoolId, tripId)}/${assignmentId}`);
+};
+
+export const getWorkspaceQuotation = async (schoolId, tripId) =>
+  unwrapData(await api.get(`${workspaceWorkflowPath(schoolId, tripId)}/quotation`));
+
+export const submitWorkspaceQuotation = async (schoolId, tripId) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/submit-quotation`));
+
+export const reviseWorkspaceQuotation = async (schoolId, tripId, reason) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/revise-quotation`, { reason }));
+
+export const getWorkspaceQuotationApprovers = async (schoolId) =>
+  unwrapList(await api.get(`/access/workspaces/${requireSchoolId(schoolId)}/quotation-approvers`));
+
+export const requestWorkspaceQuotationApproval = async (schoolId, tripId, payload) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/request-approval`, payload));
+
+export const approveWorkspaceQuotation = async (schoolId, tripId) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/approve-quotation`));
+
+export const requestWorkspaceQuotationChanges = async (schoolId, tripId, reason) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/request-changes`, { reason }));
+
+export const acceptWorkspaceTrip = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/accept`)));
+
+export const rejectWorkspaceTrip = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/reject`)));
+
+export const confirmWorkspaceTrip = async (schoolId, tripId) =>
+  unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/confirm`));
+
+export const completeWorkspaceTrip = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/complete`)));
+
+export const requestWorkspaceTripCancellation = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/request-cancel`)));
+
+export const resolveWorkspaceTripCancellation = async (schoolId, tripId, approve) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/resolve-cancel`, { approve })));
+
+export const cancelWorkspaceTrip = async (schoolId, tripId) =>
+  normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId, tripId)}/cancel`)));
+
+export const getWorkspaceTripPassengers = async (schoolId, tripId) =>
+  unwrapList(await api.get(workspacePassengersPath(schoolId, tripId)));
+
+export const addWorkspaceTripPassengers = async (schoolId, tripId, passengers) =>
+  unwrapData(await api.post(workspacePassengersPath(schoolId, tripId), { passengers }));
+
+export const updateWorkspaceTripPassenger = async (schoolId, tripId, passengerId, payload) =>
+  unwrapData(await api.patch(`${workspacePassengersPath(schoolId, tripId)}/${passengerId}`, payload));
+
+export const deleteWorkspaceTripPassenger = async (schoolId, tripId, passengerId) => {
+  await api.delete(`${workspacePassengersPath(schoolId, tripId)}/${passengerId}`);
+};
