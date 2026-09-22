@@ -2,7 +2,7 @@
 
 ## Core rule
 
-Authorization is not represented by one `User.role` value.
+Authorization is not represented by one `User.role` value..
 
 An access decision is derived from:
 
