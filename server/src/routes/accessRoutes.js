@@ -9,9 +9,8 @@ const router = Router();
 router.use(requireAuth);
 
 // GET /api/access/me
-// Stable frontend bootstrap contract. Legacy remains authoritative. When the
-// explicit shadow flag is enabled, canonical v2 is evaluated side-by-side but
-// its result is never returned as the authorization decision.
+// Stable frontend bootstrap contract backed exclusively by the canonical
+// control-plane effective-access resolver.
 router.get("/me", async (req, res, next) => {
   try {
     const access = await resolveRuntimeAccess({ user: req.user });
