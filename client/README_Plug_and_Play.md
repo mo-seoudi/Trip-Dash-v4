@@ -1,7 +1,7 @@
 
 # 🚌 School Bus Trips Dashboard — Plug & Play Manual
 
-Welcome! This dashboard is designed to work with **Firebase/Firestore by default**, but can easily be configured to connect to **any custom database or authentication system** (your own backend, custom APIs, SQL, etc.).
+Welcome! This dashboard is designed to work with **Firebase/Firestore by default**, but can easily be configured to connect to **any custom database or authentication system** (your own backend, custom APIs, SQL, etc).
 
 ---
 
