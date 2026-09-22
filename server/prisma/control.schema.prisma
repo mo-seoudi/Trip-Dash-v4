@@ -1,10 +1,6 @@
 // Canonical TripDash control-plane schema.
 // Platform tenancy is commercial/subscription state. Organizations and their
 // relationships are the operational access graph and are deliberately global.
-//
-// The control plane is isolated in the PostgreSQL `control` schema so it can
-// share a physical PostgreSQL database with operational data without sharing
-// tables or enum types.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,7 +10,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("CONTROL_DATABASE_URL")
-  schemas  = ["control"]
 }
 
 enum OrganizationType {
@@ -22,8 +17,6 @@ enum OrganizationType {
   SCHOOL
   BUS_OPERATOR
   SERVICE_PARTNER
-
-  @@schema("control")
 }
 
 enum MembershipStatus {
@@ -31,8 +24,6 @@ enum MembershipStatus {
   ACTIVE
   SUSPENDED
   REVOKED
-
-  @@schema("control")
 }
 
 enum RelationshipType {
@@ -40,16 +31,12 @@ enum RelationshipType {
   TRANSPORT_PROVIDER
   TRIP_MANAGER
   WORKS_WITH_TRANSPORT_PROVIDER
-
-  @@schema("control")
 }
 
 enum AccessScopeType {
   PLATFORM
   TENANT
   ORGANIZATION
-
-  @@schema("control")
 }
 
 enum IdentityProvider {
@@ -58,22 +45,16 @@ enum IdentityProvider {
   GOOGLE
   OIDC
   SAML
-
-  @@schema("control")
 }
 
 enum DataSourceMode {
   HOSTED
   CUSTOMER_POSTGRES
-
-  @@schema("control")
 }
 
 enum SecretProviderType {
   HOST_ENVIRONMENT
   EXTERNAL_VAULT
-
-  @@schema("control")
 }
 
 enum SubscriptionMode {
@@ -81,8 +62,6 @@ enum SubscriptionMode {
   PAID
   TRIAL
   SPONSORED
-
-  @@schema("control")
 }
 
 model Tenant {
@@ -106,7 +85,6 @@ model Tenant {
 
   @@index([billingOrganizationId])
   @@map("tenants")
-  @@schema("control")
 }
 
 model TenantOrganization {
@@ -121,7 +99,6 @@ model TenantOrganization {
   @@id([tenantId, organizationId])
   @@index([organizationId])
   @@map("tenant_organizations")
-  @@schema("control")
 }
 
 model AppUser {
@@ -140,7 +117,6 @@ model AppUser {
   sessions        AuthSession[]
 
   @@map("app_users")
-  @@schema("control")
 }
 
 model AuthenticationIdentity {
@@ -158,7 +134,6 @@ model AuthenticationIdentity {
   @@unique([provider, providerSubject])
   @@index([userId])
   @@map("authentication_identities")
-  @@schema("control")
 }
 
 model AuthSession {
@@ -177,7 +152,6 @@ model AuthSession {
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_sessions")
-  @@schema("control")
 }
 
 model Organization {
@@ -192,18 +166,17 @@ model Organization {
   createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  memberships            OrganizationMembership[]
-  roleAssignments        RoleAssignment[]
-  relationshipsFrom      OrganizationRelationship[] @relation("RelationshipFrom")
-  relationshipsTo        OrganizationRelationship[] @relation("RelationshipTo")
+  memberships           OrganizationMembership[]
+  roleAssignments       RoleAssignment[]
+  relationshipsFrom     OrganizationRelationship[] @relation("RelationshipFrom")
+  relationshipsTo       OrganizationRelationship[] @relation("RelationshipTo")
   operationalDataSources OperationalDataSource[]
-  tenantCoverage         TenantOrganization[]
-  billedTenants          Tenant[]                    @relation("TenantBillingOrganization")
-  auditEvents            AuditEvent[]
+  tenantCoverage        TenantOrganization[]
+  billedTenants         Tenant[]                    @relation("TenantBillingOrganization")
+  auditEvents           AuditEvent[]
 
   @@index([type])
   @@map("organizations")
-  @@schema("control")
 }
 
 model OrganizationRelationship {
@@ -226,7 +199,6 @@ model OrganizationRelationship {
   @@index([fromOrganizationId, type, status])
   @@index([toOrganizationId, type, status])
   @@map("organization_relationships")
-  @@schema("control")
 }
 
 model OrganizationMembership {
@@ -245,7 +217,6 @@ model OrganizationMembership {
   @@unique([userId, organizationId])
   @@index([organizationId, status])
   @@map("organization_memberships")
-  @@schema("control")
 }
 
 model Role {
@@ -261,7 +232,6 @@ model Role {
   assignments RoleAssignment[]
 
   @@map("roles")
-  @@schema("control")
 }
 
 model Permission {
@@ -273,7 +243,6 @@ model Permission {
   roles RolePermission[]
 
   @@map("permissions")
-  @@schema("control")
 }
 
 model RolePermission {
@@ -286,7 +255,6 @@ model RolePermission {
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
-  @@schema("control")
 }
 
 model RoleAssignment {
@@ -310,7 +278,6 @@ model RoleAssignment {
   @@index([tenantId])
   @@index([organizationId])
   @@map("role_assignments")
-  @@schema("control")
 }
 
 model SecretProvider {
@@ -328,7 +295,6 @@ model SecretProvider {
 
   @@index([type, isActive])
   @@map("secret_providers")
-  @@schema("control")
 }
 
 model DataSourceCredential {
@@ -348,7 +314,6 @@ model DataSourceCredential {
 
   @@index([secretProviderId, isActive])
   @@map("data_source_credentials")
-  @@schema("control")
 }
 
 model OperationalDataSource {
@@ -370,7 +335,6 @@ model OperationalDataSource {
 
   @@index([organizationId, isActive])
   @@map("operational_data_sources")
-  @@schema("control")
 }
 
 model AuditEvent {
@@ -393,5 +357,4 @@ model AuditEvent {
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId])
   @@map("audit_events")
-  @@schema("control")
 }
