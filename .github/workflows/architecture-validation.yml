@@ -31,7 +31,7 @@ jobs:
       run:
         working-directory: server
     env:
-      CONTROL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=public
+      CONTROL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=control
       OPERATIONAL_DATABASE_URL: postgresql://tripdash:tripdash@localhost:5432/tripdash_control_validation?schema=operational_validation
       CONTROL_DATABASE_SMOKE: "true"
       OPERATIONAL_DATABASE_SMOKE: "true"
