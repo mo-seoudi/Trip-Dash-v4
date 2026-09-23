@@ -19,16 +19,13 @@ begin
   end if;
 end $$;
 
--- Drop only foreign keys that point to the legacy tenants/organizations. This is
--- necessary because PostgreSQL otherwise follows a renamed table and leaves
--- operational records attached to the archived legacy control plane.
+-- Drop only foreign keys that point to the legacy tenants/organizations. PostgreSQL
+-- otherwise follows renamed tables and would leave operational records attached to archives.
 alter table public."Trip" drop constraint if exists fk_trip_school_org;
 alter table public."Trip" drop constraint if exists fk_trip_tenant;
 alter table public.trip_registry drop constraint if exists trip_registry_bus_company_org_id_fkey;
 alter table public.trip_registry drop constraint if exists trip_registry_school_org_id_fkey;
 alter table public.trip_registry drop constraint if exists trip_registry_tenant_id_fkey;
-
--- Constraints on tables that are themselves archived do not need rewiring.
 alter table public.data_connections drop constraint if exists data_connections_org_id_fkey;
 alter table public.data_connections drop constraint if exists data_connections_tenant_id_fkey;
 alter table public.organizations drop constraint if exists organizations_parent_org_id_fkey;
@@ -50,7 +47,20 @@ alter table public.global_users rename to global_users_legacy_cutover;
 alter table public.user_roles rename to user_roles_legacy_cutover;
 alter table public.user_role_scopes rename to user_role_scopes_legacy_cutover;
 
--- Reuse compatible enum types when already present; canonical values are uppercase.
+-- Table rename does not rename PostgreSQL indexes/PK indexes. Rename every legacy index
+-- that can collide with names generated for the new canonical tenants/organizations.
+alter index if exists public.organizations_pkey rename to organizations_legacy_cutover_pkey;
+alter index if exists public.organizations_slug_key rename to organizations_legacy_cutover_slug_key;
+alter index if exists public.organizations_type_idx rename to organizations_legacy_cutover_type_idx;
+alter index if exists public.organizations_parent_idx rename to organizations_legacy_cutover_parent_idx;
+alter index if exists public.organizations_parent_org_id_idx rename to organizations_legacy_cutover_parent_org_id_idx;
+alter index if exists public.organizations_tenant_id_code_key rename to organizations_legacy_cutover_tenant_id_code_key;
+alter index if exists public.organizations_tenant_id_idx rename to organizations_legacy_cutover_tenant_id_idx;
+alter index if exists public.organizations_tenant_idx rename to organizations_legacy_cutover_tenant_idx;
+alter index if exists public.tenants_pkey rename to tenants_legacy_cutover_pkey;
+alter index if exists public.tenants_slug_key rename to tenants_legacy_cutover_slug_key;
+
+-- Canonical enums have distinct names from the lowercase legacy enums.
 do $$ begin create type public."OrganizationType" as enum ('SCHOOL_GROUP','SCHOOL','BUS_OPERATOR','SERVICE_PARTNER'); exception when duplicate_object then null; end $$;
 do $$ begin create type public."MembershipStatus" as enum ('PENDING','ACTIVE','SUSPENDED','REVOKED'); exception when duplicate_object then null; end $$;
 do $$ begin create type public."RelationshipType" as enum ('BELONGS_TO_GROUP','TRANSPORT_PROVIDER','TRIP_MANAGER','WORKS_WITH_TRANSPORT_PROVIDER'); exception when duplicate_object then null; end $$;
@@ -202,11 +212,8 @@ select o.id,
   o.name,o.name,nullif(o.code,''),o.slug,'active',o.created_at,o.updated_at
 from public.organizations_legacy_cutover o;
 
--- Legacy tenant ownership becomes canonical coverage.
 insert into public.tenant_organizations(tenant_id,organization_id,coverage_type,created_at)
 select tenant_id,id,'covered',created_at from public.organizations_legacy_cutover;
-
--- Legacy parent links become explicit relationships.
 insert into public.organization_relationships(from_organization_id,to_organization_id,type,status,created_at,updated_at)
 select id,parent_org_id,'BELONGS_TO_GROUP','active',created_at,updated_at
 from public.organizations_legacy_cutover where parent_org_id is not null;
@@ -221,15 +228,13 @@ insert into public.roles(key,name,description,is_system) values
 on conflict(key) do nothing;
 
 -- Reattach operational references to the new canonical tables. Existing UUIDs were
--- preserved, so these constraints also validate that every referenced record survived.
+-- preserved, so these constraints validate that every referenced record survived.
 alter table public."Trip" add constraint fk_trip_school_org foreign key (school_org_id) references public.organizations(id);
 alter table public."Trip" add constraint fk_trip_tenant foreign key (tenant_id) references public.tenants(id);
 alter table public.trip_registry add constraint trip_registry_bus_company_org_id_fkey foreign key (bus_company_org_id) references public.organizations(id);
 alter table public.trip_registry add constraint trip_registry_school_org_id_fkey foreign key (school_org_id) references public.organizations(id);
 alter table public.trip_registry add constraint trip_registry_tenant_id_fkey foreign key (tenant_id) references public.tenants(id);
 
--- Canonical users are intentionally bootstrapped after verification; legacy user tables
--- are retained as archives and current preflight counts show them empty.
 commit;
 
 select 'tenants' as entity,count(*) as row_count from public.tenants
