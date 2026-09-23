@@ -5,6 +5,7 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import AccessControlPage from "./pages/Admin/AccessControlPage.jsx";
+import PlatformControlCenter from "./pages/Admin/PlatformControlCenter.jsx";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
@@ -31,6 +32,7 @@ function AppRoutes() {
       <Route path="/finance" element={<ProtectedRoute requiredPermission="finance.read"><FinancePage /></ProtectedRoute>} />
       <Route path="/trips" element={<ProtectedRoute requiredPermission="trip.read"><AllTrips /></ProtectedRoute>} />
       <Route path="/bookings" element={<ProtectedRoute requiredPermission="trip.create"><BusBookings /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute requiredPermission="access.admin"><PlatformControlCenter /></ProtectedRoute>} />
       <Route path="/admin/access" element={<ProtectedRoute requiredPermission="access.admin"><AccessControlPage /></ProtectedRoute>} />
       <Route path="/settings" element={<Settings />} />
     </Route>}
