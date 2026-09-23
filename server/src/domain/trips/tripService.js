@@ -18,6 +18,15 @@ function asCount(value, field) {
   return number;
 }
 
+const STATUS = Object.freeze({
+  PENDING: "Pending",
+  ACCEPTED: "Accepted",
+  REJECTED: "Rejected",
+  CONFIRMED: "Confirmed",
+  COMPLETED: "Completed",
+  CANCELED: "Canceled",
+});
+
 export class TripValidationError extends Error {
   constructor(message, field = null) {
     super(message);
@@ -37,6 +46,15 @@ export class TripNotFoundError extends Error {
   }
 }
 
+export class TripTransitionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TripTransitionError";
+    this.code = "TRIP_TRANSITION_NOT_ALLOWED";
+    this.status = 409;
+  }
+}
+
 function tripId(value) {
   const id = Number(value);
   if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId");
@@ -48,11 +66,15 @@ function schoolWhere(workspace, extra = {}) {
 }
 
 function rejectProtectedIdentityFields(input = {}) {
-  for (const field of ["owningSchoolOrganizationId", "requestingOrganizationId", "createdByAppUserId"]) {
+  for (const field of ["owningSchoolOrganizationId", "requestingOrganizationId", "createdByAppUserId", "status"]) {
     if (Object.hasOwn(input, field)) {
-      throw new TripValidationError(`${field} is derived from authenticated workspace context`, field);
+      throw new TripValidationError(`${field} is controlled by authenticated workflow context`, field);
     }
   }
+}
+
+function statusIs(value, expected) {
+  return String(value || "").toLowerCase() === expected.toLowerCase();
 }
 
 export function createTripService({ prisma, workspace, user }) {
@@ -64,6 +86,22 @@ export function createTripService({ prisma, workspace, user }) {
     const trip = await prisma.trip.findFirst({ where: schoolWhere(workspace, { id: tripId(id) }) });
     if (!trip) throw new TripNotFoundError();
     return trip;
+  }
+
+  async function transition(id, fromStatus, toStatus) {
+    const current = await existing(id);
+    if (!statusIs(current.status, fromStatus)) {
+      throw new TripTransitionError(`Only a ${fromStatus} trip can move to ${toStatus}`);
+    }
+    const changed = await prisma.trip.updateMany({
+      where: { id: current.id, owningSchoolOrganizationId: workspace.schoolId, status: current.status },
+      data: { status: toStatus },
+    });
+    if (changed.count !== 1) throw new TripTransitionError("Trip changed before the workflow action was recorded");
+    return prisma.trip.findUnique({
+      where: { id: current.id },
+      include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true },
+    });
   }
 
   return {
@@ -118,7 +156,7 @@ export function createTripService({ prisma, workspace, user }) {
           returnTime: cleanText(input.returnTime),
           students,
           staff,
-          status: "pending",
+          status: STATUS.PENDING,
           notes: cleanText(input.notes),
           boosterSeatsRequested: Boolean(input.boosterSeatsRequested || boosterSeatCount > 0),
           boosterSeatCount,
@@ -130,6 +168,9 @@ export function createTripService({ prisma, workspace, user }) {
     async update(id, input = {}) {
       rejectProtectedIdentityFields(input);
       const current = await existing(id);
+      if (!statusIs(current.status, STATUS.PENDING)) {
+        throw new TripTransitionError("Only a Pending trip request can be edited");
+      }
       const data = {};
       if (Object.hasOwn(input, "destination")) {
         const value = cleanText(input.destination);
@@ -154,14 +195,24 @@ export function createTripService({ prisma, workspace, user }) {
       return prisma.trip.update({ where: { id: current.id }, data, include: { busAssignments: true } });
     },
 
+    accept(id) { return transition(id, STATUS.PENDING, STATUS.ACCEPTED); },
+    reject(id) { return transition(id, STATUS.PENDING, STATUS.REJECTED); },
+    complete(id) { return transition(id, STATUS.CONFIRMED, STATUS.COMPLETED); },
+
     async cancel(id) {
       const current = await existing(id);
-      if (current.status === "cancelled") return current;
-      return prisma.trip.update({ where: { id: current.id }, data: { status: "cancelled" }, include: { busAssignments: true } });
+      if (statusIs(current.status, STATUS.CANCELED)) return current;
+      if (!statusIs(current.status, STATUS.PENDING)) {
+        throw new TripTransitionError("Only a Pending trip can be cancelled directly");
+      }
+      return prisma.trip.update({ where: { id: current.id }, data: { status: STATUS.CANCELED }, include: { busAssignments: true } });
     },
 
     async remove(id) {
       const current = await existing(id);
+      if (!statusIs(current.status, STATUS.CANCELED)) {
+        throw new TripTransitionError("Only a Canceled trip can be deleted");
+      }
       await prisma.trip.delete({ where: { id: current.id } });
       return { id: current.id, deleted: true };
     },
