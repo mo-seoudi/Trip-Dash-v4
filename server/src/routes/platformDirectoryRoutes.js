@@ -60,7 +60,7 @@ router.get("/", async (req, res, next) => {
               user: { select: { id: true, email: true, displayName: true } },
             },
           },
-          tenantOrganizations: {
+          tenantCoverage: {
             include: { tenant: { select: { id: true, name: true } } },
           },
         },
@@ -108,7 +108,7 @@ router.get("/", async (req, res, next) => {
           role_name: a.role?.name,
           user: a.user,
         })),
-        tenants: o.tenantOrganizations.map((x) => x.tenant),
+        tenants: o.tenantCoverage.map((x) => x.tenant),
       })),
       users: users.map((u) => ({
         id: u.id,
@@ -145,13 +145,11 @@ router.get("/", async (req, res, next) => {
         provider_label: s.providerLabel,
         is_active: s.isActive,
         last_verified_at: s.lastVerifiedAt,
-        organization: s.organization
-          ? {
-              id: s.organization.id,
-              display_name: s.organization.displayName,
-              type: s.organization.type,
-            }
-          : null,
+        organization: {
+          id: s.organization.id,
+          display_name: s.organization.displayName,
+          type: s.organization.type,
+        },
       })),
       coverage: coverage.map((c) => ({
         tenant: c.tenant,
