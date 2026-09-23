@@ -27,6 +27,21 @@ export async function updateTrip(req, res, next) {
   catch (error) { return next(error); }
 }
 
+export async function acceptTrip(req, res, next) {
+  try { return res.json({ data: await service(req).accept(req.params.tripId) }); }
+  catch (error) { return next(error); }
+}
+
+export async function rejectTrip(req, res, next) {
+  try { return res.json({ data: await service(req).reject(req.params.tripId) }); }
+  catch (error) { return next(error); }
+}
+
+export async function completeTrip(req, res, next) {
+  try { return res.json({ data: await service(req).complete(req.params.tripId) }); }
+  catch (error) { return next(error); }
+}
+
 export async function cancelTrip(req, res, next) {
   try { return res.json({ data: await service(req).cancel(req.params.tripId) }); }
   catch (error) { return next(error); }
