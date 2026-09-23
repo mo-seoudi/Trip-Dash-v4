@@ -8,7 +8,11 @@ function harness() {
   const prisma = {
     trip: {
       findMany: async (args) => { calls.push(["findMany", args]); return []; },
-      findFirst: async (args) => { calls.push(["findFirst", args]); return args.where.id === 404 ? null : { id: args.where.id || 1, status: "pending" }; },
+      findFirst: async (args) => {
+        calls.push(["findFirst", args]);
+        if (args.where.id === 404) return null;
+        return { id: args.where.id || 1, status: args.where.id === 23 ? "Canceled" : "Pending" };
+      },
       create: async (args) => { calls.push(["create", args]); return { id: 10, ...args.data }; },
       update: async (args) => { calls.push(["update", args]); return { id: args.where.id, ...args.data }; },
       delete: async (args) => { calls.push(["delete", args]); return { id: args.where.id }; },
