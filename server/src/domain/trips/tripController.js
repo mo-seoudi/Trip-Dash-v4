@@ -47,6 +47,18 @@ export async function cancelTrip(req, res, next) {
   catch (error) { return next(error); }
 }
 
+export async function requestTripCancellation(req, res, next) {
+  try { return res.json({ data: await service(req).requestCancellation(req.params.tripId) }); }
+  catch (error) { return next(error); }
+}
+
+export async function resolveTripCancellation(req, res, next) {
+  try {
+    if (typeof req.body?.approve !== "boolean") return res.status(400).json({ message: "approve must be true or false" });
+    return res.json({ data: await service(req).resolveCancellation(req.params.tripId, req.body.approve) });
+  } catch (error) { return next(error); }
+}
+
 export async function deleteTrip(req, res, next) {
   try { return res.json({ data: await service(req).remove(req.params.tripId) }); }
   catch (error) { return next(error); }
