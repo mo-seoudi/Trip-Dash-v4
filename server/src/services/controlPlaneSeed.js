@@ -34,6 +34,9 @@ export function buildControlPlaneReferenceSeed() {
 export async function seedControlPlaneReferenceData(prisma) {
   const seed = buildControlPlaneReferenceSeed();
 
+  // Hosted PostgreSQL connections can make this deterministic catalogue seed
+  // exceed Prisma's 5-second interactive-transaction default. Keep the seed
+  // atomic, but give it enough time to complete on Render/Supabase.
   await prisma.$transaction(async (tx) => {
     for (const permission of seed.permissions) {
       await tx.permission.upsert({
@@ -78,6 +81,9 @@ export async function seedControlPlaneReferenceData(prisma) {
         });
       }
     }
+  }, {
+    maxWait: 10000,
+    timeout: 30000,
   });
 
   return seed;
