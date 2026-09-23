@@ -23,7 +23,6 @@ const workspaceTripPath = (schoolId,tripId) => `${workspaceTripsPath(schoolId)}/
 const workspaceBusAssignmentsPath = (schoolId,tripId) => `${workspaceTripPath(schoolId,tripId)}/bus-assignments`;
 const workspacePassengersPath = (schoolId,tripId) => `${workspaceTripPath(schoolId,tripId)}/passengers`;
 const workspaceQuotationPath = (schoolId,tripId) => `${workspaceTripPath(schoolId,tripId)}/quotation`;
-const workspaceWorkflowPath = (schoolId,tripId) => `${workspaceTripPath(schoolId,tripId)}/workflow`;
 const lifecycleAction = async (schoolId,tripId,action) => normalizeTrip(unwrapData(await api.post(`${workspaceTripPath(schoolId,tripId)}/${action}`)));
 
 export const getWorkspaceTrips = async schoolId => unwrapList(await api.get(workspaceTripsPath(schoolId))).map(normalizeTrip).sort(sortTrips);
@@ -38,8 +37,6 @@ export const updateWorkspaceBusAssignment = async (schoolId,tripId,assignmentId,
 export const updateWorkspaceBusAssignmentCommercials = async (schoolId,tripId,assignmentId,payload) => unwrapData(await api.patch(`${workspaceBusAssignmentsPath(schoolId,tripId)}/${assignmentId}/commercial`,payload));
 export const deleteWorkspaceBusAssignment = async (schoolId,tripId,assignmentId) => { await api.delete(`${workspaceBusAssignmentsPath(schoolId,tripId)}/${assignmentId}`); };
 
-// Quotation workflow now lives under the canonical trip resource rather than a
-// separately mounted legacy workflow router.
 export const getWorkspaceQuotation = async (schoolId,tripId) => unwrapData(await api.get(workspaceQuotationPath(schoolId,tripId)));
 export const submitWorkspaceQuotation = async (schoolId,tripId) => unwrapData(await api.post(`${workspaceQuotationPath(schoolId,tripId)}/submit`));
 export const reviseWorkspaceQuotation = async (schoolId,tripId,reason) => unwrapData(await api.post(`${workspaceQuotationPath(schoolId,tripId)}/revise`,{reason}));
@@ -53,11 +50,8 @@ export const rejectWorkspaceTrip = async (schoolId,tripId) => lifecycleAction(sc
 export const completeWorkspaceTrip = async (schoolId,tripId) => lifecycleAction(schoolId,tripId,"complete");
 export const cancelWorkspaceTrip = async (schoolId,tripId) => lifecycleAction(schoolId,tripId,"cancel");
 export const confirmWorkspaceTrip = async (schoolId,tripId) => unwrapData(await api.post(`${workspaceTripPath(schoolId,tripId)}/confirm`));
-
-// Post-acceptance cancellation still coordinates a distinct request/decision
-// workflow and remains on the legacy route until that final migration step.
-export const requestWorkspaceTripCancellation = async (schoolId,tripId) => normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId,tripId)}/request-cancel`)));
-export const resolveWorkspaceTripCancellation = async (schoolId,tripId,approve) => normalizeTrip(unwrapData(await api.post(`${workspaceWorkflowPath(schoolId,tripId)}/resolve-cancel`,{approve})));
+export const requestWorkspaceTripCancellation = async (schoolId,tripId) => normalizeTrip(unwrapData(await api.post(`${workspaceTripPath(schoolId,tripId)}/cancellation-request`)));
+export const resolveWorkspaceTripCancellation = async (schoolId,tripId,approve) => normalizeTrip(unwrapData(await api.post(`${workspaceTripPath(schoolId,tripId)}/cancellation-decision`,{approve})));
 
 export const getWorkspaceTripPassengers = async (schoolId,tripId) => unwrapList(await api.get(workspacePassengersPath(schoolId,tripId)));
 export const addWorkspaceTripPassengers = async (schoolId,tripId,passengers) => unwrapData(await api.post(workspacePassengersPath(schoolId,tripId),{passengers}));
