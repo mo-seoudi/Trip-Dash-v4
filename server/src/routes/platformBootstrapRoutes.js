@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prismaControl } from "../lib/prismaControl.js";
 import { AUTH_COOKIE_NAME, authCookieOptions, signAuthToken } from "../lib/authTokens.js";
 import { normalizeEmail, publicAppUser } from "../services/canonicalAuth.js";
+import { seedControlPlaneReferenceData } from "../services/controlPlaneSeed.js";
 
 const router = Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,6 +50,11 @@ router.post("/platform-admin", async (req, res, next) => {
     if (allowedEmail && email !== allowedEmail) return res.status(403).json({ message: "This email is not authorized for platform bootstrap" });
     if (password.length < 10 || password.length > 128) return res.status(400).json({ message: "Password must be between 10 and 128 characters" });
 
+    // Bootstrap must be self-contained on a freshly cut-over control plane.
+    // The seed is deterministic/idempotent and ensures the canonical role and
+    // permission catalogue exists before the first administrator is created.
+    await seedControlPlaneReferenceData(prismaControl);
+
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prismaControl.$transaction(async (tx) => {
       const alreadyBootstrapped = await tx.roleAssignment.findFirst({
@@ -70,7 +76,7 @@ router.post("/platform-admin", async (req, res, next) => {
 
       const role = await tx.role.findUnique({ where: { key: "super_admin" } });
       if (!role) {
-        const error = new Error("Canonical super_admin role is missing; run the control-plane seed first");
+        const error = new Error("Canonical super_admin role is unavailable after seeding");
         error.status = 500;
         throw error;
       }
