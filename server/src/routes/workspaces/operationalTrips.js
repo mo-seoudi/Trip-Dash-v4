@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { operationalRequestContext, requireOperationalContext } from "../../runtime/operationalRequestContext.js";
 import { listTrips, getTrip, createTrip, updateTrip, acceptTrip, rejectTrip, completeTrip, cancelTrip, deleteTrip } from "../../domain/trips/tripController.js";
+import { getQuotation, submitQuotation, reviseQuotation, requestApproval, approveQuotation, requestChanges, confirmTrip } from "../../domain/trips/tripWorkflowController.js";
 import { listBusAssignments, createBusAssignment } from "../../domain/trips/busAssignmentController.js";
 import { listPassengers, addPassengers, updatePassenger, removePassenger } from "../../domain/trips/passengerController.js";
 import { listPassengerAllocations, allocatePassenger, movePassenger, unallocatePassenger } from "../../domain/trips/passengerAllocationController.js";
@@ -19,6 +20,16 @@ router.post("/trips/:tripId/reject", operationalRequestContext("trip.respond"), 
 router.post("/trips/:tripId/complete", operationalRequestContext("trip.respond"), requireOperationalContext, completeTrip);
 router.post("/trips/:tripId/cancel", operationalRequestContext("trip.edit_request"), requireOperationalContext, cancelTrip);
 router.delete("/trips/:tripId", operationalRequestContext("trip.delete"), requireOperationalContext, deleteTrip);
+
+// Quotation and approval workflow is part of the canonical trip resource. Each
+// action resolves the same authorized operational context before touching data.
+router.get("/trips/:tripId/quotation", operationalRequestContext("trip.read"), requireOperationalContext, getQuotation);
+router.post("/trips/:tripId/quotation/submit", operationalRequestContext("trip.respond"), requireOperationalContext, submitQuotation);
+router.post("/trips/:tripId/quotation/revise", operationalRequestContext("trip.respond"), requireOperationalContext, reviseQuotation);
+router.post("/trips/:tripId/quotation/request-approval", operationalRequestContext("trip.request_quote_approval"), requireOperationalContext, requestApproval);
+router.post("/trips/:tripId/quotation/approve", operationalRequestContext("trip.approve_quote"), requireOperationalContext, approveQuotation);
+router.post("/trips/:tripId/quotation/request-changes", operationalRequestContext("trip.approve_quote"), requireOperationalContext, requestChanges);
+router.post("/trips/:tripId/confirm", operationalRequestContext("trip.respond"), requireOperationalContext, confirmTrip);
 
 router.get("/trips/:tripId/bus-assignments", operationalRequestContext("trip.read"), requireOperationalContext, listBusAssignments);
 router.post("/trips/:tripId/bus-assignments", operationalRequestContext("bus_assignment.manage"), requireOperationalContext, createBusAssignment);
