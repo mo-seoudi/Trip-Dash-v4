@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PERMISSIONS } from "../src/services/accessCatalog.js";
 import { resolveEffectiveAccess } from "../src/services/effectiveAccess.js";
 import { workspaceFromAccess } from "../src/services/workspaceOperationalContext.js";
+import { workspaceTripReadWhere } from "../src/services/workspaceAuthorization.js";
 
 const operator = { id: "sts", type: "BUS_OPERATOR", displayName: "STS", fullName: "STS", abbreviation: "STS", status: "active" };
 const school = (id, name) => ({ id, type: "SCHOOL", displayName: name, fullName: name, abbreviation: id.toUpperCase(), status: "active" });
@@ -47,6 +48,8 @@ test("bus operator receives every actively linked school with operator permissio
     assert.ok(workspace.permissions.includes(PERMISSIONS.BUS_ASSIGNMENT_MANAGE));
     assert.equal(workspace.permissions.includes(PERMISSIONS.TRIP_CREATE), false);
     assert.equal(workspace.permissions.includes(PERMISSIONS.TRIP_EDIT_REQUEST), false);
+    assert.deepEqual(workspaceTripReadWhere({ access, workspace }), {});
+    assert.ok(workspace.access.some((entry) => entry.transportProviderOrganizationId === operator.id));
   }
   assert.doesNotThrow(() => workspaceFromAccess(access, rdx.id, PERMISSIONS.BUS_ASSIGNMENT_MANAGE));
   assert.throws(() => workspaceFromAccess(access, rdx.id, PERMISSIONS.TRIP_CREATE), /permission/i);
