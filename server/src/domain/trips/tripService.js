@@ -37,186 +37,50 @@ const CANCELLATION_REQUEST_STATUSES = new Set([
 ]);
 
 export class TripValidationError extends Error {
-  constructor(message, field = null) {
-    super(message);
-    this.name = "TripValidationError";
-    this.code = "TRIP_VALIDATION_FAILED";
-    this.status = 400;
-    this.field = field;
-  }
+  constructor(message, field = null) { super(message); this.name = "TripValidationError"; this.code = "TRIP_VALIDATION_FAILED"; this.status = 400; this.field = field; }
 }
-
 export class TripNotFoundError extends Error {
-  constructor() {
-    super("Trip was not found in this school workspace");
-    this.name = "TripNotFoundError";
-    this.code = "TRIP_NOT_FOUND";
-    this.status = 404;
-  }
+  constructor() { super("Trip was not found in this school workspace"); this.name = "TripNotFoundError"; this.code = "TRIP_NOT_FOUND"; this.status = 404; }
 }
-
 export class TripTransitionError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "TripTransitionError";
-    this.code = "TRIP_TRANSITION_NOT_ALLOWED";
-    this.status = 409;
-  }
+  constructor(message) { super(message); this.name = "TripTransitionError"; this.code = "TRIP_TRANSITION_NOT_ALLOWED"; this.status = 409; }
 }
-
 export class TripAuthorizationError extends Error {
-  constructor(message = "This trip is not available to the current user") {
-    super(message);
-    this.name = "TripAuthorizationError";
-    this.code = "TRIP_ACCESS_DENIED";
-    this.status = 403;
-  }
+  constructor(message = "This trip is not available to the current user") { super(message); this.name = "TripAuthorizationError"; this.code = "TRIP_ACCESS_DENIED"; this.status = 403; }
 }
 
-function tripId(value) {
-  const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId");
-  return id;
-}
-
-function schoolWhere(workspace, extra = {}) {
-  return { owningSchoolOrganizationId: workspace.schoolId, ...extra };
-}
-
-function rejectProtectedIdentityFields(input = {}) {
-  for (const field of ["owningSchoolOrganizationId", "requestingOrganizationId", "createdByAppUserId", "status"]) {
-    if (Object.hasOwn(input, field)) throw new TripValidationError(`${field} is controlled by authenticated workflow context`, field);
-  }
-}
-
-function statusIs(value, expected) {
-  return String(value || "").toLowerCase() === expected.toLowerCase();
-}
+function tripId(value) { const id = Number(value); if (!Number.isInteger(id) || id <= 0) throw new TripValidationError("tripId is invalid", "tripId"); return id; }
+function schoolWhere(workspace, extra = {}) { return { owningSchoolOrganizationId: workspace.schoolId, ...extra }; }
+function rejectProtectedIdentityFields(input = {}) { for (const field of ["owningSchoolOrganizationId", "requestingOrganizationId", "createdByAppUserId", "status"]) if (Object.hasOwn(input, field)) throw new TripValidationError(`${field} is controlled by authenticated workflow context`, field); }
+function statusIs(value, expected) { return String(value || "").toLowerCase() === expected.toLowerCase(); }
 
 export function createTripService({ prisma, workspace, user }) {
   if (!prisma || !workspace?.schoolId) throw new TypeError("Scoped operational context with school workspace is required");
-
   const appUserId = cleanText(user?.appUserId);
   const canReadAllTrips = Array.isArray(workspace.permissions) && workspace.permissions.includes("trip.read_all");
-
-  function visibleTripWhere(extra = {}) {
-    const visibility = canReadAllTrips ? {} : { createdByAppUserId: appUserId || "__NO_AUTHENTICATED_APP_USER__" };
-    return schoolWhere(workspace, { ...visibility, ...extra });
-  }
-
-  function requireCreatorIdentity() {
-    if (!appUserId) throw new TripAuthorizationError("The authenticated user is not linked to a canonical application user");
-    return appUserId;
-  }
-
-  async function existing(id) {
-    const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id: tripId(id) }) });
-    if (!trip) throw new TripNotFoundError();
-    return trip;
-  }
-
-  async function hydrated(id) {
-    const trip = await prisma.trip.findFirst({
-      where: visibleTripWhere({ id }),
-      include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true },
-    });
-    if (!trip) throw new TripNotFoundError();
-    return trip;
-  }
-
+  function visibleTripWhere(extra = {}) { const visibility = canReadAllTrips ? {} : { createdByAppUserId: appUserId || "__NO_AUTHENTICATED_APP_USER__" }; return schoolWhere(workspace, { ...visibility, ...extra }); }
+  function requireCreatorIdentity() { if (!appUserId) throw new TripAuthorizationError("The authenticated user is not linked to a canonical application user"); return appUserId; }
+  async function existing(id) { const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id: tripId(id) }) }); if (!trip) throw new TripNotFoundError(); return trip; }
+  async function hydrated(id) { const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id }), include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true } }); if (!trip) throw new TripNotFoundError(); return trip; }
   async function transition(id, fromStatus, toStatus) {
     const current = await existing(id);
-    if (current.cancelRequest) throw new TripTransitionError("Resolve the cancellation request before changing this trip");
     if (!statusIs(current.status, fromStatus)) throw new TripTransitionError(`Only a ${fromStatus} trip can move to ${toStatus}`);
-    const changed = await prisma.trip.updateMany({
-      where: visibleTripWhere({ id: current.id, status: current.status, OR: [{ cancelRequest: false }, { cancelRequest: null }] }),
-      data: { status: toStatus, cancelRequest: false },
-    });
+    const changed = await prisma.trip.updateMany({ where: visibleTripWhere({ id: current.id, status: current.status }), data: { status: toStatus } });
     if (changed.count !== 1) throw new TripTransitionError("Trip changed before the workflow action was recorded");
     return hydrated(current.id);
   }
 
   return {
-    async list({ status = null, from = null, to = null, take = 100 } = {}) {
-      const limit = Math.max(1, Math.min(Number(take) || 100, 250));
-      const where = visibleTripWhere({
-        ...(status ? { status: cleanText(status) } : {}),
-        ...((from || to) ? { date: { ...(from ? { gte: asDate(from, "from") } : {}), ...(to ? { lte: asDate(to, "to") } : {}) } } : {}),
-      });
-      return prisma.trip.findMany({ where, orderBy: [{ date: "asc" }, { departureTime: "asc" }, { id: "asc" }], take: limit, include: { busAssignments: true } });
-    },
-
-    async get(id) {
-      const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id: tripId(id) }), include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true } });
-      if (!trip) throw new TripNotFoundError();
-      return trip;
-    },
-
-    async create(input = {}) {
-      rejectProtectedIdentityFields(input);
-      const creatorAppUserId = requireCreatorIdentity();
-      const destination = cleanText(input.destination), date = asDate(input.date, "date");
-      if (!destination) throw new TripValidationError("destination is required", "destination");
-      if (!date) throw new TripValidationError("date is required", "date");
-      const students = asCount(input.students, "students"), staff = asCount(input.staff, "staff"), boosterSeatCount = asCount(input.boosterSeatCount, "boosterSeatCount") ?? 0;
-      return prisma.trip.create({
-        data: { createdByAppUserId:creatorAppUserId, owningSchoolOrganizationId:workspace.schoolId, requestingOrganizationId:user?.organizationId||workspace.schoolId, managingOrganizationId:cleanText(input.managingOrganizationId), transportProviderOrganizationId:cleanText(input.transportProviderOrganizationId), payerOrganizationId:cleanText(input.payerOrganizationId)||workspace.schoolId, origin:cleanText(input.origin), tripType:cleanText(input.tripType), destination, date, departureTime:cleanText(input.departureTime), returnDate:asDate(input.returnDate,"returnDate"), returnTime:cleanText(input.returnTime), students, staff, status:STATUS.PENDING, notes:cleanText(input.notes), boosterSeatsRequested:Boolean(input.boosterSeatsRequested||boosterSeatCount>0), boosterSeatCount },
-        include: { busAssignments: true },
-      });
-    },
-
-    async update(id, input = {}) {
-      rejectProtectedIdentityFields(input);
-      const current = await existing(id);
-      if (!statusIs(current.status, STATUS.PENDING)) throw new TripTransitionError("Only a Pending trip request can be edited");
-      const data = {};
-      if (Object.hasOwn(input,"destination")) { const value=cleanText(input.destination);if(!value)throw new TripValidationError("destination is required","destination");data.destination=value; }
-      if (Object.hasOwn(input,"date")) { const value=asDate(input.date,"date");if(!value)throw new TripValidationError("date is required","date");data.date=value; }
-      for (const field of ["origin","tripType","departureTime","returnTime","notes","managingOrganizationId","transportProviderOrganizationId","payerOrganizationId"]) if (Object.hasOwn(input,field)) data[field]=cleanText(input[field]);
-      if(Object.hasOwn(input,"returnDate"))data.returnDate=asDate(input.returnDate,"returnDate");if(Object.hasOwn(input,"students"))data.students=asCount(input.students,"students");if(Object.hasOwn(input,"staff"))data.staff=asCount(input.staff,"staff");if(Object.hasOwn(input,"boosterSeatCount"))data.boosterSeatCount=asCount(input.boosterSeatCount,"boosterSeatCount")??0;if(Object.hasOwn(input,"boosterSeatsRequested"))data.boosterSeatsRequested=Boolean(input.boosterSeatsRequested);if(data.boosterSeatCount>0)data.boosterSeatsRequested=true;
-      const changed = await prisma.trip.updateMany({ where: visibleTripWhere({ id: current.id }), data });
-      if (changed.count !== 1) throw new TripNotFoundError();
-      return hydrated(current.id);
-    },
-
+    async list({ status = null, from = null, to = null, take = 100 } = {}) { const limit=Math.max(1,Math.min(Number(take)||100,250)); const where=visibleTripWhere({...(status?{status:cleanText(status)}:{}),...((from||to)?{date:{...(from?{gte:asDate(from,"from")} :{}),...(to?{lte:asDate(to,"to")}:{})}}:{})}); return prisma.trip.findMany({where,orderBy:[{date:"asc"},{departureTime:"asc"},{id:"asc"}],take:limit,include:{busAssignments:true}}); },
+    async get(id) { const trip=await prisma.trip.findFirst({where:visibleTripWhere({id:tripId(id)}),include:{busAssignments:true,passengers:true,quotations:true,approvalRequests:true}}); if(!trip)throw new TripNotFoundError(); return trip; },
+    async create(input={}) { rejectProtectedIdentityFields(input); const creatorAppUserId=requireCreatorIdentity(); const destination=cleanText(input.destination),date=asDate(input.date,"date"); if(!destination)throw new TripValidationError("destination is required","destination"); if(!date)throw new TripValidationError("date is required","date"); const students=asCount(input.students,"students"),staff=asCount(input.staff,"staff"),boosterSeatCount=asCount(input.boosterSeatCount,"boosterSeatCount")??0; return prisma.trip.create({data:{createdByAppUserId:creatorAppUserId,owningSchoolOrganizationId:workspace.schoolId,requestingOrganizationId:user?.organizationId||workspace.schoolId,managingOrganizationId:cleanText(input.managingOrganizationId),transportProviderOrganizationId:cleanText(input.transportProviderOrganizationId),payerOrganizationId:cleanText(input.payerOrganizationId)||workspace.schoolId,origin:cleanText(input.origin),tripType:cleanText(input.tripType),destination,date,departureTime:cleanText(input.departureTime),returnDate:asDate(input.returnDate,"returnDate"),returnTime:cleanText(input.returnTime),students,staff,status:STATUS.PENDING,notes:cleanText(input.notes),boosterSeatsRequested:Boolean(input.boosterSeatsRequested||boosterSeatCount>0),boosterSeatCount},include:{busAssignments:true}}); },
+    async update(id,input={}) { rejectProtectedIdentityFields(input); const current=await existing(id); if(!statusIs(current.status,STATUS.PENDING))throw new TripTransitionError("Only a Pending trip request can be edited"); const data={}; if(Object.hasOwn(input,"destination")){const value=cleanText(input.destination);if(!value)throw new TripValidationError("destination is required","destination");data.destination=value;} if(Object.hasOwn(input,"date")){const value=asDate(input.date,"date");if(!value)throw new TripValidationError("date is required","date");data.date=value;} for(const field of ["origin","tripType","departureTime","returnTime","notes","managingOrganizationId","transportProviderOrganizationId","payerOrganizationId"])if(Object.hasOwn(input,field))data[field]=cleanText(input[field]); if(Object.hasOwn(input,"returnDate"))data.returnDate=asDate(input.returnDate,"returnDate"); if(Object.hasOwn(input,"students"))data.students=asCount(input.students,"students"); if(Object.hasOwn(input,"staff"))data.staff=asCount(input.staff,"staff"); if(Object.hasOwn(input,"boosterSeatCount"))data.boosterSeatCount=asCount(input.boosterSeatCount,"boosterSeatCount")??0; if(Object.hasOwn(input,"boosterSeatsRequested"))data.boosterSeatsRequested=Boolean(input.boosterSeatsRequested); if(data.boosterSeatCount>0)data.boosterSeatsRequested=true; const changed=await prisma.trip.updateMany({where:visibleTripWhere({id:current.id}),data}); if(changed.count!==1)throw new TripNotFoundError(); return hydrated(current.id); },
     accept(id) { return transition(id, STATUS.PENDING, STATUS.ACCEPTED); },
     reject(id) { return transition(id, STATUS.PENDING, STATUS.REJECTED); },
     complete(id) { return transition(id, STATUS.CONFIRMED, STATUS.COMPLETED); },
-
-    async cancel(id) {
-      const current = await existing(id);
-      if (statusIs(current.status, STATUS.CANCELED)) return current;
-      if (current.cancelRequest) throw new TripTransitionError("Resolve the cancellation request before cancelling this trip");
-      if (!statusIs(current.status, STATUS.PENDING)) throw new TripTransitionError("Only a Pending trip can be cancelled directly; request cancellation after it has been accepted");
-      const changed = await prisma.trip.updateMany({ where: visibleTripWhere({ id: current.id }), data:{status:STATUS.CANCELED,cancelRequest:false} });
-      if (changed.count !== 1) throw new TripNotFoundError();
-      return hydrated(current.id);
-    },
-
-    async requestCancellation(id) {
-      const current = await existing(id);
-      if (!CANCELLATION_REQUEST_STATUSES.has(current.status)) throw new TripTransitionError("Cancellation cannot be requested at this trip stage");
-      if (current.cancelRequest) throw new TripTransitionError("A cancellation request is already pending");
-      const changed = await prisma.trip.updateMany({ where:visibleTripWhere({id:current.id,status:current.status,OR:[{cancelRequest:false},{cancelRequest:null}]}), data:{cancelRequest:true} });
-      if (changed.count !== 1) throw new TripTransitionError("Trip changed before the cancellation request was recorded");
-      return hydrated(current.id);
-    },
-
-    async resolveCancellation(id, approve) {
-      const current = await existing(id);
-      if (!current.cancelRequest) throw new TripTransitionError("This trip has no pending cancellation request");
-      const data = approve ? { status:STATUS.CANCELED,cancelRequest:false } : { cancelRequest:false };
-      const changed = await prisma.trip.updateMany({ where:visibleTripWhere({id:current.id,status:current.status,cancelRequest:true}), data });
-      if (changed.count !== 1) throw new TripTransitionError("Trip changed before the cancellation request was resolved");
-      return hydrated(current.id);
-    },
-
-    async remove(id) {
-      const current = await existing(id);
-      if (!statusIs(current.status, STATUS.CANCELED)) throw new TripTransitionError("Only a Canceled trip can be deleted");
-      const deleted = await prisma.trip.deleteMany({ where: visibleTripWhere({ id: current.id }) });
-      if (deleted.count !== 1) throw new TripNotFoundError();
-      return { id:current.id, deleted:true };
-    },
+    async cancel(id) { const current=await existing(id); if(statusIs(current.status,STATUS.CANCELED))return current; if(!statusIs(current.status,STATUS.PENDING))throw new TripTransitionError("Only a Pending trip can be cancelled directly; request cancellation after it has been accepted"); const changed=await prisma.trip.updateMany({where:visibleTripWhere({id:current.id,status:current.status}),data:{status:STATUS.CANCELED}}); if(changed.count!==1)throw new TripNotFoundError(); return hydrated(current.id); },
+    async requestCancellation(id) { const current=await existing(id); if(!CANCELLATION_REQUEST_STATUSES.has(current.status))throw new TripTransitionError("Cancellation cannot be requested at this trip stage"); throw new TripTransitionError("Cancellation requests require the canonical approval workflow and are not yet available on this trip record"); },
+    async resolveCancellation(id,_approve) { await existing(id); throw new TripTransitionError("Cancellation decisions require the canonical approval workflow and are not yet available on this trip record"); },
+    async remove(id) { const current=await existing(id); if(!statusIs(current.status,STATUS.CANCELED))throw new TripTransitionError("Only a Canceled trip can be deleted"); const deleted=await prisma.trip.deleteMany({where:visibleTripWhere({id:current.id})}); if(deleted.count!==1)throw new TripNotFoundError(); return{id:current.id,deleted:true}; },
   };
 }
