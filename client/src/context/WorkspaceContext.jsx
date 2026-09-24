@@ -68,7 +68,12 @@ export function WorkspaceProvider({ children }) {
     return true;
   }
 
-  const permissions = selectedWorkspace?.permissions || [];
+  // Workspace permissions govern operational school data. Global permissions are
+  // resolved independently by the backend and remain available even when a
+  // platform user (for example Super Admin) has no school workspace selected.
+  const workspacePermissions = selectedWorkspace?.permissions || [];
+  const globalPermissions = access?.permissions || [];
+  const permissions = [...new Set([...globalPermissions, ...workspacePermissions])];
 
   const value = useMemo(() => ({
     access,
@@ -78,6 +83,8 @@ export function WorkspaceProvider({ children }) {
     organizations: access?.organizations || [],
     roles: access?.roles || [],
     permissions,
+    globalPermissions,
+    workspacePermissions,
     selectedWorkspaceId,
     selectedWorkspace,
     workspaceEpoch,
@@ -86,11 +93,12 @@ export function WorkspaceProvider({ children }) {
     portfolioEnabled: Boolean(access?.portfolio?.enabled),
     selectWorkspace,
     can: (permission) => permissions.includes(permission),
+    canGlobal: (permission) => globalPermissions.includes(permission),
     canInWorkspace: (schoolId, permission) => {
       const workspace = workspaces.find((item) => item.schoolId === schoolId);
       return Boolean(workspace?.permissions?.includes(permission));
     },
-  }), [access, authLoading, loading, error, workspaces, permissions, selectedWorkspaceId, selectedWorkspace, workspaceEpoch, switchingWorkspace]);
+  }), [access, authLoading, loading, error, workspaces, permissions, globalPermissions, workspacePermissions, selectedWorkspaceId, selectedWorkspace, workspaceEpoch, switchingWorkspace]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
