@@ -21,3 +21,16 @@ textarea {
   -webkit-user-select: none;
   -ms-user-select: none;
 }
+
+/* Keep the organization-page header actions visually consistent. */
+.organization-control-page > .space-y-5 > header button.bg-violet-600 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+.organization-control-page > .space-y-5 > header button.bg-violet-600:hover {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
