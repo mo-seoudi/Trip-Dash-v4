@@ -2,10 +2,11 @@ import { prismaControl } from "../lib/prismaControl.js";
 import { resolveSecret } from "./secretProviderResolver.js";
 
 export class OperationalDataSourceError extends Error {
-  constructor(message, code = "OPERATIONAL_DATASOURCE_ERROR") {
+  constructor(message, code = "OPERATIONAL_DATASOURCE_ERROR", status = 503) {
     super(message);
     this.name = "OperationalDataSourceError";
     this.code = code;
+    this.status = status;
   }
 }
 
@@ -18,7 +19,7 @@ export class OperationalDataSourceError extends Error {
  */
 export async function resolveOperationalDataSource(organizationId) {
   if (!organizationId) {
-    throw new OperationalDataSourceError("Organization id is required", "ORGANIZATION_REQUIRED");
+    throw new OperationalDataSourceError("Organization id is required", "ORGANIZATION_REQUIRED", 400);
   }
 
   const sources = await prismaControl.operationalDataSource.findMany({
@@ -34,13 +35,13 @@ export async function resolveOperationalDataSource(organizationId) {
 
   if (sources.length === 0) {
     throw new OperationalDataSourceError(
-      "No active operational datasource is assigned to this organization",
+      "No operational data source is configured for this school workspace",
       "DATASOURCE_NOT_CONFIGURED"
     );
   }
   if (sources.length > 1) {
     throw new OperationalDataSourceError(
-      "Multiple active operational datasources are assigned to this organization",
+      "Multiple active operational data sources are assigned to this school workspace",
       "DATASOURCE_AMBIGUOUS"
     );
   }
