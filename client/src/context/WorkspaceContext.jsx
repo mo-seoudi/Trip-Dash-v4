@@ -3,14 +3,14 @@ import api from "../services/apiClient";
 import { useAuth } from "./AuthContext";
 
 const WorkspaceContext = createContext(null);
-const PORTFOLIO = "portfolio";
 
 export function WorkspaceProvider({ children }) {
   const { profile, loading: authLoading } = useAuth();
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedWorkspaceId, setSelectedWorkspaceIdState] = useState(PORTFOLIO);
+  const [selectedWorkspaceId, setSelectedWorkspaceIdState] = useState(null);
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -19,7 +19,7 @@ export function WorkspaceProvider({ children }) {
       if (!profile) {
         if (active) {
           setAccess(null);
-          setSelectedWorkspaceIdState(PORTFOLIO);
+          setSelectedWorkspaceIdState(null);
           setLoading(false);
         }
         return;
@@ -30,13 +30,17 @@ export function WorkspaceProvider({ children }) {
         const response = await api.get("/access/me");
         if (!active) return;
         const next = response.data;
+        const nextWorkspaces = next.workspaces || [];
         setAccess(next);
-        const saved = window.localStorage.getItem(`tripdash:workspace:${profile.id}`) || PORTFOLIO;
-        const allowed = new Set((next.workspaces || []).map((item) => item.schoolId));
-        setSelectedWorkspaceIdState(saved === PORTFOLIO || allowed.has(saved) ? saved : PORTFOLIO);
+        const saved = window.localStorage.getItem(`tripdash:workspace:${profile.id}`);
+        const allowed = new Set(nextWorkspaces.map((item) => item.schoolId));
+        const initial = saved && allowed.has(saved) ? saved : (nextWorkspaces[0]?.schoolId || null);
+        setSelectedWorkspaceIdState(initial);
+        if (initial) window.localStorage.setItem(`tripdash:workspace:${profile.id}`, initial);
       } catch (requestError) {
         if (!active) return;
         setAccess(null);
+        setSelectedWorkspaceIdState(null);
         setError(requestError?.response?.data?.message || "Unable to load your workspace access.");
       } finally {
         if (active) setLoading(false);
@@ -47,21 +51,18 @@ export function WorkspaceProvider({ children }) {
   }, [profile?.id, authLoading]);
 
   const workspaces = access?.workspaces || [];
-  const selectedWorkspace = selectedWorkspaceId === PORTFOLIO
-    ? null
-    : workspaces.find((item) => item.schoolId === selectedWorkspaceId) || null;
+  const selectedWorkspace = workspaces.find((item) => item.schoolId === selectedWorkspaceId) || null;
 
   function selectWorkspace(value) {
-    const next = value || PORTFOLIO;
-    if (next !== PORTFOLIO && !workspaces.some((item) => item.schoolId === next)) return false;
-    setSelectedWorkspaceIdState(next);
-    if (profile?.id) window.localStorage.setItem(`tripdash:workspace:${profile.id}`, next);
+    if (!value || !workspaces.some((item) => item.schoolId === value)) return false;
+    if (value === selectedWorkspaceId) return true;
+    setSelectedWorkspaceIdState(value);
+    setWorkspaceEpoch((current) => current + 1);
+    if (profile?.id) window.localStorage.setItem(`tripdash:workspace:${profile.id}`, value);
     return true;
   }
 
-  const permissions = selectedWorkspace
-    ? selectedWorkspace.permissions || []
-    : access?.permissions || [];
+  const permissions = selectedWorkspace?.permissions || [];
 
   const value = useMemo(() => ({
     access,
@@ -73,7 +74,8 @@ export function WorkspaceProvider({ children }) {
     permissions,
     selectedWorkspaceId,
     selectedWorkspace,
-    isPortfolio: selectedWorkspaceId === PORTFOLIO,
+    workspaceEpoch,
+    hasWorkspace: Boolean(selectedWorkspace),
     portfolioEnabled: Boolean(access?.portfolio?.enabled),
     selectWorkspace,
     can: (permission) => permissions.includes(permission),
@@ -81,7 +83,7 @@ export function WorkspaceProvider({ children }) {
       const workspace = workspaces.find((item) => item.schoolId === schoolId);
       return Boolean(workspace?.permissions?.includes(permission));
     },
-  }), [access, authLoading, loading, error, workspaces, permissions, selectedWorkspaceId, selectedWorkspace]);
+  }), [access, authLoading, loading, error, workspaces, permissions, selectedWorkspaceId, selectedWorkspace, workspaceEpoch]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
