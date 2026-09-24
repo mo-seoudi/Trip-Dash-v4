@@ -1,15 +1,15 @@
 import React,{useEffect,useMemo,useState}from"react";
 import{confirmWorkspaceTrip,createWorkspaceBusAssignment,deleteWorkspaceBusAssignment,getWorkspaceBusAssignments,submitWorkspaceQuotation,updateWorkspaceBusAssignment}from"../services/tripService";
-import{useAuth}from"../context/AuthContext";import{toast}from"react-toastify";import ModalWrapper from"./ModalWrapper";
+import{useWorkspace}from"../context/WorkspaceContext";import{toast}from"react-toastify";import ModalWrapper from"./ModalWrapper";
 
 const AssignBusForm=({trip,onClose,onSubmit})=>{
-  const{activeWorkspace}=useAuth(),schoolId=activeWorkspace?.schoolId;
+  const{selectedWorkspace}=useWorkspace(),schoolId=selectedWorkspace?.schoolId;
   const preparing=trip?.status==="Accepted",approved=trip?.status==="Approved",operational=approved||trip?.status==="Confirmed";
   const[busType,setBusType]=useState("Internal Yellow Bus"),[busSeats,setBusSeats]=useState((Number(trip?.students)||0)+(Number(trip?.staff)||0)||"");
   const[price,setPrice]=useState(""),[currency,setCurrency]=useState("AED"),[driverName,setDriverName]=useState(""),[driverPhone,setDriverPhone]=useState("");
   const[assignments,setAssignments]=useState([]),[editingId,setEditingId]=useState(null),[submitting,setSubmitting]=useState(false),[loading,setLoading]=useState(true);
   const load=async()=>{if(!schoolId)return;try{setLoading(true);setAssignments(await getWorkspaceBusAssignments(schoolId,trip.id));}catch(e){toast.error(e?.response?.data?.message||"Unable to load bus assignments.");}finally{setLoading(false);}};
-  useEffect(()=>{load();},[schoolId,trip.id]);
+  useEffect(()=>{setAssignments([]);setEditingId(null);load();},[schoolId,trip.id]);
   const totals=useMemo(()=>assignments.reduce((out,a)=>{const c=a.currency||"AED";out[c]=(out[c]||0)+(Number(a.price)||0);return out;},{}),[assignments]);
   const incompleteDrivers=useMemo(()=>assignments.filter(a=>String(a.status||"").toLowerCase()!=="cancelled"&&(!String(a.driverName||"").trim()||!String(a.driverPhone||"").trim())),[assignments]);
   const reset=()=>{setBusType("Internal Yellow Bus");setBusSeats((Number(trip?.students)||0)+(Number(trip?.staff)||0)||"");setPrice("");setCurrency("AED");setDriverName("");setDriverPhone("");setEditingId(null);};
@@ -18,7 +18,7 @@ const AssignBusForm=({trip,onClose,onSubmit})=>{
   const saveDriver=async()=>{if(!approved||!editingId)return;if(!driverName.trim()||!driverPhone.trim())return toast.error("Driver name and phone are both required before final confirmation.");try{setSubmitting(true);await updateWorkspaceBusAssignment(schoolId,trip.id,editingId,{driverName:driverName.trim(),driverPhone:driverPhone.trim()});await load();reset();toast.success("Driver details saved.");}catch(e){toast.error(e?.response?.data?.message||"Failed to save driver details.");}finally{setSubmitting(false);}};
   const remove=async a=>{if(!preparing)return;try{await deleteWorkspaceBusAssignment(schoolId,trip.id,a.id);await load();if(editingId===a.id)reset();}catch(e){toast.error(e?.response?.data?.message||"Failed to remove bus assignment.");}};
   const submitQuote=async()=>{if(!assignments.length)return toast.error("Please add at least one bus before submitting the quotation.");try{setSubmitting(true);const quotation=await submitWorkspaceQuotation(schoolId,trip.id);toast.success("Quotation submitted for school approval.");onSubmit?.({...trip,status:"Quotation Submitted",quotation});onClose();}catch(e){toast.error(e?.response?.data?.message||"Failed to submit quotation.");}finally{setSubmitting(false);}};
-  const confirmTrip=async()=>{if(!approved)return;if(!assignments.length)return toast.error("At least one bus is required before final confirmation.");if(incompleteDrivers.length)return toast.error(`Complete driver name and phone for ${incompleteDrivers.length} bus${incompleteDrivers.length===1?"":"es"} before confirming.`);if(!window.confirm("Confirm this trip? This means the approved buses have been operationally booked and driver details are complete."))return;try{setSubmitting(true);await confirmWorkspaceTrip(schoolId,trip.id);toast.success("Trip confirmed.");onSubmit?.({...trip,status:"Confirmed"});onClose();}catch(e){toast.error(e?.response?.data?.message||"Failed to confirm trip.");}finally{setSubmitting(false);}};
+  const confirmTrip=async()=>{if(!approved)return;if(!assignments.length)return toast.error("At least one bus is required before final confirmation.");if(incompleteDrivers.length)return toast.error(`Complete driver name and phone for ${incompleteDrivers.length} bus${incompleteDrivers.length===1?"":"es"} before confirming.`);if(!window.confirm("Confirm this trip? This means the approved buses have been operationally booked and driver details are complete."))return;try{setSubmitting(true);const updated=await confirmWorkspaceTrip(schoolId,trip.id);toast.success("Trip confirmed.");onSubmit?.(updated?.trip||{...trip,status:"Confirmed"});onClose();}catch(e){toast.error(e?.response?.data?.message||"Failed to confirm trip.");}finally{setSubmitting(false);}};
   const title=preparing?"Prepare Quotation":approved?"Finalize Bus Details":trip?.status==="Confirmed"?"Confirmed Bus Details":"Bus Details";
   return <ModalWrapper title={title} onClose={onClose} maxWidth="max-w-2xl"><div className="space-y-4">
     {preparing&&<p className="text-sm text-gray-600">Add each required bus and its quoted price. Driver details can be added now or after the school approves the quotation.</p>}
