@@ -12,17 +12,8 @@ function callerAppUserId(access){return String(access?.user?.appUserId||"").trim
 function createdByCaller(access,trip){const id=callerAppUserId(access);return Boolean(id&&trip?.createdByAppUserId&&String(trip.createdByAppUserId)===id);}
 function hasAdministrativeOverride(workspace){return has(workspace,PERMISSIONS.ACCESS_ADMIN);}
 function passengerMutationStageOpen(trip){return Boolean(trip&&!trip.cancelRequest&&PASSENGER_MUTATION_STAGES.has(trip.status));}
-function relationshipOrganizationIds(workspace,key){return [...new Set((workspace?.access||[]).map(item=>item?.[key]).filter(Boolean))];}
-function relationshipTripScope(workspace){
-  const operatorIds=relationshipOrganizationIds(workspace,"transportProviderOrganizationId");
-  const managerIds=relationshipOrganizationIds(workspace,"managingOrganizationId");
-  const clauses=[];
-  if(operatorIds.length)clauses.push({transportProviderOrganizationId:{in:operatorIds}});
-  if(managerIds.length)clauses.push({managingOrganizationId:{in:managerIds}});
-  return clauses.length===1?clauses[0]:clauses.length>1?{OR:clauses}:null;
-}
-export function workspaceTripReadWhere({access,workspace}){if(!has(workspace,PERMISSIONS.TRIP_READ))return null;const relationshipScope=relationshipTripScope(workspace);if(relationshipScope)return relationshipScope;if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return{};const id=callerAppUserId(access);return id?{createdByAppUserId:id}:null;}
-export function canReadWorkspaceTrip({access,workspace,trip=null}){if(!has(workspace,PERMISSIONS.TRIP_READ))return false;const operatorIds=relationshipOrganizationIds(workspace,"transportProviderOrganizationId");if(operatorIds.length)return Boolean(trip&&trip.transportProviderOrganizationId&&operatorIds.includes(String(trip.transportProviderOrganizationId)));const managerIds=relationshipOrganizationIds(workspace,"managingOrganizationId");if(managerIds.length)return Boolean(trip&&trip.managingOrganizationId&&managerIds.includes(String(trip.managingOrganizationId)));if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return true;return trip?createdByCaller(access,trip):Boolean(callerAppUserId(access));}
+export function workspaceTripReadWhere({access,workspace}){if(!has(workspace,PERMISSIONS.TRIP_READ))return null;if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return{};const id=callerAppUserId(access);return id?{createdByAppUserId:id}:null;}
+export function canReadWorkspaceTrip({access,workspace,trip=null}){if(!has(workspace,PERMISSIONS.TRIP_READ))return false;if(has(workspace,PERMISSIONS.TRIP_READ_ALL))return true;return trip?createdByCaller(access,trip):Boolean(callerAppUserId(access));}
 export function canCreateWorkspaceTrip({workspace}){return has(workspace,PERMISSIONS.TRIP_CREATE);}
 export function canUpdateWorkspaceTrip({access,workspace,trip,patch}){if(!workspace||!trip||!patch)return false;const fields=Object.keys(patch);if(!fields.length)return false;
   if(fields.some(field=>WORKFLOW_ONLY_FIELDS.has(field)))return false;
