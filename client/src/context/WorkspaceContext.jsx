@@ -11,6 +11,7 @@ export function WorkspaceProvider({ children }) {
   const [error, setError] = useState("");
   const [selectedWorkspaceId, setSelectedWorkspaceIdState] = useState(null);
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -54,11 +55,16 @@ export function WorkspaceProvider({ children }) {
   const selectedWorkspace = workspaces.find((item) => item.schoolId === selectedWorkspaceId) || null;
 
   function selectWorkspace(value) {
-    if (!value || !workspaces.some((item) => item.schoolId === value)) return false;
+    const target = workspaces.find((item) => item.schoolId === value);
+    if (!target) return false;
     if (value === selectedWorkspaceId) return true;
-    setSelectedWorkspaceIdState(value);
-    setWorkspaceEpoch((current) => current + 1);
-    if (profile?.id) window.localStorage.setItem(`tripdash:workspace:${profile.id}`, value);
+    setSwitchingWorkspace({ from: selectedWorkspace?.displayName || "current workspace", to: target.displayName });
+    window.setTimeout(() => {
+      setSelectedWorkspaceIdState(value);
+      setWorkspaceEpoch((current) => current + 1);
+      if (profile?.id) window.localStorage.setItem(`tripdash:workspace:${profile.id}`, value);
+      window.setTimeout(() => setSwitchingWorkspace(null), 320);
+    }, 220);
     return true;
   }
 
@@ -75,6 +81,7 @@ export function WorkspaceProvider({ children }) {
     selectedWorkspaceId,
     selectedWorkspace,
     workspaceEpoch,
+    switchingWorkspace,
     hasWorkspace: Boolean(selectedWorkspace),
     portfolioEnabled: Boolean(access?.portfolio?.enabled),
     selectWorkspace,
@@ -83,7 +90,7 @@ export function WorkspaceProvider({ children }) {
       const workspace = workspaces.find((item) => item.schoolId === schoolId);
       return Boolean(workspace?.permissions?.includes(permission));
     },
-  }), [access, authLoading, loading, error, workspaces, permissions, selectedWorkspaceId, selectedWorkspace, workspaceEpoch]);
+  }), [access, authLoading, loading, error, workspaces, permissions, selectedWorkspaceId, selectedWorkspace, workspaceEpoch, switchingWorkspace]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
