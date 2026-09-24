@@ -13,9 +13,11 @@ import { usePagination } from "../hooks/usePagination";
 import useTripActions from "../hooks/useTripActions";
 import PassengersPanel from "./trips/PassengersPanel";
 import EditTripForm from "./EditTripForm";
+import { getWorkspaceTrip } from "../services/tripService";
 
 const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = false }) => {
   const { selectedWorkspace } = useWorkspace();
+  const schoolId=selectedWorkspace?.schoolId;
   const [tripData, setTripData] = React.useState([]);
   const [expandedTripId, setExpandedTripId] = React.useState(null);
   const [showDetailsTrip, setShowDetailsTrip] = React.useState(null);
@@ -24,7 +26,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   const [editTrip, setEditTrip] = React.useState(null);
   const [showPassengersTrip, setShowPassengersTrip] = React.useState(null);
   React.useEffect(() => { setTripData(trips || []); }, [trips]);
-  React.useEffect(() => { setExpandedTripId(null); setShowDetailsTrip(null); setConfirmAction(null); }, [selectedWorkspace?.schoolId]);
+  React.useEffect(() => { setExpandedTripId(null); setShowDetailsTrip(null); setConfirmAction(null); }, [schoolId]);
   const { paginatedData,currentPage,setCurrentPage,rowsPerPage,setRowsPerPage,jumpPageInput,setJumpPageInput,handleJump } = usePagination(tripData);
   const { loading:actionLoading, actionError, clearActionError, handleStatusChange, handleWorkflowAction, handleSoftDelete } = useTripActions(selectedWorkspace, setTripData, setExpandedTripId);
   const permissions=new Set(selectedWorkspace?.permissions||[]);
@@ -37,7 +39,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   const canSeePassengersButton=status=>canReadPassengers&&["Accepted","Quotation Submitted","Approved","Confirmed","Completed"].includes(status);
   const displayStatus=trip=>trip?.cancelRequest?"Cancel Requested":trip?.status;
   const applyUpdatedTrip=updated=>{if(!updated?.id)return;setTripData(prev=>prev.map(t=>t.id===updated.id?{...t,...updated}:t));window.dispatchEvent(new CustomEvent("trip:updated",{detail:updated}));closeRow();};
-  const runAction=async fn=>{clearActionError();const updated=await fn();if(updated)applyUpdatedTrip(updated);return updated;};
+  const runAction=async fn=>{clearActionError();const mutation=await fn();if(!mutation?.id)throw new Error("The server did not return the updated trip.");const authoritative=schoolId?await getWorkspaceTrip(schoolId,mutation.id):mutation;if(!authoritative?.id)throw new Error("The updated trip could not be reloaded from this school workspace.");applyUpdatedTrip(authoritative);return authoritative;};
   return <div className="overflow-x-auto relative">
   {actionError&&<div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><strong>Trip action failed.</strong> {actionError}</div>}
   {actionLoading&&<div className="mb-3 rounded border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">Updating trip…</div>}
@@ -48,7 +50,7 @@ const SmartTripTable = ({ trips, dateSortOrder, setDateSortOrder, readOnly = fal
   </tbody></table><Pagination totalItems={tripData.length} rowsPerPage={rowsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} onRowsPerPageChange={setRowsPerPage} jumpPageInput={jumpPageInput} setJumpPageInput={setJumpPageInput} onJump={handleJump}/>
   {showDetailsTrip&&<ModalWrapper onClose={()=>setShowDetailsTrip(null)}><TripDetails trip={showDetailsTrip}/></ModalWrapper>}
   {assignTrip&&<AssignBusForm trip={assignTrip} onClose={()=>setAssignTrip(null)} onSubmit={updated=>{setAssignTrip(null);applyUpdatedTrip(updated);}}/>}
-  {confirmAction&&<ConfirmActionPopup title={`${confirmAction.label} Trip`} description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`} onConfirm={async()=>{const current=confirmAction;setConfirmAction(null);try{await runAction(()=>current.workflowAction?handleWorkflowAction(current.trip,current.workflowAction):handleStatusChange(current.trip,current.nextStatus));}catch(_){/* error is rendered above */}} onClose={()=>setConfirmAction(null)}/>} 
+  {confirmAction&&<ConfirmActionPopup title={`${confirmAction.label} Trip`} description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this trip?`} onConfirm={async()=>{const current=confirmAction;setConfirmAction(null);try{await runAction(()=>current.workflowAction?handleWorkflowAction(current.trip,current.workflowAction):handleStatusChange(current.trip,current.nextStatus));}catch(_){/* hook exposes the backend error */}} onClose={()=>setConfirmAction(null)}/>} 
   {showPassengersTrip&&<ModalWrapper onClose={()=>setShowPassengersTrip(null)}><PassengersPanel trip={showPassengersTrip} onClose={()=>setShowPassengersTrip(null)} readOnly={!canMutatePassengers(showPassengersTrip)}/></ModalWrapper>}
   {editTrip&&<EditTripForm trip={editTrip} onClose={()=>setEditTrip(null)} onUpdated={updated=>{setEditTrip(null);applyUpdatedTrip(updated);}}/>}
   </div>;
