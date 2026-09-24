@@ -1,7 +1,7 @@
 import { OperationalAuthorizationError } from "../services/authorizedOperationalContext.js";
 import { OperationalDataSourceError } from "../services/operationalDataSourceResolver.js";
 import { OperationalServiceContextError } from "./operationalService.js";
-import { TripAuthorizationError, TripNotFoundError, TripValidationError } from "../domain/trips/tripService.js";
+import { TripAuthorizationError, TripNotFoundError, TripTransitionError, TripValidationError } from "../domain/trips/tripService.js";
 import { PassengerNotFoundError } from "../domain/trips/passengerService.js";
 import { BusAssignmentNotFoundError, PassengerAllocationConflictError } from "../domain/trips/passengerAllocationService.js";
 
@@ -13,6 +13,7 @@ export function operationalErrorHandler(error, _req, res, next) {
     error instanceof TripAuthorizationError ||
     error instanceof TripValidationError ||
     error instanceof TripNotFoundError ||
+    error instanceof TripTransitionError ||
     error instanceof PassengerNotFoundError ||
     error instanceof BusAssignmentNotFoundError ||
     error instanceof PassengerAllocationConflictError;
