@@ -10,12 +10,21 @@ export class OperationalDataSourceError extends Error {
   }
 }
 
+function hostedConnectionUrl() {
+  const url = String(process.env.OPERATIONAL_DATABASE_URL || "").trim();
+  if (!url) {
+    throw new OperationalDataSourceError(
+      "Platform operational database is not configured",
+      "PLATFORM_DATASOURCE_NOT_CONFIGURED"
+    );
+  }
+  return url;
+}
+
 /**
  * Resolve an organization's active operational PostgreSQL datasource.
- *
- * Authorization must happen before calling this function. This service only
- * maps an already-authorized organization/workspace to infrastructure.
- * Platform tenancy is intentionally not part of operational routing.
+ * HOSTED uses the platform operational database; CUSTOMER_POSTGRES resolves
+ * the organization's own server-side credential.
  */
 export async function resolveOperationalDataSource(organizationId) {
   if (!organizationId) {
@@ -24,11 +33,7 @@ export async function resolveOperationalDataSource(organizationId) {
 
   const sources = await prismaControl.operationalDataSource.findMany({
     where: { organizationId, isActive: true },
-    include: {
-      credential: {
-        include: { secretProvider: true },
-      },
-    },
+    include: { credential: { include: { secretProvider: true } } },
     orderBy: { createdAt: "asc" },
     take: 2,
   });
@@ -53,17 +58,22 @@ export async function resolveOperationalDataSource(organizationId) {
       "DATASOURCE_ENGINE_UNSUPPORTED"
     );
   }
-  if (!dataSource.credential?.isActive || !dataSource.credential?.secretProvider?.isActive) {
-    throw new OperationalDataSourceError(
-      "Operational datasource has no active credential configuration",
-      "DATASOURCE_CREDENTIAL_NOT_CONFIGURED"
-    );
-  }
 
-  const connectionUrl = await resolveSecret({
-    provider: dataSource.credential.secretProvider,
-    credential: dataSource.credential,
-  });
+  let connectionUrl;
+  if (dataSource.mode === "HOSTED") {
+    connectionUrl = hostedConnectionUrl();
+  } else {
+    if (!dataSource.credential?.isActive || !dataSource.credential?.secretProvider?.isActive) {
+      throw new OperationalDataSourceError(
+        "Operational datasource has no active credential configuration",
+        "DATASOURCE_CREDENTIAL_NOT_CONFIGURED"
+      );
+    }
+    connectionUrl = await resolveSecret({
+      provider: dataSource.credential.secretProvider,
+      credential: dataSource.credential,
+    });
+  }
 
   return {
     id: dataSource.id,
