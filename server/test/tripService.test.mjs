@@ -14,9 +14,8 @@ function harness({ permissions = [] } = {}) {
         return { id: args.where.id || 1, status: args.where.id === 23 ? "Canceled" : "Pending", createdByAppUserId: "user-1" };
       },
       create: async (args) => { calls.push(["create", args]); return { id: 10, ...args.data }; },
-      update: async (args) => { calls.push(["update", args]); return { id: args.where.id, ...args.data }; },
       updateMany: async (args) => { calls.push(["updateMany", args]); return { count: 1 }; },
-      delete: async (args) => { calls.push(["delete", args]); return { id: args.where.id }; },
+      deleteMany: async (args) => { calls.push(["deleteMany", args]); return { count: 1 }; },
     },
   };
   return { prisma, calls, service: createTripService({ prisma, workspace: { schoolId: "school-a", permissions }, user: { appUserId: "user-1", organizationId: "school-a" } }) };
@@ -26,7 +25,6 @@ test("canonical trip reads are scoped to the school and creator for ordinary use
   const { service, calls } = harness();
   await service.list({ status: "pending" });
   assert.deepEqual(calls[0][1].where, { owningSchoolOrganizationId: "school-a", createdByAppUserId: "user-1", status: "pending" });
-
   await service.get(12);
   assert.deepEqual(calls[1][1].where, { owningSchoolOrganizationId: "school-a", createdByAppUserId: "user-1", id: 12 });
 });
@@ -35,7 +33,6 @@ test("trip.read_all permits workspace-wide reads while preserving school scope",
   const { service, calls } = harness({ permissions: ["trip.read_all"] });
   await service.list({ status: "pending" });
   assert.deepEqual(calls[0][1].where, { owningSchoolOrganizationId: "school-a", status: "pending" });
-
   await service.get(12);
   assert.deepEqual(calls[1][1].where, { owningSchoolOrganizationId: "school-a", id: 12 });
 });
@@ -68,7 +65,8 @@ test("trip mutation verifies creator and workspace ownership before update or de
   calls.length = 0;
   await service.remove(23);
   assert.deepEqual(calls[0][1].where, { owningSchoolOrganizationId: "school-a", createdByAppUserId: "user-1", id: 23 });
-  assert.equal(calls[1][0], "delete");
+  assert.equal(calls[1][0], "deleteMany");
+  assert.deepEqual(calls[1][1].where, { owningSchoolOrganizationId: "school-a", createdByAppUserId: "user-1", id: 23 });
 });
 
 test("trip mutation refuses a trip outside the active school workspace", async () => {
