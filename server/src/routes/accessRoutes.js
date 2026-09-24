@@ -9,6 +9,23 @@ import { listInternalQuotationApprovers } from "../services/quotationApprovalAut
 const router = Router();
 router.use(requireAuth);
 
+function operationalReadiness(rows = []) {
+  if (rows.length === 0) return { configured: false, state: "NOT_CONFIGURED", source: null };
+  if (rows.length > 1) return { configured: false, state: "AMBIGUOUS", source: null };
+
+  const source = rows[0];
+  // Platform-hosted organizations use the server's shared OPERATIONAL_DATABASE_URL.
+  // They deliberately have no per-organization DataSourceCredential record.
+  if (source.mode === "HOSTED") return { configured: true, state: "READY", source };
+
+  const credentialReady = Boolean(source.credential?.isActive && source.credential?.secretProvider?.isActive);
+  return {
+    configured: credentialReady,
+    state: credentialReady ? "READY" : "CREDENTIAL_MISSING",
+    source,
+  };
+}
+
 // GET /api/access/me
 // Stable frontend bootstrap contract backed exclusively by the canonical
 // control-plane effective-access resolver. Operational readiness is metadata
@@ -40,14 +57,13 @@ router.get("/me", async (req, res, next) => {
       bySchool.set(source.organizationId, rows);
     }
     access.workspaces = workspaces.map((workspace) => {
-      const rows = bySchool.get(workspace.schoolId) || [];
-      const source = rows.length === 1 ? rows[0] : null;
-      const credentialReady = Boolean(source?.credential?.isActive && source?.credential?.secretProvider?.isActive);
+      const readiness = operationalReadiness(bySchool.get(workspace.schoolId) || []);
+      const source = readiness.source;
       return {
         ...workspace,
         operational: {
-          configured: rows.length === 1 && credentialReady,
-          state: rows.length === 0 ? "NOT_CONFIGURED" : rows.length > 1 ? "AMBIGUOUS" : credentialReady ? "READY" : "CREDENTIAL_MISSING",
+          configured: readiness.configured,
+          state: readiness.state,
           dataSourceId: source?.id || null,
           name: source?.name || null,
           mode: source?.mode || null,
