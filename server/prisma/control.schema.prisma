@@ -12,14 +12,57 @@ datasource db {
   url      = env("CONTROL_DATABASE_URL")
 }
 
-enum OrganizationType { SCHOOL_GROUP SCHOOL BUS_OPERATOR SERVICE_PARTNER }
-enum MembershipStatus { PENDING ACTIVE SUSPENDED REVOKED }
-enum RelationshipType { BELONGS_TO_GROUP TRANSPORT_PROVIDER TRIP_MANAGER WORKS_WITH_TRANSPORT_PROVIDER }
-enum AccessScopeType { PLATFORM TENANT ORGANIZATION }
-enum IdentityProvider { LOCAL MICROSOFT_ENTRA GOOGLE OIDC SAML }
-enum DataSourceMode { HOSTED CUSTOMER_POSTGRES }
-enum SecretProviderType { HOST_ENVIRONMENT EXTERNAL_VAULT }
-enum SubscriptionMode { FREE PAID TRIAL SPONSORED }
+enum OrganizationType {
+  SCHOOL_GROUP
+  SCHOOL
+  BUS_OPERATOR
+  SERVICE_PARTNER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum RelationshipType {
+  BELONGS_TO_GROUP
+  TRANSPORT_PROVIDER
+  TRIP_MANAGER
+  WORKS_WITH_TRANSPORT_PROVIDER
+}
+
+enum AccessScopeType {
+  PLATFORM
+  TENANT
+  ORGANIZATION
+}
+
+enum IdentityProvider {
+  LOCAL
+  MICROSOFT_ENTRA
+  GOOGLE
+  OIDC
+  SAML
+}
+
+enum DataSourceMode {
+  HOSTED
+  CUSTOMER_POSTGRES
+}
+
+enum SecretProviderType {
+  HOST_ENVIRONMENT
+  EXTERNAL_VAULT
+}
+
+enum SubscriptionMode {
+  FREE
+  PAID
+  TRIAL
+  SPONSORED
+}
 
 model Tenant {
   id String @id @default(uuid())
