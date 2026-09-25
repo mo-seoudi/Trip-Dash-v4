@@ -12,346 +12,275 @@ datasource db {
   url      = env("CONTROL_DATABASE_URL")
 }
 
-enum OrganizationType {
-  SCHOOL_GROUP
-  SCHOOL
-  BUS_OPERATOR
-  SERVICE_PARTNER
-}
-
-enum MembershipStatus {
-  PENDING
-  ACTIVE
-  SUSPENDED
-  REVOKED
-}
-
-enum RelationshipType {
-  BELONGS_TO_GROUP
-  TRANSPORT_PROVIDER
-  TRIP_MANAGER
-  WORKS_WITH_TRANSPORT_PROVIDER
-}
-
-enum AccessScopeType {
-  PLATFORM
-  TENANT
-  ORGANIZATION
-}
-
-enum IdentityProvider {
-  LOCAL
-  MICROSOFT_ENTRA
-  GOOGLE
-  OIDC
-  SAML
-}
-
-enum DataSourceMode {
-  HOSTED
-  CUSTOMER_POSTGRES
-}
-
-enum SecretProviderType {
-  HOST_ENVIRONMENT
-  EXTERNAL_VAULT
-}
-
-enum SubscriptionMode {
-  FREE
-  PAID
-  TRIAL
-  SPONSORED
-}
+enum OrganizationType { SCHOOL_GROUP SCHOOL BUS_OPERATOR SERVICE_PARTNER }
+enum MembershipStatus { PENDING ACTIVE SUSPENDED REVOKED }
+enum RelationshipType { BELONGS_TO_GROUP TRANSPORT_PROVIDER TRIP_MANAGER WORKS_WITH_TRANSPORT_PROVIDER }
+enum AccessScopeType { PLATFORM TENANT ORGANIZATION }
+enum IdentityProvider { LOCAL MICROSOFT_ENTRA GOOGLE OIDC SAML }
+enum DataSourceMode { HOSTED CUSTOMER_POSTGRES }
+enum SecretProviderType { HOST_ENVIRONMENT EXTERNAL_VAULT }
+enum SubscriptionMode { FREE PAID TRIAL SPONSORED }
 
 model Tenant {
-  id                    String           @id @default(uuid())
-  name                  String
-  slug                  String           @unique
-  status                String           @default("active")
-  subscriptionMode      SubscriptionMode @default(FREE) @map("subscription_mode")
-  planKey               String?          @map("plan_key")
-  billingOrganizationId String?          @map("billing_organization_id")
-  billingContactEmail   String?          @map("billing_contact_email")
-  subscriptionStart     DateTime?        @map("subscription_start") @db.Date
-  subscriptionEnd       DateTime?        @map("subscription_end") @db.Date
-  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organizations       TenantOrganization[]
-  roleAssignments     RoleAssignment[]
-  auditEvents         AuditEvent[]
-  billingOrganization Organization?       @relation("TenantBillingOrganization", fields: [billingOrganizationId], references: [id], onDelete: SetNull)
-
+  id String @id @default(uuid())
+  name String
+  slug String @unique
+  status String @default("active")
+  subscriptionMode SubscriptionMode @default(FREE) @map("subscription_mode")
+  planKey String? @map("plan_key")
+  billingOrganizationId String? @map("billing_organization_id")
+  billingContactEmail String? @map("billing_contact_email")
+  subscriptionStart DateTime? @map("subscription_start") @db.Date
+  subscriptionEnd DateTime? @map("subscription_end") @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organizations TenantOrganization[]
+  roleAssignments RoleAssignment[]
+  auditEvents AuditEvent[]
+  billingOrganization Organization? @relation("TenantBillingOrganization", fields: [billingOrganizationId], references: [id], onDelete: SetNull)
   @@index([billingOrganizationId])
   @@map("tenants")
 }
-
 model TenantOrganization {
-  tenantId       String   @map("tenant_id")
-  organizationId String   @map("organization_id")
-  coverageType   String   @default("covered") @map("coverage_type")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId String @map("tenant_id")
+  organizationId String @map("organization_id")
+  coverageType String @default("covered") @map("coverage_type")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
   @@id([tenantId, organizationId])
   @@index([organizationId])
   @@map("tenant_organizations")
 }
-
 model AppUser {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  displayName  String   @map("display_name")
-  status       String   @default("active")
-  legacyUserId Int?     @unique @map("legacy_user_id")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  identities      AuthenticationIdentity[]
-  memberships     OrganizationMembership[]
+  id String @id @default(uuid())
+  email String @unique
+  displayName String @map("display_name")
+  status String @default("active")
+  legacyUserId Int? @unique @map("legacy_user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  identities AuthenticationIdentity[]
+  memberships OrganizationMembership[]
   roleAssignments RoleAssignment[]
-  auditEvents     AuditEvent[]              @relation("AuditActor")
-  sessions        AuthSession[]
-
+  permissionGrants UserPermissionGrant[]
+  auditEvents AuditEvent[] @relation("AuditActor")
+  sessions AuthSession[]
   @@map("app_users")
 }
-
 model AuthenticationIdentity {
-  id              String           @id @default(uuid())
-  userId          String           @map("user_id")
-  provider        IdentityProvider
-  providerSubject String           @map("provider_subject")
-  passwordHash    String?          @map("password_hash")
-  emailAtProvider String?          @map("email_at_provider")
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  provider IdentityProvider
+  providerSubject String @map("provider_subject")
+  passwordHash String? @map("password_hash")
+  emailAtProvider String? @map("email_at_provider")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([provider, providerSubject])
   @@index([userId])
   @@map("authentication_identities")
 }
-
 model AuthSession {
-  id               String    @id @default(uuid())
-  userId           String    @map("user_id")
-  refreshTokenHash String    @unique @map("refresh_token_hash")
-  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz(6)
-  userAgent        String?   @map("user_agent")
-  ipAddress        String?   @map("ip_address")
-
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  refreshTokenHash String @unique @map("refresh_token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  userAgent String? @map("user_agent")
+  ipAddress String? @map("ip_address")
   user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_sessions")
 }
-
 model Organization {
-  id           String           @id @default(uuid())
-  type         OrganizationType
-  displayName  String           @map("display_name")
-  fullName     String?          @map("full_name")
-  legalName    String?          @map("legal_name")
+  id String @id @default(uuid())
+  type OrganizationType
+  displayName String @map("display_name")
+  fullName String? @map("full_name")
+  legalName String? @map("legal_name")
   abbreviation String?
-  slug         String           @unique
-  status       String           @default("active")
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  memberships           OrganizationMembership[]
-  roleAssignments       RoleAssignment[]
-  relationshipsFrom     OrganizationRelationship[] @relation("RelationshipFrom")
-  relationshipsTo       OrganizationRelationship[] @relation("RelationshipTo")
+  slug String @unique
+  status String @default("active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships OrganizationMembership[]
+  roleAssignments RoleAssignment[]
+  permissionGrants UserPermissionGrant[]
+  relationshipsFrom OrganizationRelationship[] @relation("RelationshipFrom")
+  relationshipsTo OrganizationRelationship[] @relation("RelationshipTo")
   operationalDataSources OperationalDataSource[]
-  tenantCoverage        TenantOrganization[]
-  billedTenants         Tenant[]                    @relation("TenantBillingOrganization")
-  auditEvents           AuditEvent[]
-
+  tenantCoverage TenantOrganization[]
+  billedTenants Tenant[] @relation("TenantBillingOrganization")
+  auditEvents AuditEvent[]
   @@index([type])
   @@map("organizations")
 }
-
 model OrganizationRelationship {
-  id                 String           @id @default(uuid())
-  fromOrganizationId String           @map("from_organization_id")
-  toOrganizationId   String           @map("to_organization_id")
-  type               RelationshipType
-  isPrimary          Boolean          @default(false) @map("is_primary")
-  status             String           @default("active")
-  validFrom          DateTime?        @map("valid_from") @db.Timestamptz(6)
-  validUntil         DateTime?        @map("valid_until") @db.Timestamptz(6)
-  notes              String?
-  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-
+  id String @id @default(uuid())
+  fromOrganizationId String @map("from_organization_id")
+  toOrganizationId String @map("to_organization_id")
+  type RelationshipType
+  isPrimary Boolean @default(false) @map("is_primary")
+  status String @default("active")
+  validFrom DateTime? @map("valid_from") @db.Timestamptz(6)
+  validUntil DateTime? @map("valid_until") @db.Timestamptz(6)
+  notes String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   fromOrganization Organization @relation("RelationshipFrom", fields: [fromOrganizationId], references: [id], onDelete: Cascade)
-  toOrganization   Organization @relation("RelationshipTo", fields: [toOrganizationId], references: [id], onDelete: Cascade)
-
+  toOrganization Organization @relation("RelationshipTo", fields: [toOrganizationId], references: [id], onDelete: Cascade)
   @@unique([fromOrganizationId, toOrganizationId, type])
   @@index([fromOrganizationId, type, status])
   @@index([toOrganizationId, type, status])
   @@map("organization_relationships")
 }
-
 model OrganizationMembership {
-  id             String           @id @default(uuid())
-  userId         String           @map("user_id")
-  organizationId String           @map("organization_id")
-  status         MembershipStatus @default(PENDING)
-  isPrimary      Boolean          @default(false) @map("is_primary")
-  jobTitle       String?          @map("job_title")
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user         AppUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  organizationId String @map("organization_id")
+  status MembershipStatus @default(PENDING)
+  isPrimary Boolean @default(false) @map("is_primary")
+  jobTitle String? @map("job_title")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
   @@unique([userId, organizationId])
   @@index([organizationId, status])
   @@map("organization_memberships")
 }
-
 model Role {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  name        String
+  id String @id @default(uuid())
+  key String @unique
+  name String
   description String?
-  isSystem    Boolean  @default(true) @map("is_system")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
+  isSystem Boolean @default(true) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   permissions RolePermission[]
   assignments RoleAssignment[]
-
   @@map("roles")
 }
-
 model Permission {
-  id          String   @id @default(uuid())
-  key         String   @unique
+  id String @id @default(uuid())
+  key String @unique
   description String?
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   roles RolePermission[]
-
+  userGrants UserPermissionGrant[]
   @@map("permissions")
 }
-
 model RolePermission {
-  roleId       String @map("role_id")
+  roleId String @map("role_id")
   permissionId String @map("permission_id")
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
 }
-
 model RoleAssignment {
-  id             String          @id @default(uuid())
-  userId         String          @map("user_id")
-  roleId         String          @map("role_id")
-  scopeType      AccessScopeType @map("scope_type")
-  tenantId       String?         @map("tenant_id")
-  organizationId String?         @map("organization_id")
-  isActive       Boolean         @default(true) @map("is_active")
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  roleId String @map("role_id")
+  scopeType AccessScopeType @map("scope_type")
+  tenantId String? @map("tenant_id")
+  organizationId String? @map("organization_id")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
   @@unique([userId, roleId, scopeType, tenantId, organizationId])
   @@index([userId, isActive])
   @@index([tenantId])
   @@index([organizationId])
   @@map("role_assignments")
 }
-
+model UserPermissionGrant {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  permissionId String @map("permission_id")
+  organizationId String @map("organization_id")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, permissionId, organizationId])
+  @@index([userId, organizationId, isActive])
+  @@index([organizationId])
+  @@map("user_permission_grants")
+}
 model SecretProvider {
-  id          String             @id @default(uuid())
-  key         String             @unique
-  displayName String             @map("display_name")
-  type        SecretProviderType
-  adapterKey  String?            @map("adapter_key")
-  config      Json?
-  isActive    Boolean            @default(true) @map("is_active")
-  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
-
+  id String @id @default(uuid())
+  key String @unique
+  displayName String @map("display_name")
+  type SecretProviderType
+  adapterKey String? @map("adapter_key")
+  config Json?
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   credentials DataSourceCredential[]
-
   @@index([type, isActive])
   @@map("secret_providers")
 }
-
 model DataSourceCredential {
-  id               String    @id @default(uuid())
-  dataSourceId     String    @unique @map("data_source_id")
-  secretProviderId String    @map("secret_provider_id")
-  secretReference  String    @map("secret_reference")
-  secretKey        String?   @map("secret_key")
-  version          String?
-  isActive         Boolean   @default(true) @map("is_active")
-  lastResolvedAt   DateTime? @map("last_resolved_at") @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  dataSource     OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
-  secretProvider SecretProvider        @relation(fields: [secretProviderId], references: [id], onDelete: Restrict)
-
+  id String @id @default(uuid())
+  dataSourceId String @unique @map("data_source_id")
+  secretProviderId String @map("secret_provider_id")
+  secretReference String @map("secret_reference")
+  secretKey String? @map("secret_key")
+  version String?
+  isActive Boolean @default(true) @map("is_active")
+  lastResolvedAt DateTime? @map("last_resolved_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dataSource OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  secretProvider SecretProvider @relation(fields: [secretProviderId], references: [id], onDelete: Restrict)
   @@index([secretProviderId, isActive])
   @@map("data_source_credentials")
 }
-
 model OperationalDataSource {
-  id             String         @id @default(uuid())
-  organizationId String         @map("organization_id")
-  name           String
-  mode           DataSourceMode @default(HOSTED)
-  engine         String         @default("postgresql")
-  providerLabel  String?        @map("provider_label")
-  region         String?
-  isActive       Boolean        @default(true) @map("is_active")
-  schemaVersion  String?        @map("schema_version")
-  lastVerifiedAt DateTime?      @map("last_verified_at") @db.Timestamptz(6)
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  credential   DataSourceCredential?
-
+  id String @id @default(uuid())
+  organizationId String @map("organization_id")
+  name String
+  mode DataSourceMode @default(HOSTED)
+  engine String @default("postgresql")
+  providerLabel String? @map("provider_label")
+  region String?
+  isActive Boolean @default(true) @map("is_active")
+  schemaVersion String? @map("schema_version")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credential DataSourceCredential?
   @@index([organizationId, isActive])
   @@map("operational_data_sources")
 }
-
 model AuditEvent {
-  id             String   @id @default(uuid())
-  tenantId       String?  @map("tenant_id")
-  organizationId String?  @map("organization_id")
-  actorUserId    String?  @map("actor_user_id")
-  action         String
-  resourceType   String?  @map("resource_type")
-  resourceId     String?  @map("resource_id")
-  metadata       Json?
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  id String @id @default(uuid())
+  tenantId String? @map("tenant_id")
+  organizationId String? @map("organization_id")
+  actorUserId String? @map("actor_user_id")
+  action String
+  resourceType String? @map("resource_type")
+  resourceId String? @map("resource_id")
+  metadata Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  actor        AppUser?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-
+  actor AppUser? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   @@index([tenantId, createdAt])
   @@index([organizationId, createdAt])
   @@index([actorUserId, createdAt])
