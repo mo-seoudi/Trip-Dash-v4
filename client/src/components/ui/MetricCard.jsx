@@ -1,0 +1,2 @@
+import React from "react";
+export default function MetricCard({label,value,helper,icon:Icon}){return <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>{helper&&<p className="mt-1 text-xs text-slate-400">{helper}</p>}</div>{Icon&&<div className="rounded-lg bg-slate-100 p-2 text-slate-500"><Icon size={16}/></div>}</div></div>}
