@@ -1,0 +1,6 @@
+import React from "react";
+const base="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
+export function FormField({label,hint,optional=false,children,className=""}){return <label className={`block ${className}`}><span className="text-sm font-semibold text-slate-700">{label}{optional&&<span className="ml-1 font-normal text-slate-400">(optional)</span>}</span>{hint&&<span className="mt-0.5 block text-xs text-slate-500">{hint}</span>}<span className="mt-1.5 block">{children}</span></label>}
+export const TextInput=React.forwardRef(function TextInput({className="",...props},ref){return <input ref={ref} className={`${base} ${className}`} {...props}/>});
+export const SelectInput=React.forwardRef(function SelectInput({className="",children,...props},ref){return <select ref={ref} className={`${base} ${className}`} {...props}>{children}</select>});
+export const TextArea=React.forwardRef(function TextArea({className="",...props},ref){return <textarea ref={ref} className={`${base} ${className}`} {...props}/>});
