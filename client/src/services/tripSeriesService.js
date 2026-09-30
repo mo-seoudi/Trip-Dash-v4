@@ -1,13 +1,10 @@
 import api from "./apiClient";
-
-const school = value => {
-  const id = String(value || "").trim();
-  if (!id) throw new Error("A school workspace is required for recurring bookings");
-  return encodeURIComponent(id);
-};
-
-const base = schoolId => `/workspaces/${school(schoolId)}/trip-series`;
-
-export const listRecurringBookings = async schoolId => (await api.get(base(schoolId))).data;
-export const getRecurringBooking = async (schoolId, id) => (await api.get(`${base(schoolId)}/${encodeURIComponent(id)}`)).data;
-export const createRecurringBooking = async (schoolId, payload) => (await api.post(base(schoolId), payload)).data;
+const school=value=>{const id=String(value||"").trim();if(!id)throw new Error("A school workspace is required for recurring bookings");return encodeURIComponent(id)};
+const base=schoolId=>`/workspaces/${school(schoolId)}/trip-series`;
+export const listRecurringBookings=async schoolId=>(await api.get(base(schoolId))).data;
+export const getRecurringBooking=async(schoolId,id)=>(await api.get(`${base(schoolId)}/${encodeURIComponent(id)}`)).data;
+export const createRecurringBooking=async(schoolId,payload)=>(await api.post(base(schoolId),payload)).data;
+export const submitRecurringQuotation=async(schoolId,id,payload)=>(await api.post(`${base(schoolId)}/${encodeURIComponent(id)}/quotations`,payload)).data;
+export const requestRecurringApproval=async(schoolId,id,payload={})=>(await api.post(`${base(schoolId)}/${encodeURIComponent(id)}/approval-requests`,payload)).data;
+export const decideRecurringApproval=async(schoolId,id,approvalId,payload)=>(await api.post(`${base(schoolId)}/${encodeURIComponent(id)}/approval-requests/${encodeURIComponent(approvalId)}/decision`,payload)).data;
+export const updateRecurringOccurrence=async(schoolId,id,tripId,payload)=>(await api.patch(`${base(schoolId)}/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(tripId)}`,payload)).data;
