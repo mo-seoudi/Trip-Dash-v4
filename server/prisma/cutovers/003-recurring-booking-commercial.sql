@@ -1,8 +1,9 @@
 -- V5 recurring bookings: parent booking, occurrence linkage, commercial workflow and override metadata.
 -- Safe additive cutover. Existing standalone Trip workflow remains intact.
+-- IDs intentionally use TEXT to match the existing operational Prisma schema/cuid convention.
 
 CREATE TABLE IF NOT EXISTS trip_series (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by_app_user_id TEXT,
@@ -28,14 +29,15 @@ CREATE TABLE IF NOT EXISTS trip_series (
   end_date DATE NOT NULL,
   status TEXT NOT NULL DEFAULT 'requested',
   commercial_status TEXT NOT NULL DEFAULT 'awaiting_quotation',
-  approved_quotation_id UUID
+  approved_quotation_id TEXT
 );
 
 -- Keep this migration safe for databases where an earlier development version
--- of trip_series was already created without the commercial columns.
+-- of trip_series already exists. Prisma's TripSeries.id is TEXT, so all related
+-- identifiers must use TEXT as well.
 ALTER TABLE trip_series
   ADD COLUMN IF NOT EXISTS commercial_status TEXT NOT NULL DEFAULT 'awaiting_quotation',
-  ADD COLUMN IF NOT EXISTS approved_quotation_id UUID;
+  ADD COLUMN IF NOT EXISTS approved_quotation_id TEXT;
 
 CREATE INDEX IF NOT EXISTS trip_series_created_by_idx ON trip_series(created_by_app_user_id);
 CREATE INDEX IF NOT EXISTS trip_series_owning_school_idx ON trip_series(owning_school_organization_id);
@@ -45,7 +47,7 @@ CREATE INDEX IF NOT EXISTS trip_series_status_period_idx ON trip_series(status,s
 CREATE INDEX IF NOT EXISTS trip_series_commercial_status_idx ON trip_series(commercial_status);
 
 ALTER TABLE trips
-  ADD COLUMN IF NOT EXISTS trip_series_id UUID,
+  ADD COLUMN IF NOT EXISTS trip_series_id TEXT,
   ADD COLUMN IF NOT EXISTS series_occurrence_date DATE,
   ADD COLUMN IF NOT EXISTS series_defaults_version INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS occurrence_override BOOLEAN NOT NULL DEFAULT FALSE;
@@ -59,8 +61,8 @@ CREATE INDEX IF NOT EXISTS trips_trip_series_id_idx ON trips(trip_series_id);
 CREATE UNIQUE INDEX IF NOT EXISTS trips_series_occurrence_unique ON trips(trip_series_id,series_occurrence_date) WHERE trip_series_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS trip_series_quotations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  trip_series_id UUID NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  trip_series_id TEXT NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'submitted',
   total_amount NUMERIC(12,2) NOT NULL,
@@ -74,9 +76,9 @@ CREATE TABLE IF NOT EXISTS trip_series_quotations (
 CREATE INDEX IF NOT EXISTS trip_series_quotations_series_status_idx ON trip_series_quotations(trip_series_id,status);
 
 CREATE TABLE IF NOT EXISTS trip_series_approval_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  trip_series_id UUID NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
-  quotation_id UUID NOT NULL REFERENCES trip_series_quotations(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  trip_series_id TEXT NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
+  quotation_id TEXT NOT NULL REFERENCES trip_series_quotations(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'pending',
   requested_by_app_user_id TEXT,
   approver_app_user_id TEXT,
