@@ -1,0 +1,4 @@
+import React from "react";
+
+export function LoadingState({label="Loading…",className=""}){return <div className={`flex min-h-32 items-center justify-center gap-2 text-sm text-slate-500 ${className}`} role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-r-slate-700"/><span>{label}</span></div>}
+export function EmptyState({title="Nothing here yet",description,actions,className=""}){return <div className={`flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-6 py-10 text-center ${className}`}><div className="text-sm font-semibold text-slate-800">{title}</div>{description&&<p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{description}</p>}{actions&&<div className="mt-4 flex flex-wrap justify-center gap-2">{actions}</div>}</div>}
