@@ -1,8 +1,8 @@
-// client/src/components/RequestTripButton.jsx
-
 import React, { useState } from "react";
+import { FiPlus } from "react-icons/fi";
 import TripForm from "./TripForm";
 import ModalWrapper from "./ModalWrapper";
+import Button from "./ui/Button";
 
 export default function RequestTripButton({ onSuccess, hidden = false }) {
   const [open, setOpen] = useState(false);
@@ -11,26 +11,22 @@ export default function RequestTripButton({ onSuccess, hidden = false }) {
 
   return (
     <>
-      {/* Floating Action Button */}
-      {!open && (
-        <button
-          type="button"
-          className="fixed bottom-6 right-6 z-50 flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          onClick={() => setOpen(true)}
-          aria-label="Request New Trip"
-        >
-          <span className="font-medium hidden sm:inline">Request New Trip</span>
-          <span className="text-2xl leading-none">+</span>
-        </button>
-      )}
+      <Button onClick={() => setOpen(true)}>
+        <FiPlus size={16} />
+        Request trip
+      </Button>
 
-      {/* Modal (now using ModalWrapper so ESC works) */}
       {open && (
-        <ModalWrapper onClose={() => setOpen(false)}>
+        <ModalWrapper
+          title="Request a new trip"
+          description="Enter the journey, passenger and timing details for this request."
+          onClose={() => setOpen(false)}
+          maxWidth="max-w-3xl"
+        >
           <TripForm
             onSuccess={() => {
               setOpen(false);
-              onSuccess && onSuccess();
+              onSuccess?.();
             }}
             onClose={() => setOpen(false)}
           />
