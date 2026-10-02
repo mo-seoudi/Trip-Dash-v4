@@ -73,6 +73,7 @@ model TripSeries {
   approvedQuotationId              String?  @map("approved_quotation_id")
   trips                            Trip[]
   journeyLegs                      TripSeriesJourneyLeg[]
+  dateExceptions                   TripSeriesDateException[]
   quotations                       TripSeriesQuotation[]
   approvalRequests                 TripSeriesApprovalRequest[]
 
@@ -83,6 +84,21 @@ model TripSeries {
   @@index([status, startDate, endDate])
   @@index([commercialStatus])
   @@map("trip_series")
+}
+
+model TripSeriesDateException {
+  id           String     @id @default(uuid())
+  tripSeriesId String     @map("trip_series_id")
+  serviceDate  DateTime   @map("service_date") @db.Date
+  state        String     @default("excluded")
+  notes        String?
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tripSeries   TripSeries @relation(fields: [tripSeriesId], references: [id], onDelete: Cascade)
+
+  @@unique([tripSeriesId, serviceDate])
+  @@index([tripSeriesId, serviceDate])
+  @@map("trip_series_date_exceptions")
 }
 
 model TripSeriesJourneyLeg {
