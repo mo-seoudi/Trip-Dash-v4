@@ -1,6 +1,23 @@
 -- V5 journey architecture: recurring booking defaults and dated occurrence routes.
 -- Additive cutover. Existing origin/destination/departure/return fields remain for backwards compatibility.
 
+
+-- Preserve date-specific exceptions (initially exclusions) on the recurring booking.
+-- This records why an expected service date has no generated trip and leaves room
+-- for richer dated exception states later without changing the parent recurrence rule.
+CREATE TABLE IF NOT EXISTS trip_series_date_exceptions (
+  id TEXT PRIMARY KEY,
+  trip_series_id TEXT NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
+  service_date DATE NOT NULL,
+  state TEXT NOT NULL DEFAULT 'excluded',
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (trip_series_id, service_date)
+);
+CREATE INDEX IF NOT EXISTS trip_series_date_exceptions_series_date_idx
+  ON trip_series_date_exceptions(trip_series_id, service_date);
+
 CREATE TABLE IF NOT EXISTS trip_series_journey_legs (
   id TEXT PRIMARY KEY,
   trip_series_id TEXT NOT NULL REFERENCES trip_series(id) ON DELETE CASCADE,
