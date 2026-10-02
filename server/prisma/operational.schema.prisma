@@ -72,6 +72,7 @@ model TripSeries {
   commercialStatus                 String   @default("awaiting_quotation") @map("commercial_status")
   approvedQuotationId              String?  @map("approved_quotation_id")
   trips                            Trip[]
+  journeyLegs                      TripSeriesJourneyLeg[]
   quotations                       TripSeriesQuotation[]
   approvalRequests                 TripSeriesApprovalRequest[]
 
@@ -82,6 +83,44 @@ model TripSeries {
   @@index([status, startDate, endDate])
   @@index([commercialStatus])
   @@map("trip_series")
+}
+
+model TripSeriesJourneyLeg {
+  id             String                  @id @default(uuid())
+  tripSeriesId   String                  @map("trip_series_id")
+  sequence       Int
+  label          String?
+  origin         String?
+  destination    String?
+  departureTime  String?                 @map("departure_time")
+  arrivalTime    String?                 @map("arrival_time")
+  notes          String?
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tripSeries     TripSeries              @relation(fields: [tripSeriesId], references: [id], onDelete: Cascade)
+  stops          TripSeriesJourneyStop[]
+  occurrenceLegs TripJourneyLeg[]
+
+  @@unique([tripSeriesId, sequence])
+  @@index([tripSeriesId, sequence])
+  @@map("trip_series_journey_legs")
+}
+
+model TripSeriesJourneyStop {
+  id              String                 @id @default(uuid())
+  journeyLegId    String                 @map("journey_leg_id")
+  sequence        Int
+  location        String
+  plannedTime     String?                @map("planned_time")
+  passengerCount  Int?                   @map("passenger_count")
+  stopType        String                 @default("stop") @map("stop_type")
+  notes           String?
+  journeyLeg      TripSeriesJourneyLeg   @relation(fields: [journeyLegId], references: [id], onDelete: Cascade)
+  occurrenceStops TripJourneyStop[]
+
+  @@unique([journeyLegId, sequence])
+  @@index([journeyLegId, sequence])
+  @@map("trip_series_journey_stops")
 }
 
 model TripSeriesQuotation {
@@ -151,6 +190,7 @@ model Trip {
   boosterSeatsRequested            Boolean  @default(false) @map("booster_seats_requested")
   boosterSeatCount                 Int      @default(0) @map("booster_seat_count")
   tripSeries                       TripSeries? @relation(fields: [tripSeriesId], references: [id], onDelete: SetNull)
+  journeyLegs                      TripJourneyLeg[]
   passengers                       TripPassenger[]
   busAssignments                   TripBusAssignment[]
   quotations                       TripQuotation[]
@@ -170,9 +210,55 @@ model Trip {
   @@map("trips")
 }
 
+model TripJourneyLeg {
+  id                String                  @id @default(uuid())
+  tripId            Int                     @map("trip_id")
+  sourceSeriesLegId String?                 @map("source_series_leg_id")
+  sequence          Int
+  label             String?
+  origin            String?
+  destination       String?
+  departureTime     String?                 @map("departure_time")
+  arrivalTime       String?                 @map("arrival_time")
+  notes             String?
+  override          Boolean                 @default(false)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  trip              Trip                    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sourceSeriesLeg   TripSeriesJourneyLeg?   @relation(fields: [sourceSeriesLegId], references: [id], onDelete: SetNull)
+  stops             TripJourneyStop[]
+  busAssignments    TripBusAssignment[]
+
+  @@unique([tripId, sequence])
+  @@index([tripId, sequence])
+  @@index([sourceSeriesLegId])
+  @@map("trip_journey_legs")
+}
+
+model TripJourneyStop {
+  id                 String                  @id @default(uuid())
+  journeyLegId       String                  @map("journey_leg_id")
+  sourceSeriesStopId String?                 @map("source_series_stop_id")
+  sequence           Int
+  location           String
+  plannedTime        String?                 @map("planned_time")
+  passengerCount     Int?                    @map("passenger_count")
+  stopType           String                  @default("stop") @map("stop_type")
+  notes              String?
+  override           Boolean                 @default(false)
+  journeyLeg         TripJourneyLeg          @relation(fields: [journeyLegId], references: [id], onDelete: Cascade)
+  sourceSeriesStop   TripSeriesJourneyStop?  @relation(fields: [sourceSeriesStopId], references: [id], onDelete: SetNull)
+
+  @@unique([journeyLegId, sequence])
+  @@index([journeyLegId, sequence])
+  @@index([sourceSeriesStopId])
+  @@map("trip_journey_stops")
+}
+
 model TripBusAssignment {
   id                   String                       @id @default(uuid())
   tripId               Int                          @map("trip_id")
+  journeyLegId         String?                      @map("journey_leg_id")
   sequence             Int                          @default(1)
   busType              String?                      @map("bus_type")
   seatCapacity         Int?                         @map("seat_capacity")
@@ -187,12 +273,14 @@ model TripBusAssignment {
   createdAt            DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
   trip                 Trip                         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  journeyLeg           TripJourneyLeg?              @relation(fields: [journeyLegId], references: [id], onDelete: SetNull)
   passengerAllocations TripBusPassengerAllocation[]
   quotationLines       TripQuotationLine[]
 
   @@unique([id, tripId])
   @@unique([tripId, sequence])
   @@index([tripId, status])
+  @@index([journeyLegId])
   @@map("trip_bus_assignments")
 }
 
