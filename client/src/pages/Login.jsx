@@ -42,7 +42,7 @@ const Login = () => {
       navigate("/");
     } catch (err) {
       console.error(err);
-      setError(err?.response?.data?.message || "Login failed. Please try again.");
+      setError(err?.response?.status === 401 ? "Incorrect email or password. Please try again." : "We couldn’t sign you in right now. Please try again.");
     } finally {
       setLoginBusy(false);
     }
@@ -60,7 +60,7 @@ const Login = () => {
       await instance.loginPopup({ scopes: ["openid", "profile", "email", "User.Read", API_SCOPE] });
       const account = instance.getAllAccounts()[0];
       if (!account) {
-        setInfo("Microsoft sign-in canceled or no account found.");
+        // Closing the Microsoft sign-in window is not an error.
         return;
       }
       const { accessToken } = await instance.acquireTokenSilent({
@@ -79,15 +79,17 @@ const Login = () => {
         return;
       }
       setEmail(account.username || "");
-      const text = await resp.text();
-      setInfo(
-        `Microsoft account detected. Email prefilled${
-          text ? ` — server says: ${text}` : ""
-        }. You may need admin approval or to finish registration.`
-      );
+      setInfo(resp.status === 401 || resp.status === 403
+        ? "Your Microsoft account does not have access to TripDash yet. Please contact your organization’s administrator."
+        : "We couldn’t complete Microsoft sign-in. Please try again later.");
     } catch (e) {
-      console.error(e);
-      setError(e?.message || "Microsoft sign-in failed.");
+      const code = String(e?.errorCode || e?.code || "").toLowerCase();
+      const message = String(e?.message || "").toLowerCase();
+      const cancelled = ["user_cancelled", "user_canceled", "popup_window_error"].some(value => code.includes(value) || message.includes(value)) && (code.includes("cancel") || message.includes("cancel") || message.includes("closed"));
+      if (!cancelled) {
+        console.error("Microsoft sign-in failed:", e);
+        setError("We couldn’t sign you in with Microsoft. Please try again.");
+      }
     } finally {
       setMsBusy(false);
     }
