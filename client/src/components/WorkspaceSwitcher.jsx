@@ -33,7 +33,7 @@ export default function WorkspaceSwitcher() {
   };
 
   if (loading) return <div className="h-12 w-64 rounded-xl bg-gray-100 animate-pulse" aria-label="Loading workspaces" />;
-  if (!selectedWorkspace) return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">No school workspace available</div>;
+  if (!selectedWorkspace) return <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 text-xs font-bold text-white">AD</span><span><small className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Current context</small><strong className="block text-sm text-slate-900">{location.pathname.startsWith("/admin") ? "Platform Administration" : "No school selected"}</strong></span></div>;
 
   const badge = selectedWorkspace.abbreviation || selectedWorkspace.displayName?.slice(0, 3).toUpperCase();
 
