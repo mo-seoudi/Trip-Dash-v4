@@ -1,6 +1,6 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
-import { FiBus, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi";
+import { FiTruck, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
@@ -100,7 +100,7 @@ const Login = () => {
   return (
     <main className="min-h-screen bg-[#F5F7FA] px-4 py-10 flex flex-col items-center justify-center">
       <div className="mb-7 flex items-center gap-3">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FiBus size={26}/></span>
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FiTruck size={26}/></span>
         <span className="text-3xl font-bold tracking-tight text-[#172B4D]">TripDash</span>
       </div>
       <section className="w-full max-w-[410px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
