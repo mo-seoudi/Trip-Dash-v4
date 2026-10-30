@@ -1,5 +1,6 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
+import { FiBus, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { login as apiLogin } from "../services/authService";
@@ -16,7 +17,8 @@ const Login = () => {
   const [loginBusy, setLoginBusy] = useState(false);
 
   const [msBusy, setMsBusy] = useState(false);
-  const [gBusy, setGBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
 
   const navigate = useNavigate();
   const { instance, inProgress } = useMsal();
@@ -91,125 +93,61 @@ const Login = () => {
     }
   }
 
-  function onGoogleSignIn() {
-    setError("");
-    setInfo("Google sign-in isn’t configured yet. This button is a placeholder.");
-    setGBusy(false);
-  }
-
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Loading...</div>;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="bg-white w-full max-w-[1100px] rounded-xl shadow-lg p-6 md:p-10">
-        <h1 className="text-3xl font-semibold text-center mb-8">Log in to TripDash</h1>
-
-        {(error || info) && (
-          <div className="mb-6">
-            {error && <div className="text-red-600 text-sm">{error}</div>}
-            {info && <div className="text-gray-600 text-sm mt-1">{info}</div>}
+    <main className="min-h-screen bg-[#F5F7FA] px-4 py-10 flex flex-col items-center justify-center">
+      <div className="mb-7 flex items-center gap-3">
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FiBus size={26}/></span>
+        <span className="text-3xl font-bold tracking-tight text-[#172B4D]">TripDash</span>
+      </div>
+      <section className="w-full max-w-[410px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-[#172B4D]">{forgotPassword ? "Forgot your password?" : "Welcome back"}</h1>
+        <p className="mt-2 mb-6 text-sm text-slate-500">{forgotPassword ? "Password recovery is managed by your organization’s administrator." : "Sign in to access your transport workspace."}</p>
+        {forgotPassword ? (
+          <div className="space-y-4">
+            <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">Please contact your organization’s administrator to request a password reset. No reset email has been sent.</p>
+            <button type="button" onClick={() => { setForgotPassword(false); setError(""); setInfo(""); }} className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"><FiArrowLeft/> Back to sign in</button>
           </div>
-        )}
-
-        {/* Side-by-side layout with fixed, slimmer columns on desktop */}
-        <div
-          className="
-            grid gap-8 justify-center
-            grid-cols-1
-            md:grid-cols-[420px_72px_360px]
-          "
-        >
-          {/* Left: compact email/password form */}
-          <form onSubmit={handleLogin} className="space-y-4" aria-label="Email password login form">
-            <div>
-              <label className="block text-sm font-medium mb-1">Email</label>
-              <input
-                type="email"
-                placeholder="you@school.com"
-                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Password</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loginBusy}
-              aria-busy={loginBusy}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center justify-center gap-2"
-            >
-              {loginBusy && <span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
-              {loginBusy ? "Signing in…" : "Log in"}
-            </button>
-
-            <p className="text-sm">
-              Don’t have an account?{" "}
-              <a href="/register" className="text-blue-600 underline">
-                Register here
-              </a>
-            </p>
-          </form>
-
-          {/* Center: vertical OR divider (becomes horizontal on mobile) */}
-          <div className="flex md:flex-col items-center justify-center">
-            <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
-            <span className="mx-4 md:my-3 text-sm text-gray-500 font-medium">OR</span>
-            <div className="h-px w-full bg-gray-200 md:w-px md:h-40" />
-          </div>
-
-          {/* Right: SSO buttons */}
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={onMsSignIn}
-              disabled={msBusy || inProgress !== "none"}
-              className="w-full inline-flex items-center justify-center gap-2 bg-[#2F2F2F] text-white py-3 rounded-lg hover:opacity-90 transition disabled:opacity-60"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="2" y="2" width="9" height="9" />
-                <rect x="13" y="2" width="9" height="9" />
-                <rect x="2" y="13" width="9" height="9" />
-                <rect x="13" y="13" width="9" height="9" />
+        ) : (
+          <>
+            {(error || info) && <div role="alert" className={`mb-5 rounded-lg px-3 py-2 text-sm ${error ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"}`}>{error || info}</div>}
+            <form onSubmit={handleLogin} className="space-y-4" aria-label="Email password login form">
+              <div>
+                <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">Email address</label>
+                <input id="login-email" type="email" required autoComplete="email" placeholder="name@organization.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label htmlFor="login-password" className="text-sm font-medium text-slate-700">Password</label>
+                  <button type="button" onClick={() => setForgotPassword(true)} className="text-xs font-medium text-blue-600 hover:underline">Forgot password?</button>
+                </div>
+                <div className="relative">
+                  <input id="login-password" type={showPassword ? "text" : "password"} required autoComplete="current-password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 pr-12 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
+                  <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-800">{showPassword ? <FiEyeOff size={18}/> : <FiEye size={18}/>}</button>
+                </div>
+              </div>
+              <button type="submit" disabled={loginBusy || msBusy} aria-busy={loginBusy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60">
+                {loginBusy && <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"/>}
+                {loginBusy ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+            <div className="my-5 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200"/><span className="text-xs font-medium text-slate-400">OR</span><div className="h-px flex-1 bg-slate-200"/></div>
+            <button type="button" onClick={onMsSignIn} disabled={msBusy || loginBusy || inProgress !== "none"} className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="13" y="1" width="10" height="10" fill="#7FBA00"/>
+                <rect x="1" y="13" width="10" height="10" fill="#00A4EF"/><rect x="13" y="13" width="10" height="10" fill="#FFB900"/>
               </svg>
               {msBusy ? "Connecting to Microsoft…" : "Continue with Microsoft"}
             </button>
-
-            <button
-              type="button"
-              onClick={onGoogleSignIn}
-              disabled={gBusy}
-              className="w-full inline-flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:opacity-60"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-              </svg>
-              {gBusy ? "Opening Google…" : "Continue with Google"}
-            </button>
-
-            <p className="text-xs text-gray-500">
-              Single sign-on options may require your school admin to enable access.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+            <p className="mt-5 text-center text-xs text-slate-400">Access is managed by your organization's administrator.</p>
+          </>
+        )}
+      </section>
+      <p className="mt-7 text-xs text-slate-400">© 2026 TripDash</p>
+    </main>
   );
 };
 
