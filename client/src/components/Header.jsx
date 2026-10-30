@@ -1,7 +1,6 @@
 import React from "react";
 import { FaBars } from "react-icons/fa";
 import UserMenu from "./DropdownProfile";
-import Help from "./DropdownHelp";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 function Header({ sidebarOpen, setSidebarOpen, profile }) {
@@ -19,8 +18,6 @@ function Header({ sidebarOpen, setSidebarOpen, profile }) {
       <WorkspaceSwitcher />
 
       <div className="ml-auto flex items-center gap-2">
-        {profile?.name && <span className="hidden text-sm font-medium text-slate-500 xl:inline">{profile.name}</span>}
-        <Help align="right" />
         <UserMenu align="right" />
       </div>
     </header>
