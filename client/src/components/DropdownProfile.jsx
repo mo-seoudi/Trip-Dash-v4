@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Transition from '../components/Transition';
 
 // Use placeholder avatar image
-const UserAvatar = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
+
 
 function DropdownProfile({ align }) {
   const { profile } = useAuth();
@@ -43,7 +43,7 @@ function DropdownProfile({ align }) {
         onClick={() => setDropdownOpen(!dropdownOpen)}
         aria-expanded={dropdownOpen}
       >
-        <img className="w-8 h-8 rounded-full" src={UserAvatar} width="32" height="32" alt="User" />
+        <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{(profile?.name || "User").trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join("")}</span>
         <div className="flex items-center truncate">
           <span className="truncate ml-2 text-sm font-medium text-gray-600 dark:text-gray-100 group-hover:text-gray-800 dark:group-hover:text-white">
             {profile?.name || "User"}
