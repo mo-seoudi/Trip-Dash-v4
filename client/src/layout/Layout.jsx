@@ -42,7 +42,7 @@ const Layout = () => {
       <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profile={profile} />
       <div className="relative flex flex-1 flex-col">
         <main className={`flex-grow overflow-y-scroll px-6 py-4 scrollbar-hide transition-[filter,opacity] duration-200 ${organizationId ? "organization-control-page" : ""} ${showWorkspaceTransition ? "pointer-events-none select-none opacity-70 blur-[0.4px]" : "opacity-100"}`}>
-          <div className="mb-4 flex flex-wrap items-center gap-1 text-sm opacity-70">{renderBreadcrumbs()}</div>
+          {!(location.pathname === "/admin" || organizationId) && <div className="mb-4 flex flex-wrap items-center gap-1 text-sm opacity-70">{renderBreadcrumbs()}</div>}
           <Outlet />
         </main>
         <div aria-live="polite" aria-hidden={!showWorkspaceTransition} className={`absolute inset-0 z-40 flex items-center justify-center bg-gray-900/10 backdrop-blur-[1px] transition-opacity duration-200 ${showWorkspaceTransition ? "opacity-100" : "pointer-events-none opacity-0"}`}>

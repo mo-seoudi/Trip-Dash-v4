@@ -48,7 +48,7 @@ router.get("/", async (req, res, next) => {
       return res.status(403).json({ message: "Platform Super Admin access required" });
     }
 
-    const [organizations, users, sources, coverage] = await Promise.all([
+    const [organizations, users, sources, groupRelationships, coverage] = await Promise.all([
       prismaControl.organization.findMany({
         orderBy: [{ type: "asc" }, { displayName: "asc" }],
         include: {
@@ -89,6 +89,10 @@ router.get("/", async (req, res, next) => {
         include: {
           organization: { select: { id: true, displayName: true, type: true } },
         },
+      }),
+      prismaControl.organizationRelationship.findMany({
+        where: { type: "BELONGS_TO_GROUP", status: "active", OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }] },
+        select: { id: true, fromOrganizationId: true, toOrganizationId: true, isPrimary: true },
       }),
       prismaControl.tenantOrganization.findMany({
         include: {
@@ -151,6 +155,7 @@ router.get("/", async (req, res, next) => {
           type: s.organization.type,
         },
       })),
+      group_relationships: groupRelationships.map((r) => ({ id: r.id, child_id: r.fromOrganizationId, parent_id: r.toOrganizationId, is_primary: r.isPrimary })),
       coverage: coverage.map((c) => ({
         tenant: c.tenant,
         organization: {
