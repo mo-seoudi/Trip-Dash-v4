@@ -13,6 +13,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const [msBusy, setMsBusy] = useState(false);
   const [gBusy, setGBusy] = useState(false);
@@ -22,6 +23,8 @@ const Login = () => {
 
   async function handleLogin(e) {
     e.preventDefault();
+    if (loginBusy) return;
+    setLoginBusy(true);
     setError("");
     setInfo("");
     try {
@@ -38,6 +41,8 @@ const Login = () => {
     } catch (err) {
       console.error(err);
       setError(err?.response?.data?.message || "Login failed. Please try again.");
+    } finally {
+      setLoginBusy(false);
     }
   }
 
@@ -146,9 +151,12 @@ const Login = () => {
 
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60"
+              disabled={loginBusy}
+              aria-busy={loginBusy}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center justify-center gap-2"
             >
-              Log in
+              {loginBusy && <span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+              {loginBusy ? "Signing in…" : "Log in"}
             </button>
 
             <p className="text-sm">
