@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { listBookingProviders } from "../services/bookingService";
 import { createWorkspaceTrip } from "../services/tripService";
 import { useAuth } from "../context/AuthContext";
 import Button from "./ui/Button";
@@ -18,6 +19,23 @@ const TripForm = ({ onSuccess, onClose }) => {
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
   const [timeError, setTimeError] = useState("");
+  const [providers, setProviders] = useState([]);
+  const [providerId, setProviderId] = useState("");
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setProvidersLoading(true); setProvidersError(""); setProviders([]); setProviderId("");
+    if (!activeWorkspace?.schoolId) { setProvidersLoading(false); return; }
+    listBookingProviders(activeWorkspace.schoolId).then(result => {
+      if (!active) return;
+      const rows = result.data || [];
+      setProviders(rows);
+      if (rows.length === 1) setProviderId(rows[0].id);
+    }).catch(() => { if (active) setProvidersError("Could not load transport providers."); })
+      .finally(() => { if (active) setProvidersLoading(false); });
+    return () => { active = false; };
+  }, [activeWorkspace?.schoolId]);
 
   useEffect(() => {
     setFormData((previous) => ({ ...previous, returnHour: previous.departureHour, returnMinute: previous.departureMinute, returnAmPm: previous.departureAmPm }));
@@ -46,9 +64,11 @@ const TripForm = ({ onSuccess, onClose }) => {
       return;
     }
     if (!validateTimes()) return;
+    if (providersLoading || providersError || !providerId) { toast.error("A transport provider is required."); return; }
     setSubmitting(true);
     try {
       const payload = {
+        transportProviderOrganizationId: providerId,
         tripType: formData.tripType === "Other" ? formData.customType : formData.tripType,
         origin: formData.origin || null,
         destination: formData.destination,
@@ -92,6 +112,15 @@ const TripForm = ({ onSuccess, onClose }) => {
           <div className="mt-1 text-sm font-semibold text-slate-900">{activeWorkspace?.displayName || "No school workspace selected"}</div>
         </div>
 
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-950">Transport provider</h3>
+          {providersLoading ? <p className="text-sm text-slate-500">Loading providers…</p> :
+            providersError ? <FeedbackBanner tone="error">{providersError}</FeedbackBanner> :
+            !providers.length ? <FeedbackBanner tone="error">No active transport provider is linked to this school.</FeedbackBanner> :
+            providers.length === 1 ? <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm"><strong>{providers[0].name}</strong><span className="text-xs text-slate-500">Automatically assigned</span></div> :
+            <FormField label="Select transport provider"><SelectInput value={providerId} onChange={event => setProviderId(event.target.value)} required><option value="">Select provider</option>{providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</SelectInput></FormField>}
+        </section>
+
         <section className="space-y-4">
           <div><h3 className="text-sm font-semibold text-slate-950">Journey</h3><p className="mt-0.5 text-xs text-slate-500">Define the trip type and destination.</p></div>
           <FormField label="Trip type"><SelectInput name="tripType" value={formData.tripType} onChange={handleChange} required>{types.map((value) => <option key={value}>{value}</option>)}</SelectInput></FormField>
@@ -133,7 +162,7 @@ const TripForm = ({ onSuccess, onClose }) => {
 
       <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
         <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
-        <Button type="submit" loading={submitting}>Submit request</Button>
+        <Button type="submit" disabled={providersLoading || Boolean(providersError) || !providerId} loading={submitting}>Submit request</Button>
       </div>
     </form>
   );
