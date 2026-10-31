@@ -119,15 +119,15 @@ const Login = () => {
             <form onSubmit={handleLogin} className="space-y-4" aria-label="Email password login form">
               <div>
                 <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">Email address</label>
-                <input id="login-email" type="email" required autoComplete="email" placeholder="name@organization.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
+                <input id="login-email" tabIndex={1} type="email" required autoComplete="email" placeholder="name@organization.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
               </div>
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
                   <label htmlFor="login-password" className="text-sm font-medium text-slate-700">Password</label>
-                  <button type="button" onClick={() => setForgotPassword(true)} className="text-xs font-medium text-blue-600 hover:underline">Forgot password?</button>
+                  <button type="button" tabIndex={3} onClick={() => setForgotPassword(true)} className="text-xs font-medium text-blue-600 hover:underline">Forgot password?</button>
                 </div>
                 <div className="relative">
-                  <input id="login-password" type={showPassword ? "text" : "password"} required autoComplete="current-password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 pr-12 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
+                  <input id="login-password" tabIndex={2} type={showPassword ? "text" : "password"} required autoComplete="current-password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-3 pr-12 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
                   <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-800">{showPassword ? <FiEyeOff size={18}/> : <FiEye size={18}/>}</button>
                 </div>
               </div>
