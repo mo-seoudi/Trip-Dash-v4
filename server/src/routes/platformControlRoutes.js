@@ -17,26 +17,25 @@ router.get("/organizations/:organizationId/geography",async(req,res,next)=>{try{
  const org=await prismaControl.organization.findUnique({where:{id:req.params.organizationId}});
  if(!org)return res.status(404).json({message:"Organization not found"});
  const [location]=await prismaControl.$queryRaw`SELECT country_code,region_code FROM public.organizations WHERE id=${org.id}::uuid`;
- const regions=org.type==="BUS_OPERATOR"?await prismaControl.$queryRaw`SELECT country_code,region_code FROM public.provider_operating_regions WHERE organization_id=${org.id}::uuid ORDER BY country_code,region_code`:[];
- res.json({location,operating_regions:regions});
+ const countries=org.type==="BUS_OPERATOR"?await prismaControl.$queryRaw`SELECT country_code FROM public.provider_operating_countries WHERE organization_id=${org.id}::uuid ORDER BY country_code`:[];
+ res.json({location,operating_countries:countries.map(c=>c.country_code)});
 }catch(e){next(e)}});
 router.put("/organizations/:organizationId/geography",async(req,res,next)=>{try{
  const actor=await requirePlatformAdmin(req);if(!actor)return res.status(403).json({message:"Platform Super Admin access required"});
  const org=await prismaControl.organization.findUnique({where:{id:req.params.organizationId}});
  if(!org)return res.status(404).json({message:"Organization not found"});
  const country=String(req.body?.countryCode||"").trim().toUpperCase(),region=String(req.body?.regionCode||"").trim().toUpperCase();
- const regions=req.body?.operatingRegions||[];
+ const countries=req.body?.operatingCountries||[];
  if(country&&!/^[A-Z]{2}$/.test(country))return res.status(400).json({message:"Country must be an ISO 2-letter code"});
- if(region&&!/^[A-Z0-9_-]{1,20}$/.test(region))return res.status(400).json({message:"Invalid region code"});
- if(!Array.isArray(regions)||regions.length>30||regions.some(x=>!x||! /^[A-Z]{2}$/.test(String(x.countryCode||"").toUpperCase())||! /^[A-Z0-9_-]{1,20}$/.test(String(x.regionCode||"").toUpperCase())))return res.status(400).json({message:"Invalid operating regions"});
- if(org.type!=="BUS_OPERATOR"&&regions.length)return res.status(400).json({message:"Operating regions apply to bus operators only"});
+ if(!Array.isArray(countries)||countries.length>50||countries.some(c=>typeof c!=="string"||!/^[A-Z]{2}$/.test(c.toUpperCase())))return res.status(400).json({message:"Invalid operating country codes"});
+ if(org.type!=="BUS_OPERATOR"&&countries.length)return res.status(400).json({message:"Operating countries apply to bus operators only"});
  await prismaControl.$transaction(async tx=>{
   await tx.$executeRaw`UPDATE public.organizations SET country_code=${country||null},region_code=${region||null},updated_at=now() WHERE id=${org.id}::uuid`;
   if(org.type==="BUS_OPERATOR"){
-   await tx.$executeRaw`DELETE FROM public.provider_operating_regions WHERE organization_id=${org.id}::uuid`;
-   for(const item of regions){await tx.$executeRaw`INSERT INTO public.provider_operating_regions(organization_id,country_code,region_code) VALUES (${org.id}::uuid,${String(item.countryCode).toUpperCase()},${String(item.regionCode).toUpperCase()}) ON CONFLICT DO NOTHING`;}
+   await tx.$executeRaw`DELETE FROM public.provider_operating_countries WHERE organization_id=${org.id}::uuid`;
+   for(const code of new Set(countries.map(x=>x.toUpperCase()))){await tx.$executeRaw`INSERT INTO public.provider_operating_countries(organization_id,country_code) VALUES (${org.id}::uuid,${code})`;}
   }
-  await tx.auditEvent.create({data:{actorUserId:actor.id,organizationId:org.id,action:"organization.geography_updated",resourceType:"organization",resourceId:org.id,metadata:{country,region,operatingRegions:regions}}});
+  await tx.auditEvent.create({data:{actorUserId:actor.id,organizationId:org.id,action:"organization.geography_updated",resourceType:"organization",resourceId:org.id,metadata:{country,operatingCountries:countries}}});
  });
  res.json({updated:true});
 }catch(e){next(e)}});
