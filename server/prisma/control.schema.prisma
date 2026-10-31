@@ -149,16 +149,6 @@ model Organization {
   abbreviation String?
   slug String @unique
   status String @default("active")
-  countryCode String? @map("country_code")
-  regionCode String? @map("region_code")
-  createdSource String @default("platform_admin") @map("created_source")
-  claimStatus String @default("unclaimed") @map("claim_status")
-  verificationStatus String @default("unverified") @map("verification_status")
-  operationalStatus String @default("not_activated") @map("operational_status")
-  directoryVisible Boolean @default(false) @map("directory_visible")
-  claimedAt DateTime? @map("claimed_at") @db.Timestamptz(6)
-  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
-  operatingRegions ProviderOperatingRegion[]
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships OrganizationMembership[]
@@ -172,15 +162,6 @@ model Organization {
   auditEvents AuditEvent[]
   @@index([type])
   @@map("organizations")
-}
-model ProviderOperatingRegion {
-  organizationId String @map("organization_id")
-  countryCode String @map("country_code")
-  regionCode String @map("region_code")
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  @@id([organizationId, countryCode, regionCode])
-  @@index([countryCode, regionCode])
-  @@map("provider_operating_regions")
 }
 model OrganizationRelationship {
   id String @id @default(uuid())
