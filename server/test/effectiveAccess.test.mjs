@@ -89,3 +89,22 @@ test("inactive user receives no canonical access", async () => {
   const prisma = fakePrisma({ user: { ...activeUser(), status: "inactive" } }), access = await resolveEffectiveAccess(prisma, { id: 7, email: "u@example.com" });
   assert.deepEqual(access.workspaces, []); assert.deepEqual(access.organizations, []); assert.deepEqual(access.permissions, []);
 });
+
+test("inactive school denies direct workspace access",async()=>{
+ const s1={...school("s1"),status:"inactive"};
+ const prisma=fakePrisma({user:activeUser({memberships:[membership(s1)],assignments:[assignment("school_staff",s1)]})});
+ const access=await resolveEffectiveAccess(prisma,{id:7,email:"u@example.com"});
+ assert.deepEqual(access.workspaces,[]);
+});
+test("inactive group denies relationship-derived school access",async()=>{
+ const group={...org("g1","SCHOOL_GROUP"),status:"inactive"},s1=school("s1");
+ const prisma=fakePrisma({user:activeUser({memberships:[membership(group)],assignments:[assignment("group_staff",group)]}),relationships:[{toOrganizationId:"g1",type:"BELONGS_TO_GROUP",status:"active",fromOrganization:s1}]});
+ const access=await resolveEffectiveAccess(prisma,{id:7});
+ assert.deepEqual(access.workspaces,[]);
+});
+test("inactive child school is excluded from group workspace",async()=>{
+ const group=org("g1","SCHOOL_GROUP"),s1={...school("s1"),status:"inactive"};
+ const prisma=fakePrisma({user:activeUser({memberships:[membership(group)],assignments:[assignment("group_staff",group)]}),relationships:[{toOrganizationId:"g1",type:"BELONGS_TO_GROUP",status:"active",fromOrganization:s1}]});
+ const access=await resolveEffectiveAccess(prisma,{id:7});
+ assert.deepEqual(access.workspaces,[]);
+});
