@@ -1,6 +1,6 @@
 import { prismaControl } from "../../lib/prismaControl.js";
 
-async function eligibleProviders(schoolId) {
+export async function eligibleProviders(schoolId) {
   const now = new Date();
   const links = await prismaControl.organizationRelationship.findMany({
     where: {
@@ -15,7 +15,7 @@ async function eligibleProviders(schoolId) {
     .map(org => ({ id: org.id, name: org.displayName || org.fullName }));
 }
 
-function chooseProvider(providers, requested) {
+export function chooseProvider(providers, requested) {
   if (!providers.length) {
     const error = new Error("No active transport provider is configured for this school"); error.status = 409; throw error;
   }
