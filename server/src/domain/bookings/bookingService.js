@@ -1,3 +1,36 @@
+import { prismaControl } from "../../lib/prismaControl.js";
+
+async function eligibleProviders(schoolId) {
+  const now = new Date();
+  const links = await prismaControl.organizationRelationship.findMany({
+    where: {
+      type: "TRANSPORT_PROVIDER", status: { equals: "active", mode: "insensitive" },
+      OR: [{ fromOrganizationId: schoolId }, { toOrganizationId: schoolId }],
+      AND: [{ OR: [{ validFrom: null }, { validFrom: { lte: now } }] }, { OR: [{ validUntil: null }, { validUntil: { gte: now } }] }],
+    },
+    include: { fromOrganization: true, toOrganization: true },
+  });
+  return links.map(link => link.fromOrganizationId === schoolId ? link.toOrganization : link.fromOrganization)
+    .filter(org => org && org.type === "BUS_COMPANY")
+    .map(org => ({ id: org.id, name: org.displayName || org.name }));
+}
+
+function chooseProvider(providers, requested) {
+  if (!providers.length) {
+    const error = new Error("No active transport provider is configured for this school"); error.status = 409; throw error;
+  }
+  const selected = requested == null || requested === "" ? null : String(requested);
+  if (providers.length === 1) {
+    if (selected && selected !== providers[0].id) {
+      const error = new Error("The selected provider is not assigned to this school"); error.status = 400; throw error;
+    }
+    return providers[0].id;
+  }
+  if (!selected || !providers.some(provider => provider.id === selected)) {
+    const error = new Error("Select one of this school's active transport providers"); error.status = 400; throw error;
+  }
+  return selected;
+}
 function idOf(value) { const id = Number(value); return Number.isInteger(id) && id > 0 ? id : null; }
 function num(value, fallback = null) { if (value === "" || value == null) return fallback; const n = Number(value); return Number.isFinite(n) ? n : fallback; }
 function date(value) { return value ? new Date(value) : null; }
@@ -20,11 +53,13 @@ export function createBookingService({ prisma, workspace, user }) {
   return {
     list: () => prisma.busBooking.findMany({ where: { owningSchoolOrganizationId: schoolId }, orderBy: { createdAt: "desc" } }),
     get,
-    create: (body = {}) => {
+    providers: () => eligibleProviders(schoolId),
+    create: async (body = {}) => {
+      const transportProviderOrganizationId = chooseProvider(await eligibleProviders(schoolId), body.transportProviderOrganizationId);
       const students = num(body.students, 0), adults = num(body.adults, 0);
       return prisma.busBooking.create({ data: {
         createdByAppUserId: actorId, owningSchoolOrganizationId: schoolId,
-        requestingOrganizationId: requesterId, payerOrganizationId: body.payerOrganizationId || requesterId,
+        requestingOrganizationId: requesterId, transportProviderOrganizationId, payerOrganizationId: body.payerOrganizationId || requesterId,
         title: body.title ?? null, purpose: body.purpose ?? null, date: date(body.date), startTime: body.startTime ?? null,
         endDate: date(body.endDate), endTime: body.endTime ?? null, durationMinutes: num(body.durationMinutes),
         students, adults, totalPassengers: students + adults,
