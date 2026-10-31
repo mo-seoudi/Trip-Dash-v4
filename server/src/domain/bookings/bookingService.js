@@ -11,8 +11,8 @@ async function eligibleProviders(schoolId) {
     include: { fromOrganization: true, toOrganization: true },
   });
   return links.map(link => link.fromOrganizationId === schoolId ? link.toOrganization : link.fromOrganization)
-    .filter(org => org && org.type === "BUS_COMPANY")
-    .map(org => ({ id: org.id, name: org.displayName || org.name }));
+    .filter(org => org && org.type === "BUS_OPERATOR")
+    .map(org => ({ id: org.id, name: org.displayName || org.fullName }));
 }
 
 function chooseProvider(providers, requested) {
