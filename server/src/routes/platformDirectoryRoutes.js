@@ -51,9 +51,7 @@ router.get("/", async (req, res, next) => {
     const [organizations, users, sources, groupRelationships, coverage] = await Promise.all([
       prismaControl.organization.findMany({
         orderBy: [{ type: "asc" }, { displayName: "asc" }],
-        select: {
-          id: true, type: true, displayName: true, fullName: true,
-          abbreviation: true, slug: true, status: true,
+        include: {
           memberships: { where: { status: "ACTIVE" }, select: { id: true } },
           roleAssignments: {
             where: { isActive: true },
