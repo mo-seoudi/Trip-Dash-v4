@@ -9,7 +9,7 @@ ALTER TABLE "organizations"
  ADD COLUMN IF NOT EXISTS "claimed_at" TIMESTAMPTZ,
  ADD COLUMN IF NOT EXISTS "verified_at" TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS "provider_operating_regions" (
- "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+ "organization_id" UUID NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
  "country_code" TEXT NOT NULL,
  "region_code" TEXT NOT NULL,
  PRIMARY KEY ("organization_id", "country_code", "region_code")
