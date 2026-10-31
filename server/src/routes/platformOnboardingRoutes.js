@@ -25,7 +25,7 @@ if(type==="TRANSPORT_PROVIDER"){
  fromOrganizationId=isSchool(current)?currentId:otherId;toOrganizationId=isSchool(current)?otherId:currentId;
 }else if(type==="BELONGS_TO_GROUP"){
  if(isGroup(current)===isGroup(other))return res.status(400).json({message:"Select one parent group and one member organization"});
- fromOrganizationId=isGroup(current)?otherId:currentId;toOrganizationId=isGroup(current)?currentId:otherId;
+ fromOrganizationId=isGroup(current)?otherId:currentId;toOrganizationId=isGroup(current)?currentId:otherId;const otherParents=await prismaControl.organizationRelationship.findMany({where:{type:"BELONGS_TO_GROUP",fromOrganizationId,NOT:{toOrganizationId},status:"active"}});if(otherParents.length)return res.status(409).json({message:"This organization already has an active parent group. Remove the previous parent relationship before assigning a new one."});
 }
 const existing=await prismaControl.organizationRelationship.findFirst({where:{type,OR:[{fromOrganizationId,toOrganizationId},{fromOrganizationId:toOrganizationId,toOrganizationId:fromOrganizationId}]}});
 const values={status:"active",isPrimary:Boolean(req.body?.isPrimary),notes:req.body?.notes||null};
