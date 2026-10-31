@@ -30,7 +30,7 @@ router.put("/organizations/:organizationId/geography",async(req,res,next)=>{try{
  if(!Array.isArray(countries)||countries.length>50||countries.some(c=>typeof c!=="string"||!/^[A-Z]{2}$/.test(c.toUpperCase())))return res.status(400).json({message:"Invalid operating country codes"});
  if(org.type!=="BUS_OPERATOR"&&countries.length)return res.status(400).json({message:"Operating countries apply to bus operators only"});
  await prismaControl.$transaction(async tx=>{
-  await tx.$executeRaw`UPDATE public.organizations SET country_code=${country||null},region_code=${region||null},updated_at=now() WHERE id=${org.id}::uuid`;
+  await tx.$executeRaw`UPDATE public.organizations SET country_code=${country||null},updated_at=now() WHERE id=${org.id}::uuid`;
   if(org.type==="BUS_OPERATOR"){
    await tx.$executeRaw`DELETE FROM public.provider_operating_countries WHERE organization_id=${org.id}::uuid`;
    for(const code of new Set(countries.map(x=>x.toUpperCase()))){await tx.$executeRaw`INSERT INTO public.provider_operating_countries(organization_id,country_code) VALUES (${org.id}::uuid,${code})`;}
