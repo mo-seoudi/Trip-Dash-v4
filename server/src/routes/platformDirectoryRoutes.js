@@ -48,7 +48,7 @@ router.get("/", async (req, res, next) => {
       return res.status(403).json({ message: "Platform Super Admin access required" });
     }
 
-    const [organizations, users, sources, groupRelationships, coverage] = await Promise.all([
+    const [organizations, users, sources, groupRelationships, coverage, providerRelationships] = await Promise.all([
       prismaControl.organization.findMany({
         orderBy: [{ type: "asc" }, { displayName: "asc" }],
         include: {
@@ -100,12 +100,14 @@ router.get("/", async (req, res, next) => {
           organization: { select: { id: true, displayName: true } },
         },
       }),
+      prismaControl.organizationRelationship.findMany({where:{type:"TRANSPORT_PROVIDER",status:"active"},select:{fromOrganizationId:true,toOrganizationId:true}}),
     ]);
 
     return res.json({
       organizations: organizations.map((o) => ({
         ...orgView(o),
         active_memberships: o.memberships.length,
+        school_relationship_count: providerRelationships.filter(r=>r.fromOrganizationId===o.id||r.toOrganizationId===o.id).length,
         provider_account_status: (o.memberships.length > 0 || o.roleAssignments.some(a => a.scopeType === "ORGANIZATION" && a.organizationId === o.id)) ? "registered" : "listed",
         roles: o.roleAssignments.map((a) => ({
           id: a.id,
