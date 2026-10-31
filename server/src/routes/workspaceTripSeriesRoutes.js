@@ -8,7 +8,12 @@ import { generateOccurrenceDates, calendarDate } from "../services/tripRecurrenc
 const router=Router({mergeParams:true});router.use(requireAuth);
 const bad=m=>{const e=new Error(m);e.status=400;return e};
 function nullableNumber(v,f=null){if(v===""||v==null)return f;const n=Number(v);if(!Number.isInteger(n)||n<0)throw bad("Passenger counts must be non-negative whole numbers");return n}
-function allowed(access,workspace,s){return canReadWorkspaceTrip({access,workspace,trip:{createdByAppUserId:s.createdByAppUserId}})}
+function allowed(access,workspace,s){
+  const providerAccess=(workspace.access||[]).filter(a=>a.viaRelationship==="TRANSPORT_PROVIDER"&&a.transportProviderOrganizationId);
+  const nonProviderAccess=(workspace.access||[]).some(a=>a.viaRelationship!=="TRANSPORT_PROVIDER");
+  if(providerAccess.length&&!nonProviderAccess)return providerAccess.some(a=>a.transportProviderOrganizationId===s.transportProviderOrganizationId)&&workspace.permissions.includes(PERMISSIONS.TRIP_READ);
+  return canReadWorkspaceTrip({access,workspace,trip:{createdByAppUserId:s.createdByAppUserId}});
+}
 const includeRecord={trips:{orderBy:{seriesOccurrenceDate:"asc"},include:{journeyLegs:{orderBy:{sequence:"asc"},include:{stops:{orderBy:{sequence:"asc"}}}}}},journeyLegs:{orderBy:{sequence:"asc"},include:{stops:{orderBy:{sequence:"asc"}}}},dateExceptions:{orderBy:{serviceDate:"asc"}},quotations:{orderBy:{version:"desc"},include:{approvalRequests:true}},approvalRequests:{orderBy:{requestedAt:"desc"}}};
 const normalizeLegs=b=>Array.isArray(b.journeyLegs)?b.journeyLegs.map((leg,i)=>({sequence:i+1,label:leg.label||`Journey ${i+1}`,origin:leg.origin||null,destination:leg.destination||null,departureTime:leg.departureTime||null,arrivalTime:leg.arrivalTime||null,notes:leg.notes||null,stops:Array.isArray(leg.stops)?leg.stops.filter(s=>String(s.location||"").trim()).map((s,j)=>({sequence:j+1,location:String(s.location).trim(),plannedTime:s.plannedTime||null,passengerCount:nullableNumber(s.passengerCount),stopType:s.stopType||"stop",notes:s.notes||null})):[]})):[];
 async function replaceOccurrenceLegs(tx,tripId,legs){await tx.tripJourneyLeg.deleteMany({where:{tripId}});for(const leg of legs)await tx.tripJourneyLeg.create({data:{tripId,sequence:leg.sequence,label:leg.label,origin:leg.origin,destination:leg.destination,departureTime:leg.departureTime,arrivalTime:leg.arrivalTime,notes:leg.notes,override:true,stops:{create:leg.stops.map(s=>({...s,override:true}))}}})}
