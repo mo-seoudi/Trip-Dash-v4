@@ -11,7 +11,7 @@ export async function eligibleProviders(schoolId) {
     include: { fromOrganization: true, toOrganization: true },
   });
   return links.map(link => link.fromOrganizationId === schoolId ? link.toOrganization : link.fromOrganization)
-    .filter(org => org && org.type === "BUS_OPERATOR")
+    .filter(org => org && org.type === "BUS_OPERATOR" && String(org.status).toLowerCase() === "active")
     .map(org => ({ id: org.id, name: org.displayName || org.fullName }));
 }
 
