@@ -106,6 +106,7 @@ router.get("/", async (req, res, next) => {
       organizations: organizations.map((o) => ({
         ...orgView(o),
         active_memberships: o.memberships.length,
+        provider_account_status: (o.memberships.length > 0 || o.roleAssignments.some(a => a.scopeType === "ORGANIZATION" && a.organizationId === o.id)) ? "registered" : "listed",
         roles: o.roleAssignments.map((a) => ({
           id: a.id,
           role: a.role?.key,
