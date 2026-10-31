@@ -18,6 +18,7 @@ model BusBooking {
   createdByAppUserId         String?  @map("created_by_app_user_id")
   owningSchoolOrganizationId String   @map("owning_school_organization_id")
   requestingOrganizationId   String   @map("requesting_organization_id")
+  transportProviderOrganizationId String? @map("transport_provider_organization_id")
   payerOrganizationId        String?  @map("payer_organization_id")
   title                      String?
   purpose                    String?
@@ -38,6 +39,7 @@ model BusBooking {
 
   @@index([owningSchoolOrganizationId, createdAt])
   @@index([requestingOrganizationId])
+  @@index([transportProviderOrganizationId])
   @@index([payerOrganizationId])
   @@index([status])
   @@map("bus_bookings")
