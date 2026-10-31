@@ -16,4 +16,22 @@ router.get("/",async(req,res,next)=>{try{
  `;
  res.json({providers});
 }catch(e){next(e)}});
+
+// Directory-only provider creation. No tenant ownership or platform account is created.
+router.post("/",async(req,res,next)=>{try{
+ const actor=await platformAdmin(req);
+ if(!actor)return res.status(403).json({message:"Platform Super Admin access required"});
+ const body=req.body||{};
+ const displayName=String(body.displayName||"").trim();
+ const slug=String(body.slug||displayName).trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+ if(!displayName||!slug)return res.status(400).json({message:"Provider display name is required"});
+ const duplicate=await prismaControl.organization.findFirst({where:{OR:[{slug},{displayName:{equals:displayName,mode:"insensitive"}}]}});
+ if(duplicate)return res.status(409).json({message:"An organization with this name or slug already exists",organizationId:duplicate.id});
+ const org=await prismaControl.$transaction(async tx=>{
+  const created=await tx.organization.create({data:{type:"BUS_OPERATOR",displayName,fullName:String(body.fullName||"").trim()||null,legalName:String(body.legalName||"").trim()||null,abbreviation:String(body.abbreviation||"").trim()||null,slug,status:"active"}});
+  await tx.auditEvent.create({data:{actorUserId:actor.id,organizationId:created.id,action:"provider.directory_listed",resourceType:"organization",resourceId:created.id,metadata:{createdSource:"provider_directory",tenantAssigned:false}}});
+  return created;
+ });
+ res.status(201).json({provider:{id:org.id,display_name:org.displayName,type:org.type,status:org.status}});
+}catch(e){next(e)}});
 export default router;
