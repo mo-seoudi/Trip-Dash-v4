@@ -59,7 +59,16 @@ export function createTripService({ prisma, workspace, user }) {
   if (!prisma || !workspace?.schoolId) throw new TypeError("Scoped operational context with school workspace is required");
   const appUserId = cleanText(user?.appUserId);
   const canReadAllTrips = Array.isArray(workspace.permissions) && workspace.permissions.includes("trip.read_all");
-  function visibleTripWhere(extra = {}) { const visibility = canReadAllTrips ? {} : { createdByAppUserId: appUserId || "__NO_AUTHENTICATED_APP_USER__" }; return schoolWhere(workspace, { ...visibility, ...extra }); }
+  const providerAccess = (workspace.access || []).filter(a => a.viaRelationship === "TRANSPORT_PROVIDER" && a.transportProviderOrganizationId);
+  const nonProviderAccess = (workspace.access || []).some(a => a.viaRelationship !== "TRANSPORT_PROVIDER");
+  const providerIds = [...new Set(providerAccess.map(a => a.transportProviderOrganizationId))];
+  function visibleTripWhere(extra = {}) {
+    const providerOnly = providerIds.length && !nonProviderAccess;
+    const visibility = providerOnly
+      ? { transportProviderOrganizationId: { in: providerIds } }
+      : canReadAllTrips ? {} : { createdByAppUserId: appUserId || "__NO_AUTHENTICATED_APP_USER__" };
+    return schoolWhere(workspace, { ...visibility, ...extra });
+  }
   function requireCreatorIdentity() { if (!appUserId) throw new TripAuthorizationError("The authenticated user is not linked to a canonical application user"); return appUserId; }
   async function existing(id) { const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id: tripId(id) }) }); if (!trip) throw new TripNotFoundError(); return trip; }
   async function hydrated(id) { const trip = await prisma.trip.findFirst({ where: visibleTripWhere({ id }), include: { busAssignments: true, passengers: true, quotations: true, approvalRequests: true } }); if (!trip) throw new TripNotFoundError(); return trip; }
