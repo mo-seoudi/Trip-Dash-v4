@@ -41,7 +41,15 @@ export function createBookingService({ prisma, workspace, user }) {
   const schoolId = String(workspace.schoolId);
   const requesterId = String(user?.organizationId || schoolId);
   const actorId = user?.appUserId ? String(user.appUserId) : null;
-  const scopedWhere = (id) => ({ id, owningSchoolOrganizationId: schoolId });
+  // Provider users inherit a school workspace through a transport relationship.
+  // Their access must remain scoped to their own assigned bookings.
+  const providerAccess = (workspace.access || []).filter(a => a.viaRelationship === "TRANSPORT_PROVIDER" && a.transportProviderOrganizationId);
+  const nonProviderAccess = (workspace.access || []).some(a => a.viaRelationship !== "TRANSPORT_PROVIDER");
+  const providerIds = [...new Set(providerAccess.map(a => a.transportProviderOrganizationId))];
+  const providerScope = providerIds.length && !nonProviderAccess
+    ? { transportProviderOrganizationId: { in: providerIds } }
+    : {};
+  const scopedWhere = (id) => ({ id, owningSchoolOrganizationId: schoolId, ...providerScope });
 
   async function get(idValue) {
     const id = idOf(idValue); if (!id) throw new BookingNotFoundError();
@@ -51,7 +59,7 @@ export function createBookingService({ prisma, workspace, user }) {
   }
 
   return {
-    list: () => prisma.busBooking.findMany({ where: { owningSchoolOrganizationId: schoolId }, orderBy: { createdAt: "desc" } }),
+    list: () => prisma.busBooking.findMany({ where: { owningSchoolOrganizationId: schoolId, ...providerScope }, orderBy: { createdAt: "desc" } }),
     get,
     providers: () => eligibleProviders(schoolId),
     create: async (body = {}) => {
