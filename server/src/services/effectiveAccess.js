@@ -27,7 +27,7 @@ export async function resolveEffectiveAccess(prisma,identity,{now=new Date()}={}
   if(!user||!activeStatus(user.status))return{...empty,user:user?{id:String(identity?.id||""),appUserId:user.id,email:user.email,displayName:user.displayName}:null};
   const memberships=(user.memberships||[]).filter(m=>activeMembership(m)&&activeOrganization(m.organization)),memberOrgIds=new Set(memberships.map(x=>x.organizationId));
   const memberGroupIds=memberships.filter(x=>x.organization?.type==="SCHOOL_GROUP").map(x=>x.organizationId),childSchoolIds=await activeChildrenOfGroups(prisma,memberGroupIds,now);
-  const assignments=(user.roleAssignments||[]).filter(x=>x.isActive&&roleKey(x)&&(!x.organization||activeOrganization(x.organization))&&(!x.tenant||activeStatus(x.tenant.status))),platformAssignments=assignments.filter(x=>x.scopeType==="PLATFORM"),tenantAssignments=assignments.filter(x=>x.scopeType==="TENANT");
+  const assignments=(user.roleAssignments||[]).filter(x=>x.isActive&&roleKey(x)&&(!x.organization||activeOrganization(x.organization))&&(!x.tenant||x.tenant.status==null||activeStatus(x.tenant.status))),platformAssignments=assignments.filter(x=>x.scopeType==="PLATFORM"),tenantAssignments=assignments.filter(x=>x.scopeType==="TENANT");
   const validAssignments=assignments.filter(x=>x.scopeType==="ORGANIZATION"&&x.organizationId).filter(x=>memberOrgIds.has(x.organizationId)||childSchoolIds.has(x.organizationId));
   const directGrants=(user.permissionGrants||[]).filter(x=>x.isActive&&x.permission?.key&&memberOrgIds.has(x.organizationId)&&activeOrganization(x.organization));
   const workspaceMap=new Map(),organizationMap=new Map();
