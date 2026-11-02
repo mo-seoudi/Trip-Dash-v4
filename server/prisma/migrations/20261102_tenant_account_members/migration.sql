@@ -1,8 +1,8 @@
 -- Tenant subscription access is independent of organization operational membership.
 CREATE TABLE IF NOT EXISTS "tenant_account_members" (
   "id" TEXT PRIMARY KEY,
-  "tenant_id" TEXT NOT NULL REFERENCES "tenants"("id") ON DELETE RESTRICT,
-  "user_id" TEXT NOT NULL REFERENCES "app_users"("id") ON DELETE RESTRICT,
+  "tenant_id" UUID NOT NULL REFERENCES "tenants"("id") ON DELETE RESTRICT,
+  "user_id" UUID NOT NULL REFERENCES "app_users"("id") ON DELETE RESTRICT,
   "role" TEXT NOT NULL CHECK ("role" IN ('OWNER','BILLING_ADMIN')),
   "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','revoked')),
   "first_name" TEXT,
