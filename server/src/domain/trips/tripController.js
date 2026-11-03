@@ -1,3 +1,4 @@
+import { registerCreatedTrips } from "../../services/globalTripRegistrationHook.js";
 import { prismaControl } from "../../lib/prismaControl.js";
 import { createOperationalService } from "../../runtime/operationalService.js";
 import { createTripService } from "./tripService.js";
@@ -41,7 +42,11 @@ export async function getTrip(req, res, next) {
 }
 
 export async function createTrip(req, res, next) {
-  try { return await respondWithTrip(res, service(req).create(req.body || {}), 201); }
+  try {
+    const trip = await service(req).create(req.body || {});
+    await registerCreatedTrips({ schoolId: req.operational.workspace.schoolId, tripIds: [trip?.id] });
+    return await respondWithTrip(res, Promise.resolve(trip), 201);
+  }
   catch (error) { return next(error); }
 }
 
