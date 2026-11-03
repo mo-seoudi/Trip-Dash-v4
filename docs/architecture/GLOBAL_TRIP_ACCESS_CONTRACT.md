@@ -46,3 +46,12 @@ No itinerary, student names, passenger counts, costs, quotations, route details 
 
 ## Gate before migration
 Read-only inspect row counts, PK overlaps, `trip_registry` links to `trips`, legacy connection mappings, actual auth access-runtime behavior and existing trip registry consumers. Then produce an additive migration with explicit SQL, Prisma updates, tests and rollback. No production changes before review.
+
+## Existing working behavior is authoritative — compatibility correction (2026-11-03)
+The application **already** resolves a school staff user's school workspace and a bus operator's available school workspaces at sign-in. A trip created by school staff already appears to the appropriate bus operator inside that school's workspace. This existing behavior MUST be preserved, not redesigned.
+
+The authorization contract above describes desired global data ownership, **not a mandate to introduce a new trip-specific access-grant mechanism**. Before adding any trip-participant access columns, access tables or authorization checks, trace the current sign-in, access runtime, workspace selection, trip creation, trip listing and bus operator visibility code. Map each current SQL query and model to its future `global` or `operational` equivalent. Reuse existing relationship/permission logic and only add fields where a proven gap exists.
+
+The migration is primarily structural: existing `control` -> canonical `global`; existing `public` -> canonical `operational`, after reconciling overlaps, legacy tables and the already-existing `public.trip_registry`. Neither current schema should be blindly renamed. Preserve all existing IDs, workflow states, existing records, API behavior and workspace results.
+
+**Regression gate:** same school user, same bus operator, same available schools, same visible trips, same create-to-operator propagation, before and after migration. No backend behavior changes until these tests are specified and a reversible compatibility plan is reviewed.
