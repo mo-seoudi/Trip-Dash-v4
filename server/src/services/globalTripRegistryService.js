@@ -51,7 +51,7 @@ export async function reconcileGlobalTrip({
   assertUuid(dataSource.id, "dataSourceId");
   const trip = await prisma.trip.findFirst({
     where: { id: localTripId, owningSchoolOrganizationId: schoolId },
-    select: { id: true, globalTripId: true, transportProviderOrganizationId: true },
+    select: { id: true, globalTripId: true, createdByAppUserId: true, createdAt: true },
   });
   if (!trip) throw new GlobalTripRegistrationError("Trip not found in school workspace", "TRIP_NOT_FOUND");
 
@@ -73,8 +73,8 @@ export async function reconcileGlobalTrip({
   if (!globalId) throw new GlobalTripRegistrationError("Trip global UUID assignment failed", "GLOBAL_ID_ASSIGNMENT_FAILED");
   assertUuid(globalId, "globalTripId");
 
-  const operatorId = trip.transportProviderOrganizationId || null;
-  if (operatorId) assertUuid(operatorId, "transportProviderOrganizationId");
+  // Legacy trips may lack a creator. Do not fabricate an identity.
+  const creatorId = trip.createdByAppUserId ? assertUuid(trip.createdByAppUserId, "createdByAppUserId") : null;
   const tenantId = coverage[0].tenantId;
   assertUuid(tenantId, "tenantId");
 
@@ -94,15 +94,19 @@ export async function reconcileGlobalTrip({
     throw new GlobalTripRegistrationError("Registry ownership conflict", "REGISTRY_OWNERSHIP_CONFLICT");
   }
 
+  if (byId && (byId.createdByUserId !== creatorId || byId.createdAt.getTime() !== trip.createdAt.getTime())) {
+    throw new GlobalTripRegistrationError("Registry provenance conflict", "REGISTRY_PROVENANCE_CONFLICT");
+  }
+
   const row = await control.globalTripRegistry.upsert({
     where: { id: globalId },
     create: {
-      id: globalId, tenantId, schoolOrgId: schoolId, busCompanyOrgId: operatorId,
-      dataSourceId: dataSource.id, operationalTripId: localTripId, registrationStatus: "active",
+      id: globalId, tenantId, schoolOrgId: schoolId, createdByUserId: creatorId,
+      createdAt: trip.createdAt, dataSourceId: dataSource.id, operationalTripId: localTripId, registrationStatus: "active",
     },
     update: {
       // Immutable ownership fields are deliberately omitted from updates.
-      busCompanyOrgId: operatorId, registrationStatus: "active",
+      registrationStatus: "active",
     },
   });
   if (row.tenantId !== tenantId || row.schoolOrgId !== schoolId ||
