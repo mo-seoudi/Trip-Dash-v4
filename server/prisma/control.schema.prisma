@@ -129,6 +129,7 @@ model AppUser {
   roleAssignments RoleAssignment[]
   permissionGrants UserPermissionGrant[]
   auditEvents AuditEvent[] @relation("AuditActor")
+  createdGlobalTrips GlobalTripRegistry[] @relation("CreatedGlobalTrips")
   sessions AuthSession[]
   @@map("app_users")
 }
@@ -192,7 +193,6 @@ model Organization {
   billedTenants Tenant[] @relation("TenantBillingOrganization")
   auditEvents AuditEvent[]
   registeredSchoolTrips GlobalTripRegistry[] @relation("RegisteredSchoolTrips")
-  registeredOperatorTrips GlobalTripRegistry[] @relation("RegisteredOperatorTrips")
   @@index([type])
   @@map("organizations")
 }
@@ -372,19 +372,19 @@ model GlobalTripRegistry {
   id String @id @db.Uuid
   tenantId String @map("tenant_id") @db.Uuid
   schoolOrgId String @map("school_org_id") @db.Uuid
-  busCompanyOrgId String? @map("bus_company_org_id") @db.Uuid
   dataSourceId String @map("data_source_id") @db.Uuid
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
   operationalTripId Int? @map("operational_trip_id")
   registrationStatus String @default("pending") @map("registration_status")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  creator AppUser? @relation("CreatedGlobalTrips", fields: [createdByUserId], references: [id], onDelete: Restrict)
   school Organization @relation("RegisteredSchoolTrips", fields: [schoolOrgId], references: [id], onDelete: Restrict)
-  busCompany Organization? @relation("RegisteredOperatorTrips", fields: [busCompanyOrgId], references: [id], onDelete: SetNull)
   dataSource OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Restrict)
   @@unique([dataSourceId, operationalTripId])
   @@index([schoolOrgId, createdAt])
-  @@index([busCompanyOrgId, createdAt])
+  @@index([createdByUserId])
   @@index([tenantId, createdAt])
   @@map("trip_registry")
 }
