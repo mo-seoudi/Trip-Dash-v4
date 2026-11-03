@@ -1,0 +1,41 @@
+name: Global schema safety checks
+
+on:
+  push:
+    branches:
+      - feat/global-schema-audit
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/global-schema-checks.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CONTROL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=control
+      OPERATIONAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install dependencies and generate Prisma clients
+        run: npm ci
+      - name: Validate Prisma schemas
+        run: npm run prisma:validate
+      - name: Run global registration and recovery tests
+        run: node --test test/globalTripRegistryService.test.mjs test/globalTripReconciliationSweep.test.mjs
+      - name: Syntax-check affected route handlers
+        run: |
+          node --check src/domain/trips/tripController.js
+          node --check src/routes/workspaceTripSeriesRoutes.js
+          node --check src/services/globalTripRegistryService.js
+          node --check src/services/globalTripReconciliationSweep.js
+          node --check src/services/globalTripRegistrationHook.js
