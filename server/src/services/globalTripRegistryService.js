@@ -88,6 +88,12 @@ export async function reconcileGlobalTrip({
     throw new GlobalTripRegistrationError("Registry identity conflict", "REGISTRY_IDENTITY_CONFLICT");
   }
 
+  const byId = await control.globalTripRegistry.findUnique({ where: { id: globalId } });
+  if (byId && (byId.tenantId !== tenantId || byId.schoolOrgId !== schoolId ||
+      byId.dataSourceId !== dataSource.id || byId.operationalTripId !== localTripId)) {
+    throw new GlobalTripRegistrationError("Registry ownership conflict", "REGISTRY_OWNERSHIP_CONFLICT");
+  }
+
   const row = await control.globalTripRegistry.upsert({
     where: { id: globalId },
     create: {
@@ -95,7 +101,7 @@ export async function reconcileGlobalTrip({
       dataSourceId: dataSource.id, operationalTripId: localTripId, registrationStatus: "active",
     },
     update: {
-      // Never change tenant/school/source ownership during a retry.
+      // Immutable ownership fields are deliberately omitted from updates.
       busCompanyOrgId: operatorId, registrationStatus: "active",
     },
   });
