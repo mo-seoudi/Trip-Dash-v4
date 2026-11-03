@@ -81,6 +81,7 @@ model Tenant {
   organizations TenantOrganization[]
   roleAssignments RoleAssignment[]
   auditEvents AuditEvent[]
+  registeredTrips GlobalTripRegistry[]
   billingOrganization Organization? @relation("TenantBillingOrganization", fields: [billingOrganizationId], references: [id], onDelete: SetNull)
   @@index([billingOrganizationId])
   @@map("tenants")
@@ -180,6 +181,8 @@ model Organization {
   tenantCoverage TenantOrganization[]
   billedTenants Tenant[] @relation("TenantBillingOrganization")
   auditEvents AuditEvent[]
+  registeredSchoolTrips GlobalTripRegistry[] @relation("RegisteredSchoolTrips")
+  registeredOperatorTrips GlobalTripRegistry[] @relation("RegisteredOperatorTrips")
   @@index([type])
   @@map("organizations")
 }
@@ -328,6 +331,7 @@ model OperationalDataSource {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   credential DataSourceCredential?
+  registeredTrips GlobalTripRegistry[]
   @@index([organizationId, isActive])
   @@map("operational_data_sources")
 }
@@ -349,4 +353,28 @@ model AuditEvent {
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId])
   @@map("audit_events")
+}
+
+// Planned canonical registry in the control plane. This model becomes usable
+// only after the separately reviewed migration creates control.trip_registry.
+// Operational trip details remain in the school-selected operational database.
+model GlobalTripRegistry {
+  id String @id @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  schoolOrgId String @map("school_org_id") @db.Uuid
+  busCompanyOrgId String? @map("bus_company_org_id") @db.Uuid
+  dataSourceId String @map("data_source_id") @db.Uuid
+  operationalTripId Int? @map("operational_trip_id")
+  registrationStatus String @default("pending") @map("registration_status")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  school Organization @relation("RegisteredSchoolTrips", fields: [schoolOrgId], references: [id], onDelete: Restrict)
+  busCompany Organization? @relation("RegisteredOperatorTrips", fields: [busCompanyOrgId], references: [id], onDelete: SetNull)
+  dataSource OperationalDataSource @relation(fields: [dataSourceId], references: [id], onDelete: Restrict)
+  @@unique([dataSourceId, operationalTripId])
+  @@index([schoolOrgId, createdAt])
+  @@index([busCompanyOrgId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("trip_registry")
 }
