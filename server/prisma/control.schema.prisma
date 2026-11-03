@@ -170,8 +170,18 @@ model Organization {
   abbreviation String?
   slug String @unique
   status String @default("active")
+  countryCode String? @map("country_code")
+  regionCode String? @map("region_code")
+  createdSource String @default("platform_admin") @map("created_source")
+  claimStatus String @default("unclaimed") @map("claim_status")
+  verificationStatus String @default("unverified") @map("verification_status")
+  operationalStatus String @default("not_activated") @map("operational_status")
+  directoryVisible Boolean @default(false) @map("directory_visible")
+  claimedAt DateTime? @map("claimed_at") @db.Timestamptz(6)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  operatingCountries ProviderOperatingCountry[]
   memberships OrganizationMembership[]
   roleAssignments RoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -377,4 +387,13 @@ model GlobalTripRegistry {
   @@index([busCompanyOrgId, createdAt])
   @@index([tenantId, createdAt])
   @@map("trip_registry")
+}
+
+// Existing live control table: model added to reconcile Prisma with Supabase.
+model ProviderOperatingCountry {
+  organizationId String @map("organization_id") @db.Uuid
+  countryCode String @map("country_code")
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@id([organizationId, countryCode])
+  @@map("provider_operating_countries")
 }
