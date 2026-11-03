@@ -46,3 +46,12 @@ B. Approve canonical entity mapping and trip identity strategy.
 C. Write reversible additive migration and backend compatibility plan.
 D. Test on a disposable Supabase clone with realistic data.
 E. Approve production rollout separately.
+
+## Phase scope lock — 2026-11-03
+**In scope:** transform existing control schema into authoritative global schema; inspect control/public physical catalogs for equivalent structures before creating objects; consolidate canonical tenants, organizations, users, permissions, relationships, datasource routing and minimal trip registry; preserve current backend and admin behavior; prepare reversible migrations and tests.
+
+**Out of scope for this phase:** expansion/redesign of Super Admin Control Center, subscription management UI, billing/payment engine, new admin screens, and unrelated feature development. Existing subscription metadata remains intact. Only address backend/data-model gaps necessary for schema correctness or trip registration.
+
+**Rule:** a missing Control Center feature is not justification for a new global table. Add a table/column only after proving the required concept does not already exist in either deployed schema and recording the reason in the migration map.
+
+**Next gate:** read-only inventory of the actual Supabase catalog, followed by an explicit keep/reuse/move/merge/deprecate/new disposition for each candidate object. No production migrations or new schema objects until this is complete.
