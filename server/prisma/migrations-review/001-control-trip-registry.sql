@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS control.trip_registry (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES control.tenants(id) ON DELETE RESTRICT,
   school_org_id uuid NOT NULL REFERENCES control.organizations(id) ON DELETE RESTRICT,
-  bus_company_org_id uuid REFERENCES control.organizations(id) ON DELETE SET NULL,
   data_source_id uuid NOT NULL REFERENCES control.operational_data_sources(id) ON DELETE RESTRICT,
+  created_by_user_id uuid REFERENCES control.app_users(id) ON DELETE RESTRICT,
   operational_trip_id integer,
   registration_status text NOT NULL DEFAULT 'pending'
     CHECK (registration_status IN ('pending','active','failed')),
@@ -18,6 +18,6 @@ CREATE TABLE IF NOT EXISTS control.trip_registry (
     CHECK (registration_status <> 'active' OR operational_trip_id IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS trip_registry_school_created_idx ON control.trip_registry(school_org_id, created_at);
-CREATE INDEX IF NOT EXISTS trip_registry_operator_created_idx ON control.trip_registry(bus_company_org_id, created_at);
+CREATE INDEX IF NOT EXISTS trip_registry_creator_idx ON control.trip_registry(created_by_user_id);
 CREATE INDEX IF NOT EXISTS trip_registry_tenant_created_idx ON control.trip_registry(tenant_id, created_at);
 COMMIT;
