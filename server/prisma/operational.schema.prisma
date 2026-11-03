@@ -182,6 +182,8 @@ model TripSeriesApprovalRequest {
 
 model Trip {
   id                              Int      @id @default(autoincrement())
+  // Requires reviewed 003 migration before deploying this branch.
+  globalTripId                    String?  @unique @map("global_trip_id") @db.Uuid
   createdAt                       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdByAppUserId              String?  @map("created_by_app_user_id")
