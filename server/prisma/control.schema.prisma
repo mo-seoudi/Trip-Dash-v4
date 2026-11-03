@@ -65,13 +65,13 @@ enum SubscriptionMode {
 }
 
 model Tenant {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   name String
   slug String @unique
   status String @default("active")
   subscriptionMode SubscriptionMode @default(FREE) @map("subscription_mode")
   planKey String? @map("plan_key")
-  billingOrganizationId String? @map("billing_organization_id")
+  billingOrganizationId String? @map("billing_organization_id") @db.Uuid
   billingContactEmail String? @map("billing_contact_email")
   subscriptionStart DateTime? @map("subscription_start") @db.Date
   subscriptionEnd DateTime? @map("subscription_end") @db.Date
@@ -87,9 +87,9 @@ model Tenant {
   @@map("tenants")
 }
 model TenantAccountMember {
-  id String @id @default(uuid())
-  tenantId String @map("tenant_id")
-  userId String @map("user_id")
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
   role String
   status String @default("active")
   firstName String? @map("first_name")
@@ -105,8 +105,8 @@ model TenantAccountMember {
   @@map("tenant_account_members")
 }
 model TenantOrganization {
-  tenantId String @map("tenant_id")
-  organizationId String @map("organization_id")
+  tenantId String @map("tenant_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
   coverageType String @default("covered") @map("coverage_type")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -116,7 +116,7 @@ model TenantOrganization {
   @@map("tenant_organizations")
 }
 model AppUser {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   email String @unique
   displayName String @map("display_name")
   status String @default("active")
@@ -133,8 +133,8 @@ model AppUser {
   @@map("app_users")
 }
 model AuthenticationIdentity {
-  id String @id @default(uuid())
-  userId String @map("user_id")
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
   provider IdentityProvider
   providerSubject String @map("provider_subject")
   passwordHash String? @map("password_hash")
@@ -147,8 +147,8 @@ model AuthenticationIdentity {
   @@map("authentication_identities")
 }
 model AuthSession {
-  id String @id @default(uuid())
-  userId String @map("user_id")
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
   refreshTokenHash String @unique @map("refresh_token_hash")
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
@@ -162,7 +162,7 @@ model AuthSession {
   @@map("auth_sessions")
 }
 model Organization {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   type OrganizationType
   displayName String @map("display_name")
   fullName String? @map("full_name")
@@ -197,9 +197,9 @@ model Organization {
   @@map("organizations")
 }
 model OrganizationRelationship {
-  id String @id @default(uuid())
-  fromOrganizationId String @map("from_organization_id")
-  toOrganizationId String @map("to_organization_id")
+  id String @id @default(uuid()) @db.Uuid
+  fromOrganizationId String @map("from_organization_id") @db.Uuid
+  toOrganizationId String @map("to_organization_id") @db.Uuid
   type RelationshipType
   isPrimary Boolean @default(false) @map("is_primary")
   status String @default("active")
@@ -216,9 +216,9 @@ model OrganizationRelationship {
   @@map("organization_relationships")
 }
 model OrganizationMembership {
-  id String @id @default(uuid())
-  userId String @map("user_id")
-  organizationId String @map("organization_id")
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
   status MembershipStatus @default(PENDING)
   isPrimary Boolean @default(false) @map("is_primary")
   jobTitle String? @map("job_title")
@@ -231,7 +231,7 @@ model OrganizationMembership {
   @@map("organization_memberships")
 }
 model Role {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   key String @unique
   name String
   description String?
@@ -243,7 +243,7 @@ model Role {
   @@map("roles")
 }
 model Permission {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   key String @unique
   description String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -252,8 +252,8 @@ model Permission {
   @@map("permissions")
 }
 model RolePermission {
-  roleId String @map("role_id")
-  permissionId String @map("permission_id")
+  roleId String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
   @@id([roleId, permissionId])
@@ -261,12 +261,12 @@ model RolePermission {
   @@map("role_permissions")
 }
 model RoleAssignment {
-  id String @id @default(uuid())
-  userId String @map("user_id")
-  roleId String @map("role_id")
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
   scopeType AccessScopeType @map("scope_type")
-  tenantId String? @map("tenant_id")
-  organizationId String? @map("organization_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
   isActive Boolean @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -281,10 +281,10 @@ model RoleAssignment {
   @@map("role_assignments")
 }
 model UserPermissionGrant {
-  id String @id @default(uuid())
-  userId String @map("user_id")
-  permissionId String @map("permission_id")
-  organizationId String @map("organization_id")
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
   isActive Boolean @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -297,7 +297,7 @@ model UserPermissionGrant {
   @@map("user_permission_grants")
 }
 model SecretProvider {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
   key String @unique
   displayName String @map("display_name")
   type SecretProviderType
@@ -311,9 +311,9 @@ model SecretProvider {
   @@map("secret_providers")
 }
 model DataSourceCredential {
-  id String @id @default(uuid())
-  dataSourceId String @unique @map("data_source_id")
-  secretProviderId String @map("secret_provider_id")
+  id String @id @default(uuid()) @db.Uuid
+  dataSourceId String @unique @map("data_source_id") @db.Uuid
+  secretProviderId String @map("secret_provider_id") @db.Uuid
   secretReference String @map("secret_reference")
   secretKey String? @map("secret_key")
   version String?
@@ -327,8 +327,8 @@ model DataSourceCredential {
   @@map("data_source_credentials")
 }
 model OperationalDataSource {
-  id String @id @default(uuid())
-  organizationId String @map("organization_id")
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
   name String
   mode DataSourceMode @default(HOSTED)
   engine String @default("postgresql")
@@ -346,10 +346,10 @@ model OperationalDataSource {
   @@map("operational_data_sources")
 }
 model AuditEvent {
-  id String @id @default(uuid())
-  tenantId String? @map("tenant_id")
-  organizationId String? @map("organization_id")
-  actorUserId String? @map("actor_user_id")
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String? @map("tenant_id") @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
   action String
   resourceType String? @map("resource_type")
   resourceId String? @map("resource_id")
