@@ -1,3 +1,4 @@
+import { timedStage } from "../runtime/requestTiming.js";
 import { readAuthToken, verifyAuthToken } from "../lib/authTokens.js";
 import { findCanonicalUserById, isActiveAppUser, primaryCanonicalRole, publicAppUser } from "../services/canonicalAuth.js";
 import { resolveRuntimeAccess } from "../services/accessRuntime.js";
@@ -11,11 +12,11 @@ export async function requireAuth(req, res, next) {
     const userId = String(decoded.id ?? decoded.sub ?? "").trim();
     if (!userId) return res.status(401).json({ message: "Invalid token" });
 
-    const storedUser = await findCanonicalUserById(userId);
+    const storedUser = await timedStage(req, "auth.user_lookup", () => findCanonicalUserById(userId));
     if (!storedUser) return res.status(401).json({ message: "Not logged in" });
     if (!isActiveAppUser(storedUser)) return res.status(403).json({ message: "Account is not active", status: storedUser.status });
 
-    const role = await primaryCanonicalRole(storedUser.id);
+    const role = await timedStage(req, "auth.primary_role", () => primaryCanonicalRole(storedUser.id));
     req.user = publicAppUser(storedUser, role);
     return next();
   } catch (error) {
@@ -27,7 +28,7 @@ export async function requireAuth(req, res, next) {
 export async function requireAdmin(req, res, next) {
   try {
     if (!req.user?.id) return res.status(401).json({ message: "Not logged in" });
-    const access = await resolveRuntimeAccess({ user: req.user });
+    const access = await timedStage(req, "auth.admin_access", () => resolveRuntimeAccess({ user: req.user }));
     if (!(access.permissions || []).includes(PERMISSIONS.ACCESS_ADMIN)) return res.status(403).json({ message: "Forbidden" });
     req.effectiveAccess = access;
     return next();
