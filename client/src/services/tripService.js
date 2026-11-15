@@ -1,5 +1,6 @@
 // client/src/services/tripService.js
 import api from "./apiClient";
+import { cachedWorkspaceRead } from "./workspaceReadCache";
 
 const toYMD = (date) => {
   if (!date) return date;
@@ -25,7 +26,7 @@ const workspacePassengersPath = (schoolId,tripId) => `${workspaceTripPath(school
 const workspaceQuotationPath = (schoolId,tripId) => `${workspaceTripPath(schoolId,tripId)}/quotation`;
 const lifecycleAction = async (schoolId,tripId,action) => normalizeTrip(unwrapData(await api.post(`${workspaceTripPath(schoolId,tripId)}/${action}`)));
 
-export const getWorkspaceTrips = async schoolId => unwrapList(await api.get(workspaceTripsPath(schoolId))).map(normalizeTrip).sort(sortTrips);
+export const getWorkspaceTrips = async (schoolId, options = {}) => cachedWorkspaceRead("trips", schoolId, async () => unwrapList(await api.get(workspaceTripsPath(schoolId))).map(normalizeTrip).sort(sortTrips), options);
 export const getWorkspaceTrip = async (schoolId,tripId) => normalizeTrip(unwrapData(await api.get(workspaceTripPath(schoolId,tripId))));
 export const createWorkspaceTrip = async (schoolId,payload) => normalizeTrip(unwrapData(await api.post(workspaceTripsPath(schoolId),serializeUpdates(payload))));
 export const updateWorkspaceTrip = async (schoolId,tripId,payload) => normalizeTrip(unwrapData(await api.patch(workspaceTripPath(schoolId,tripId),serializeUpdates(payload))));
