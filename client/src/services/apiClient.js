@@ -1,5 +1,6 @@
 // client/src/services/apiClient.js
 import axios from "axios";
+import { clearWorkspaceReadCache, invalidateWorkspaceReadCache } from "./workspaceReadCache";
 
 // Normalize origin and avoid trailing slashes
 const origin = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
@@ -25,7 +26,16 @@ api.interceptors.request.use((config) => {
 // Do NOT hard-redirect on 401/403; just surface the error so components / AuthContext can handle it.
 // Also add some helpful logging to diagnose tab-switch reload triggers.
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const method = String(res.config?.method || "get").toLowerCase();
+    if (!["get", "head", "options"].includes(method)) {
+      const url = String(res.config?.url || "");
+      const match = url.match(/\\/workspaces\\/([^/?]+)\\/(?:trips|trip-series)(?:[/?]|$)/);
+      if (match) invalidateWorkspaceReadCache(decodeURIComponent(match[1]));
+      if (/\\/auth\\/(?:login|logout)(?:[/?]|$)/.test(url)) clearWorkspaceReadCache();
+    }
+    return res;
+  },
   (err) => {
     const status = err?.response?.status;
     const url = err?.config?.url || "(unknown URL)";
