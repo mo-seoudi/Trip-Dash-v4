@@ -30,9 +30,12 @@ api.interceptors.response.use(
     const method = String(res.config?.method || "get").toLowerCase();
     if (!["get", "head", "options"].includes(method)) {
       const url = String(res.config?.url || "");
-      const match = url.match(/\\/workspaces\\/([^/?]+)\\/(?:trips|trip-series)(?:[/?]|$)/);
-      if (match) invalidateWorkspaceReadCache(decodeURIComponent(match[1]));
-      if (/\\/auth\\/(?:login|logout)(?:[/?]|$)/.test(url)) clearWorkspaceReadCache();
+      const parts = url.split("?")[0].split("/").filter(Boolean);
+      const workspaceIndex = parts.indexOf("workspaces");
+      if (workspaceIndex >= 0 && ["trips", "trip-series"].includes(parts[workspaceIndex + 2])) {
+        invalidateWorkspaceReadCache(decodeURIComponent(parts[workspaceIndex + 1] || ""));
+      }
+      if (url.includes("/auth/login") || url.includes("/auth/logout")) clearWorkspaceReadCache();
     }
     return res;
   },
