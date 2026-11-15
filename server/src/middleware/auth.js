@@ -6,6 +6,9 @@ import { PERMISSIONS } from "../services/accessCatalog.js";
 
 export async function requireAuth(req, res, next) {
   try {
+    // Multiple mounted routers can run their middleware before a matching route.
+    // A verified identity is request-scoped; reuse it rather than querying again.
+    if (req.user?.id) return next();
     const token = readAuthToken(req);
     if (!token) return res.status(401).json({ message: "Not logged in" });
     const decoded = verifyAuthToken(token);
@@ -27,6 +30,9 @@ export async function requireAuth(req, res, next) {
 
 export async function requireAdmin(req, res, next) {
   try {
+    // Only reuse authorization already established on this same request.
+    // A fresh HTTP request always performs its own access resolution.
+    if (req.effectiveAccess && (req.effectiveAccess.permissions || []).includes(PERMISSIONS.ACCESS_ADMIN)) return next();
     if (!req.user?.id) return res.status(401).json({ message: "Not logged in" });
     const access = await timedStage(req, "auth.admin_access", () => resolveRuntimeAccess({ user: req.user }));
     if (!(access.permissions || []).includes(PERMISSIONS.ACCESS_ADMIN)) return res.status(403).json({ message: "Forbidden" });
