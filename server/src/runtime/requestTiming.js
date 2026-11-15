@@ -2,9 +2,16 @@
 // Enable with API_TIMING_ENABLED=true on Render. Disable after collecting a baseline.
 import { performance } from "node:perf_hooks";
 
+export async function timedStage(req, name, operation) {
+  if (process.env.API_TIMING_ENABLED !== "true") return operation();
+  const start = performance.now();
+  try { return await operation(); }
+  finally { req.apiTimings?.push({ stage: name, duration_ms: Math.round((performance.now() - start) * 10) / 10 }); }
+}
 export function requestTiming(req, res, next) {
   if (process.env.API_TIMING_ENABLED !== "true") return next();
   const started = performance.now();
+  req.apiTimings = [];
   res.once("finish", () => {
     const ms = Math.round((performance.now() - started) * 10) / 10;
     // Express route patterns rather than raw URLs prevent logging identifiers and query parameters.
@@ -12,7 +19,7 @@ export function requestTiming(req, res, next) {
     const base = req.baseUrl || "";
     const path = route ? `${base}${route}` : "(unmatched)";
     const level = ms >= 2000 ? "slow" : ms >= 500 ? "elevated" : "normal";
-    console.info(JSON.stringify({ type: "api_timing", method: req.method, route: path, status: res.statusCode, duration_ms: ms, level }));
+    console.info(JSON.stringify({ type: "api_timing", method: req.method, route: path, status: res.statusCode, duration_ms: ms, level, stages: req.apiTimings }));
   });
   next();
 }
