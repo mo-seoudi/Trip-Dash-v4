@@ -1,4 +1,5 @@
 import React,{useState,useEffect,useContext,createContext,useCallback,useRef}from"react";
+import { clearWorkspaceReadCache } from "../services/workspaceReadCache";
 import{getSession,logout as logoutUser,getEffectiveAccess}from"../services/authService";
 const AuthContext=createContext({tokenUser:null,profile:null,access:null,workspaces:[],activeWorkspace:null,setActiveWorkspaceId:()=>{},loading:true,refreshSession:async()=>{},logout:async()=>{}});
 export const useAuth=()=>useContext(AuthContext);
@@ -8,7 +9,7 @@ export const AuthProvider=({children})=>{
  useEffect(()=>{mountedRef.current=true;(async()=>{try{setLoading(true);await fetchSessionAndProfile();}catch{setTokenUser(null);setProfile(null);setAccess(null);setActiveWorkspaceIdState(null);}finally{if(mountedRef.current)setLoading(false);}})();return()=>{mountedRef.current=false;};},[fetchSessionAndProfile]);
  const refreshSession=useCallback(async()=>{if(refreshingRef.current)return;refreshingRef.current=true;try{await fetchSessionAndProfile();}catch{}finally{refreshingRef.current=false;}},[fetchSessionAndProfile]);
  useEffect(()=>{const onVis=()=>{if(document.visibilityState==="visible")refreshSession({reason:"visibility"});};document.addEventListener("visibilitychange",onVis);return()=>document.removeEventListener("visibilitychange",onVis);},[refreshSession]);
- const logout=useCallback(async()=>{await logoutUser();setTokenUser(null);setProfile(null);setAccess(null);setActiveWorkspaceIdState(null);},[]);
+ const logout=useCallback(async()=>{clearWorkspaceReadCache();await logoutUser();setTokenUser(null);setProfile(null);setAccess(null);setActiveWorkspaceIdState(null);},[]);
  const workspaces=access?.workspaces||[];const activeWorkspace=workspaces.find(w=>w.schoolId===activeWorkspaceId)||null;
  const setActiveWorkspaceId=useCallback((schoolId)=>{const id=String(schoolId||"").trim();setActiveWorkspaceIdState(workspaces.some(w=>w.schoolId===id)?id:null);},[workspaces]);
  return <AuthContext.Provider value={{tokenUser,profile,access,workspaces,activeWorkspace,activeWorkspaceId,setActiveWorkspaceId,loading,refreshSession,logout}}>{children}</AuthContext.Provider>;
