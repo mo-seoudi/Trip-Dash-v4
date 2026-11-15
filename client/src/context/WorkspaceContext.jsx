@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import api from "../services/apiClient";
 import { useAuth } from "./AuthContext";
 
 const WorkspaceContext = createContext(null);
 
 export function WorkspaceProvider({ children }) {
-  const { profile, loading: authLoading } = useAuth();
+  const { profile, access: authenticatedAccess, loading: authLoading } = useAuth();
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -28,9 +27,14 @@ export function WorkspaceProvider({ children }) {
       setLoading(true);
       setError("");
       try {
-        const response = await api.get("/access/me");
         if (!active) return;
-        const next = response.data;
+        const next = authenticatedAccess;
+        if (!next) {
+          setAccess(null);
+          setSelectedWorkspaceIdState(null);
+          setError("Unable to load your workspace access.");
+          return;
+        }
         const nextWorkspaces = next.workspaces || [];
         setAccess(next);
         const saved = window.localStorage.getItem(`tripdash:workspace:${profile.id}`);
@@ -49,7 +53,7 @@ export function WorkspaceProvider({ children }) {
     }
     load();
     return () => { active = false; };
-  }, [profile?.id, authLoading]);
+  }, [profile?.id, authLoading, authenticatedAccess]);
 
   const workspaces = access?.workspaces || [];
   const selectedWorkspace = workspaces.find((item) => item.schoolId === selectedWorkspaceId) || null;
