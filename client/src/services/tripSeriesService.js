@@ -1,7 +1,8 @@
 import api from "./apiClient";
+import { cachedWorkspaceRead } from "./workspaceReadCache";
 const school=value=>{const id=String(value||"").trim();if(!id)throw new Error("A school workspace is required for recurring bookings");return encodeURIComponent(id)};
 const base=schoolId=>`/workspaces/${school(schoolId)}/trip-series`;
-export const listRecurringBookings=async schoolId=>(await api.get(base(schoolId))).data;
+export const listRecurringBookings=async (schoolId,options={})=>cachedWorkspaceRead("series",schoolId,async()=>(await api.get(base(schoolId))).data,options);
 export const getRecurringBooking=async(schoolId,id)=>(await api.get(`${base(schoolId)}/${encodeURIComponent(id)}`)).data;
 export const createRecurringBooking=async(schoolId,payload)=>(await api.post(base(schoolId),payload)).data;
 export const submitRecurringQuotation=async(schoolId,id,payload)=>(await api.post(`${base(schoolId)}/${encodeURIComponent(id)}/quotations`,payload)).data;
