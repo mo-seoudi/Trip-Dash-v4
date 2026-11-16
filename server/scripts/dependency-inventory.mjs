@@ -19,7 +19,7 @@ const testFiles = files(path.join(serverRoot, "test"));
 const scripts = files(path.join(serverRoot, "scripts"));
 const all = [...new Set([...source, ...testFiles, ...scripts])];
 const content = new Map(all.map(p => [p, fs.readFileSync(p, "utf8")]));
-const importRE = /(?:\bimport\s*(?:[\s\S]*?\s+from\s*)?|\bexport\s*(?:\*|\{[^}]*\})\s*from\s*|\brequire\s*\(|\bimport\s*\()\s*["'](\.[^"']+)["']/g;
+const importRE = /(?:\\bimport\\s+(?:[^;\\n]*?\\s+from\\s*)?|\\bexport\\s+(?:\\*|\\{[^}]*\\})\\s*from\\s*|\\brequire\\s*\\(|\\bimport\\s*\\()\\s*["'](\\.[^"']+)["']/g;
 function resolveImport(origin, spec) {
   const base = path.resolve(path.dirname(origin), spec);
   return [base, ...extensions.map(e => base + e), ...extensions.map(e => path.join(base, "index" + e))].find(x => content.has(x)) || null;
