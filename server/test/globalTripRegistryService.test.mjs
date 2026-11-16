@@ -38,7 +38,11 @@ test("assigns a UUID and registers the trip, safely retrying",async()=>{
   assert.equal(first.globalTripId,globalId);
   assert.equal(second.globalTripId,globalId);
   assert.equal(f.registry.size,1);
-  assert.equal(f.registry.get("12").busCompanyOrgId,null);
+  assert.equal(f.registry.get("12").schoolOrgId,schoolId);
+  assert.equal(f.registry.get("12").tenantId,tenantId);
+  assert.equal(f.registry.get("12").dataSourceId,sourceId);
+  assert.equal(f.registry.get("12").operationalTripId,12);
+  assert.equal(f.registry.get("12").registrationStatus,"active");
 });
 test("rejects ambiguous tenant mappings",async()=>{
   const f=fixture({coverageCount:2});
