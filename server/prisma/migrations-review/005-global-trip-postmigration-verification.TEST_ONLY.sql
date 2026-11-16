@@ -20,14 +20,15 @@ SELECT
         SELECT 1 FROM control.operational_data_sources ds
         WHERE ds.id = r.data_source_id
           AND ds.organization_id::text = t.owning_school_organization_id::text
+          AND ds.is_active = true
       )
       OR NOT EXISTS (
         SELECT 1 FROM control.tenant_organizations membership
         WHERE membership.tenant_id = r.tenant_id
           AND membership.organization_id = r.school_org_id
       )
-      OR (t.created_by_app_user_id IS NOT NULL
-          AND r.created_by_user_id::text IS DISTINCT FROM t.created_by_app_user_id::text)
+      OR r.created_by_user_id::text IS DISTINCT FROM t.created_by_app_user_id::text
+      OR r.created_at IS DISTINCT FROM t.created_at
    ) AS mismatched_registry_rows,
   (SELECT count(*) FROM control.trip_registry r
    WHERE r.registration_status = 'active'
