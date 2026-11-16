@@ -1,5 +1,4 @@
-import { prismaControl } from "../lib/prismaControl.js";
-import { resolveEffectiveAccess } from "./effectiveAccess.js";
+import { resolveRuntimeAccess } from "./accessRuntime.js";
 import { getOperationalContextForOrganization } from "./operationalPrismaFactory.js";
 
 export class OperationalAuthorizationError extends Error {
@@ -19,7 +18,7 @@ export async function getAuthorizedOperationalContext({ identity, schoolId, requ
     throw new OperationalAuthorizationError("School workspace is required", "SCHOOL_REQUIRED", 400);
   }
 
-  const access = await resolveEffectiveAccess(prismaControl, identity);
+  // All authenticated operational requests use the canonical, fail-closed\n  // runtime access boundary; do not bypass it with a second access resolver.\n  const access = await resolveRuntimeAccess({ user: identity });
   const workspace = access.workspaces.find((item) => item.schoolId === schoolId);
   if (!workspace) {
     throw new OperationalAuthorizationError("School workspace is not available to this user");
