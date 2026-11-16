@@ -8,7 +8,7 @@ const sourceId="8e95a43a-59b0-459c-9398-5c985095dd4d";
 const globalId="f6ad9c63-3b1d-4a3c-8bb9-1300d79df728";
 
 function fixture({ coverageCount=1, owner=schoolId, existingId=null }={}) {
-  const trip={id:12,globalTripId:null,transportProviderOrganizationId:null};
+  const trip={id:12,globalTripId:null,createdByAppUserId:null,createdAt:new Date("2026-11-01T10:00:00Z"),transportProviderOrganizationId:null};
   const registry=new Map();
   if(existingId)registry.set("12",{id:existingId});
   const prisma={trip:{
