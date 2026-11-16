@@ -32,6 +32,8 @@ jobs:
         run: npm run prisma:validate
       - name: Run global registration and recovery tests
         run: node --test test/globalTripRegistryService.test.mjs test/globalTripReconciliationSweep.test.mjs
+      - name: Run hosted datasource and authorization boundary tests
+        run: node --test test/hostedOnlyDataSourceBoundary.test.mjs test/hostedOnlyAdminBoundary.test.mjs test/operationalAuthorizationBoundary.test.mjs
       - name: Generate read-only dependency inventory
         run: |
           node --check scripts/dependency-inventory.mjs
