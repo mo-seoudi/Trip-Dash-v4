@@ -31,9 +31,10 @@ export async function resolveOperationalDataSource(organizationId) {
     throw new OperationalDataSourceError("Organization id is required", "ORGANIZATION_REQUIRED", 400);
   }
 
+  const hostedOnly = process.env.OPERATIONAL_HOSTED_ONLY === "true";
   const sources = await prismaControl.operationalDataSource.findMany({
     where: { organizationId, isActive: true },
-    include: { credential: { include: { secretProvider: true } } },
+    ...(hostedOnly ? { select: { id: true, organizationId: true, name: true, mode: true, engine: true, providerLabel: true, region: true, schemaVersion: true, lastVerifiedAt: true } } : { include: { credential: { include: { secretProvider: true } } } }),
     orderBy: { createdAt: "asc" },
     take: 2,
   });
@@ -56,6 +57,13 @@ export async function resolveOperationalDataSource(organizationId) {
     throw new OperationalDataSourceError(
       "Operational datasource engine is not supported",
       "DATASOURCE_ENGINE_UNSUPPORTED"
+    );
+  }
+
+  if (hostedOnly && dataSource.mode !== "HOSTED") {
+    throw new OperationalDataSourceError(
+      "Only platform-hosted operational datasources are supported",
+      "DATASOURCE_MODE_UNSUPPORTED"
     );
   }
 
