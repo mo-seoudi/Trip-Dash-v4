@@ -32,6 +32,16 @@ jobs:
         run: npm run prisma:validate
       - name: Run global registration and recovery tests
         run: node --test test/globalTripRegistryService.test.mjs test/globalTripReconciliationSweep.test.mjs
+      - name: Generate read-only dependency inventory
+        run: |
+          node --check scripts/dependency-inventory.mjs
+          node scripts/dependency-inventory.mjs > dependency-inventory.json
+          node -e 'const r=require("./dependency-inventory.json"); console.log(r.counts); if(r.unresolvedRelativeImports.length) { console.error(r.unresolvedRelativeImports); process.exitCode=1; }'
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: trip-dash-dependency-inventory
+          path: server/dependency-inventory.json
       - name: Syntax-check affected route handlers
         run: |
           node --check src/domain/trips/tripController.js
