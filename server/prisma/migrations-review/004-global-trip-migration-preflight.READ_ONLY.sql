@@ -11,17 +11,25 @@ WITH source_counts AS (
    count(*)::int AS total_trips,
    count(*) FILTER (WHERE t.owning_school_organization_id IS NULL)::int AS missing_school,
    count(*) FILTER (WHERE o.id IS NULL)::int AS unknown_school,
+   count(*) FILTER (WHERE o.id IS NOT NULL AND o.type::text <> 'SCHOOL')::int AS non_school_owner,
+   count(*) FILTER (WHERE t.created_by_app_user_id IS NOT NULL AND creator.id IS NULL)::int AS unknown_creator,
+   count(*) FILTER (WHERE t.requesting_organization_id IS NOT NULL AND requester.id IS NULL)::int AS unknown_requester,
    count(*) FILTER (WHERE coalesce(sc.active_sources,0) <> 1)::int AS invalid_source_count,
    count(*) FILTER (WHERE coalesce(c.tenants,0) <> 1)::int AS invalid_tenant_count,
    count(*) FILTER (WHERE t.transport_provider_organization_id IS NOT NULL AND provider.id IS NULL)::int AS invalid_provider
  FROM public.trips t
  LEFT JOIN control.organizations o ON o.id::text = t.owning_school_organization_id
  LEFT JOIN control.organizations provider ON provider.id::text = t.transport_provider_organization_id
+ LEFT JOIN control.organizations requester ON requester.id::text = t.requesting_organization_id
+ LEFT JOIN control.app_users creator ON creator.id::text = t.created_by_app_user_id
  LEFT JOIN source_counts sc ON sc.organization_id = o.id
  LEFT JOIN coverage c ON c.organization_id = o.id
 )
 SELECT * FROM checks;
 
+-- Require zero missing_school, unknown_school, non_school_owner, unknown_creator,
+-- unknown_requester, invalid_source_count, invalid_tenant_count and invalid_provider.
+-- Recheck all values immediately before any isolated migration test.
 -- The expected pre-migration state is: control.trip_registry and
 -- public.trips.global_trip_id are absent. Stop and investigate if otherwise.
 SELECT
