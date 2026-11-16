@@ -42,6 +42,11 @@ jobs:
         with:
           name: trip-dash-dependency-inventory
           path: server/dependency-inventory.json
+      - name: Build Control Center frontend
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
       - name: Syntax-check affected route handlers
         run: |
           node --check src/domain/trips/tripController.js
