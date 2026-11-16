@@ -57,8 +57,8 @@ export async function operationalPrismaForExternalWorkspace(schoolId,{controlPri
   const id=String(schoolId||"").trim();
   if(!id)throw httpError(400,"A school workspace is required","SCHOOL_WORKSPACE_REQUIRED");
   if(!controlPrisma)throw httpError(503,"Canonical control plane is unavailable","CANONICAL_ACCESS_UNAVAILABLE");
-  const rows=await controlPrisma.operationalDataSource.findMany({where:{organizationId:id,isActive:true},select:{id:true},take:2});
-  singleActiveWorkspaceConnection(rows);
+  // The canonical datasource resolver already enforces exactly one active source,
+  // validates its engine and resolves credentials. Do not query it twice.
   const{prisma,dataSource}=await getOperationalContextForOrganization(id);
   return{schoolId:id,dataSource,prisma};
 }
